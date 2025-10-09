@@ -1,0 +1,24 @@
+#cargo-features = ["lints"] # Должно быть в самом начале файла
+
+# .cargo/config.toml
+
+
+[package]
+name = "wisleess2"
+version = "0.1.0"
+edition = "2021"
+
+
+[dependencies]
+mambo_map = "0.1.0"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }
+
+[profile.test]
+#rustflags = ["-Z", "unstable-options", "--check-cfg"]
+
+
+[profile.release]
+#rustflags = ["-Z", "unstable-options", "--check-cfg"]
+opt-level = 3

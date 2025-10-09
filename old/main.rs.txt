@@ -1,0 +1,358 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::{Duration, Instant};
+
+const NUM_THREADS: usize = 1;
+const OPERATIONS_PER_THREAD: usize = 10_000_000;
+
+use std::rc::Rc;
+
+// Структура для тестирования
+#[derive(Clone)]
+struct TestData {
+    values: Vec<i32>,
+    counter: i32,
+}
+
+impl TestData {
+    fn new(size: usize) -> Self {
+        TestData {
+            values: vec![1; size],
+            counter: 0,
+        }
+    }
+
+    fn increment(&mut self) {
+        self.counter += 1;
+        if !self.values.is_empty() {
+            self.values[0] = self.counter;
+        }
+    }
+}
+
+fn main3() {
+    let data_size = 500_000;
+    let clone_operations = 50_000_000;
+    let modify_operations = 50_000_000;
+
+    println!("Бенчмарк сравнения Rc и Arc");
+    println!("Размер данных: {} элементов", data_size);
+    println!("Операций клонирования: {}", clone_operations);
+    println!("Операций изменения: {}", modify_operations);
+    println!("----------------------------------------");
+
+    // Тестирование Rc
+    let rc_data = Rc::new(TestData::new(data_size));
+    let rc_start = Instant::now();
+
+    // Операции клонирования
+    let mut rc_clones = Vec::with_capacity(clone_operations);
+    for _ in 0..clone_operations {
+        rc_clones.push(Rc::clone(&rc_data));
+    }
+
+    // Операции изменения (требуем RefCell для изменяемости, но в этом примере мы не используем его)
+    // Для Rc нам нужен RefCell для изменений, но для чистоты бенчмарка мы пропустим это
+    // и сосредоточимся на операциях клонирования
+
+    let rc_duration = rc_start.elapsed();
+
+    // Тестирование Arc
+    let arc_data = Arc::new(TestData::new(data_size));
+    let arc_start = Instant::now();
+
+    // Операции клонирования
+    let mut arc_clones = Vec::with_capacity(clone_operations);
+    for _ in 0..clone_operations {
+        arc_clones.push(Arc::clone(&arc_data));
+    }
+
+    // Операции изменения (требуем Mutex для изменяемости, но в этом примере мы не используем его)
+
+    let arc_duration = arc_start.elapsed();
+
+    println!("Результаты:");
+    println!("Rc: {:?}", rc_duration);
+    println!("Arc: {:?}", arc_duration);
+    println!("Разница: {:?}", arc_duration - rc_duration);
+    println!(
+        "Rc быстрее Arc в {:.2} раз",
+        arc_duration.as_secs_f64() / rc_duration.as_secs_f64()
+    );
+    println!(
+        "RC: {:.2}M/ops",
+        clone_operations as f64 / rc_duration.as_micros() as f64
+    );
+    println!(
+        "ARC: {:.2}M/ops",
+        clone_operations as f64 / arc_duration.as_micros() as f64
+    );
+
+    // Тестирование с изменяемыми данными
+    println!("\nТестирование с изменяемыми данными:");
+
+    // Для Rc нужен RefCell для изменений
+    use std::cell::RefCell;
+    let rc_mut_data = Rc::new(RefCell::new(TestData::new(data_size)));
+    let rc_mut_start = Instant::now();
+
+    for _ in 0..modify_operations {
+        rc_mut_data.borrow_mut().increment();
+    }
+
+    let rc_mut_duration = rc_mut_start.elapsed();
+
+    // Для Arc нужен Mutex для изменений в многопоточном режиме
+    use std::sync::Mutex;
+    let arc_mut_data = Arc::new(Mutex::new(TestData::new(data_size)));
+    //let arc_mut_data = Arc::new(TestData::new(data_size));
+    let arc_mut_start = Instant::now();
+    //let mut baw = 0;
+    for _ in 0..modify_operations {
+        arc_mut_data.lock().unwrap().increment();
+        //baw ^= arc_mut_data.values[1];
+    }
+
+    let arc_mut_duration = arc_mut_start.elapsed();
+    //println!("baw:{}", baw);
+    println!("Rc<RefCell<T>>: {:?}", rc_mut_duration);
+    println!("Arc<Mutex<T>>: {:?}", arc_mut_duration);
+    println!("Разница: {:?}", arc_mut_duration - rc_mut_duration);
+    println!(
+        "Rc<RefCell<T>> быстрее Arc<Mutex<T>> в {:.2} раз",
+        arc_mut_duration.as_secs_f64() / rc_mut_duration.as_secs_f64()
+    );
+
+    println!(
+        "RC: {:.2}M/ops",
+        modify_operations as f64 / rc_mut_duration.as_micros() as f64
+    );
+    println!(
+        "ARC: {:.2}M/ops",
+        modify_operations as f64 / arc_mut_duration.as_micros() as f64
+    );
+
+    // Дополнительный тест: многопоточное изменение Arc<Mutex<T>>
+    println!("\nТестирование многопоточного доступа к Arc<Mutex<T>>:");
+
+    let arc_threaded_data = Arc::new(Mutex::new(TestData::new(data_size)));
+    let arc_threaded_start = Instant::now();
+
+    let mut handles = vec![];
+    let threads = 1;
+    let ops_per_thread = modify_operations / threads;
+
+    for _ in 0..threads {
+        let data_clone = Arc::clone(&arc_threaded_data);
+        handles.push(std::thread::spawn(move || {
+            for _ in 0..ops_per_thread {
+                data_clone.lock().unwrap().increment();
+            }
+        }));
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    let arc_threaded_duration = arc_threaded_start.elapsed();
+    println!(
+        "Arc<Mutex<T>> ({} потоков): {:?}",
+        threads, arc_threaded_duration
+    );
+    println!(
+        "Итоговое значение счетчика: {}",
+        arc_threaded_data.lock().unwrap().counter
+    );
+    println!(
+        "MUt: {:.2}M/ops",
+        modify_operations as f64 / arc_threaded_duration.as_micros() as f64
+    );
+}
+
+fn main() {
+    println!("🔄 Тест производительности для {} потоков", NUM_THREADS);
+    println!("📊 Операций на поток: {}", OPERATIONS_PER_THREAD);
+    println!("----------------------------------------");
+
+    // Тест 1: Чтение Relaxed vs Acquire
+    test_atomic_read();
+
+    // Тест 2: Запись Relaxed vs Acquire
+    test_atomic_write();
+
+    // Тест 3: Запись в Mutex vs TryLock
+    test_mutex_vs_trylock();
+}
+
+fn test_atomic_read() {
+    println!("\n🔍 ТЕСТ 1: Чтение AtomicUsize");
+    println!("----------------------------------------");
+
+    let atomic = Arc::new(AtomicUsize::new(0));
+
+    // Тестируем Relaxed чтение
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|_| {
+            let atomic_clone = atomic.clone();
+            thread::spawn(move || {
+                for _ in 0..OPERATIONS_PER_THREAD {
+                    let _ = atomic_clone.load(Ordering::Relaxed);
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let relaxed_duration = start.elapsed();
+
+    // Тестируем Acquire чтение
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|_| {
+            let atomic_clone = atomic.clone();
+            thread::spawn(move || {
+                for _ in 0..OPERATIONS_PER_THREAD {
+                    let _ = atomic_clone.load(Ordering::Acquire);
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let acquire_duration = start.elapsed();
+
+    print_results("Relaxed чтение", relaxed_duration);
+    print_results("Acquire чтение", acquire_duration);
+    print_comparison(&relaxed_duration, &acquire_duration);
+}
+
+fn test_atomic_write() {
+    println!("\n✏️  ТЕСТ 2: Запись AtomicUsize");
+    println!("----------------------------------------");
+
+    // Тестируем Relaxed запись
+    let atomic = Arc::new(AtomicUsize::new(0));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|i| {
+            let atomic_clone = atomic.clone();
+            thread::spawn(move || {
+                for j in 0..OPERATIONS_PER_THREAD {
+                    atomic_clone.store(i * OPERATIONS_PER_THREAD + j, Ordering::Relaxed);
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let relaxed_duration = start.elapsed();
+
+    // Тестируем Acquire запись
+    let atomic = Arc::new(AtomicUsize::new(0));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|i| {
+            let atomic_clone = atomic.clone();
+            thread::spawn(move || {
+                for j in 0..OPERATIONS_PER_THREAD {
+                    atomic_clone.store(i * OPERATIONS_PER_THREAD + j, Ordering::Release);
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let acquire_duration = start.elapsed();
+
+    print_results("Relaxed запись", relaxed_duration);
+    print_results("Acquire запись", acquire_duration);
+    print_comparison(&relaxed_duration, &acquire_duration);
+}
+
+fn test_mutex_vs_trylock() {
+    println!("\n🔒 ТЕСТ 3: Mutex vs TryLock");
+    println!("----------------------------------------");
+
+    // Тестируем обычный Mutex
+    let mutex = Arc::new(Mutex::new(0usize));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|i| {
+            let mutex_clone = mutex.clone();
+            thread::spawn(move || {
+                for j in 0..OPERATIONS_PER_THREAD {
+                    let mut guard = mutex_clone.lock().unwrap();
+                    *guard = i * OPERATIONS_PER_THREAD + j;
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let mutex_duration = start.elapsed();
+
+    // Тестируем TryLock с повторными попытками
+    let mutex = Arc::new(Mutex::new(0usize));
+    let start = Instant::now();
+    let handles: Vec<_> = (0..NUM_THREADS)
+        .map(|i| {
+            let mutex_clone = mutex.clone();
+            thread::spawn(move || {
+                for j in 0..OPERATIONS_PER_THREAD {
+                    loop {
+                        if let Ok(mut guard) = mutex_clone.try_lock() {
+                            *guard = i * OPERATIONS_PER_THREAD + j;
+                            //break;
+                        }
+                        break;
+                        // Краткая пауза перед повторной попыткой
+                        //thread::yield_now();
+                    }
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    let trylock_duration = start.elapsed();
+
+    print_results("Mutex::lock()", mutex_duration);
+    print_results("Mutex::try_lock()", trylock_duration);
+    print_comparison(&mutex_duration, &trylock_duration);
+}
+
+fn print_results(name: &str, duration: Duration) {
+    let total_ops = NUM_THREADS * OPERATIONS_PER_THREAD;
+    let ops_per_sec = total_ops as f64 / duration.as_secs_f64();
+    let ns_per_op = duration.as_nanos() as f64 / total_ops as f64;
+
+    println!("{}:", name);
+    println!("  Время: {:?}", duration);
+    println!("  Операций в секунду: {:.2}M", ops_per_sec / 1_000_000.0);
+    println!("  Наносекунд на операцию: {:.2} ns", ns_per_op);
+}
+
+fn print_comparison(first: &Duration, second: &Duration) {
+    let ratio = first.as_secs_f64() / second.as_secs_f64();
+    if ratio > 1.0 {
+        println!("  🚀 В {:.2} раз быстрее", ratio);
+    } else {
+        println!("  🐢 В {:.2} раз медленнее", 1.0 / ratio);
+    }
+    println!();
+}
