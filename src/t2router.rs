@@ -1,5 +1,5 @@
 use crate::t1pology::PackTopology;
-use crate::t1queue_tcpudp::{WSUdplike, WStcplike};
+use crate::t1queue_tcpudp::recv_queue::{WSUdplike, WStcplike};
 
 enum Wtype {
     WTCP(WStcplike),

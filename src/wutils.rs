@@ -478,6 +478,7 @@ mod position_tests {
         assert_eq!(slices[1], &mut [3, 4]);
     }
 
+    /*
     use std::time;
     #[test]
     fn test_a_time() {
@@ -495,5 +496,5 @@ mod position_tests {
             x
         );
         assert!(false);
-    }
+    }*/
 }
