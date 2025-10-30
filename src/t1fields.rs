@@ -1,5 +1,76 @@
+use std::f32::consts::E;
+
 use crate::t1pology::PackTopology;
 use crate::{t1pology, wutils};
+
+#[derive(Debug, Clone)]
+pub enum ErrType {
+    LenSmallErr(&'static str),
+    NoneFieldErr(&'static str),
+    PackageDamaged(&'static str),
+}
+
+impl ErrType {
+    pub fn is_len_small_err(&self) -> bool {
+        match self {
+            ErrType::LenSmallErr(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_none_field(&self) -> bool {
+        match self {
+            ErrType::NoneFieldErr(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_(&self) -> bool {
+        match self {
+            ErrType::PackageDamaged(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn err_to_str(&self) -> &'static str {
+        match self {
+            ErrType::LenSmallErr(x) => x,
+            ErrType::NoneFieldErr(x) => x,
+            ErrType::PackageDamaged(x) => x,
+        }
+    }
+}
+
+impl PartialEq for ErrType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (ErrType::LenSmallErr(x), ErrType::LenSmallErr(y)) => {
+                if x == y {
+                    true
+                } else {
+                    false
+                }
+            }
+            (ErrType::NoneFieldErr(x), ErrType::NoneFieldErr(y)) => {
+                if x == y {
+                    true
+                } else {
+                    false
+                }
+            }
+
+            (ErrType::PackageDamaged(x), ErrType::PackageDamaged(y)) => {
+                if x == y {
+                    true
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum WPackageType {
     Data,  //0
@@ -144,8 +215,8 @@ pub enum Cryptlag {
     Decrypt,
 }
 
-pub trait EncWis {
-    fn new(key: &[u8]) -> Result<(), &'static str>;
+pub trait EncWis: Sized {
+    fn new(key: &[u8]) -> Result<Self, &'static str>;
 
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
     fn encrypt(
@@ -192,14 +263,14 @@ pub fn set_get_head_crc(
     pack: &mut [u8],
     topology: &PackTopology,
     crcfn: fn(&[u8], &mut [u8]) -> Result<(), &'static str>,
-) -> Result<bool, &'static str> {
+) -> Result<bool, ErrType> {
     if let Some((start, end, len)) = topology.head_crc_slice() {
         if len > t1pology::MAXIMAL_CRC_LEN {
-            return Err("len >  t2page::MAXIMAL_CRC_LEN");
+            return Err(ErrType::LenSmallErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
         if pack.len() < end {
-            return Err("pack len non correct");
+            return Err(ErrType::LenSmallErr("pack len non correct"));
         }
         let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
 
@@ -212,7 +283,7 @@ pub fn set_get_head_crc(
             head_sl.fill(0); // crc in head = 0
         }
 
-        crcfn(&head, &mut temp_new[..len])?; //
+        crcfn(&head, &mut temp_new[..len]).map_err(|x| ErrType::PackageDamaged(x))?; //
 
         head[start..end].copy_from_slice(if create_new_crc_summ {
             &temp_new[..len] //crc
@@ -222,7 +293,7 @@ pub fn set_get_head_crc(
         return Ok(temp_new[..len] == temp_old[..len]);
     }
 
-    Err("head_crc_slice not in PackTopology")
+    Err(ErrType::NoneFieldErr("head_crc_slice not in PackTopology"))
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
@@ -805,11 +876,15 @@ mod tests {
         Ok(())
     }
 
-    struct CyptStruct {}
+    struct CyptStruct {
+        key: Vec<u8>,
+    }
 
     impl EncWis for CyptStruct {
-        fn new(key: &[u8]) -> Result<(), &'static str> {
-            Ok(())
+        fn new(key: &[u8]) -> Result<Self, &'static str> {
+            Ok(Self {
+                key: Vec::from(key),
+            })
         }
 
         fn encrypt(
@@ -822,9 +897,10 @@ mod tests {
         ) -> Result<(), &'static str> {
             let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
             //enc
+            let mut keee = self.key.iter().cycle();
             for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
                 *x = (*x).wrapping_add(i as u8);
-                *x ^= (0x2a as u8).wrapping_add(*n);
+                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
             }
             let mut tag = 0_u32;
             let mut tag_index = 0_usize;
@@ -881,9 +957,10 @@ mod tests {
             }
 
             let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
+            let mut keee = self.key.iter().cycle();
             //enc
             for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x ^= (0x2a as u8).wrapping_add(*n);
+                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
 
                 *x = (*x).wrapping_sub(i as u8);
             }
@@ -913,7 +990,7 @@ mod tests {
                     *he = he.wrapping_add((i * 254) as u8);
                 }
 
-                let cs = CyptStruct {};
+                let cs = CyptStruct::new(&vec![1, 2, 3, 5]).unwrap();
 
                 if ingame == 0 {
                     assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
@@ -1077,6 +1154,15 @@ mod tests {
 
         let result = PackTopology::new(59, &fields, true, false).unwrap();
 
+        let fields2 = vec![
+            //t2page::PakFields::HeadByte,
+            t1pology::PakFields::UserField(3333),
+            t1pology::PakFields::Counter(7),
+            t1pology::PakFields::IdConnect(6),
+        ];
+
+        let result_non_crc = PackTopology::new(59, &fields, true, false).unwrap();
+
         let mut bb = vec![0_u8; 3500];
 
         for x in bb.iter_mut().enumerate() {
@@ -1163,6 +1249,16 @@ mod tests {
             assert_eq!(
                 set_get_head_crc(false, &mut bb, &result, dummy_crc_gen),
                 Ok(true)
+            );
+
+            assert_eq!(
+                set_get_head_crc(false, &mut bb[..4], &result, dummy_crc_gen),
+                Err(ErrType::LenSmallErr("pack len non correct"))
+            );
+
+            assert_eq!(
+                set_get_head_crc(false, &mut bb, &result, dummy_crc_gen),
+                Err(ErrType::LenSmallErr("pack len non correct"))
             );
         }
     }
@@ -1397,7 +1493,7 @@ mod tests {
         let opt_non: Option<fn(&mut [u8]) -> Result<(), &'static str>> = Some(none_gen);
         let ctr_n = Some(1000);
 
-        let mut cs = CyptStruct {};
+        let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 5, 6]).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
@@ -1864,7 +1960,7 @@ mod tests {
             .is_ok(),
             true
         );
-        let mut cs = CyptStruct {};
+        let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 45]).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
             pack.clone_into(&mut ttt);

@@ -170,7 +170,7 @@ pub mod recv_queue {
                                 &self.pack_topology,
                                 self.crcfn.ok_or(WSQueueErr::Critical("crcfn is none"))?,
                             )
-                            .map_err(|err| WSQueueErr::Critical(err))?
+                            .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
                             {
                                 return Err(WSQueueErr::Critical("package is damaged"));
                             }
@@ -215,7 +215,6 @@ pub mod recv_queue {
             }
 
             Ok(ret_paks.into_boxed_slice())
-            //Err("")
         }
     }
     ///The UDP packet queue accepts packets in random order,
@@ -403,11 +402,25 @@ pub mod recv_queue {
         /// p_order is a check object, usually f32/f64 or u32/64.
         /// If p_order is greater than all p_orders currently in the table,
         /// the insertion occurs in O(1); if p_order is smaller,
-        pub fn push(&mut self, id: u64, p_order: P, elem: T) -> Result<(), &'static str> {
+        /// forse_to_max_p if  == true, then if the value of p_order is less than max_elem_id_and_p,
+        /// the element will be added, but its p_order will be equal to max_elem_id_and_p;
+        ///  if forse_to_max_p if  == false, then if the value of p_order for the element is
+        ///  less than max_elem_id_and_p, an error will be triggered.
+        pub fn push(
+            &mut self,
+            id: u64,
+            p_order: P,
+            forse_to_max_p: bool,
+            elem: T,
+        ) -> Result<(), &'static str> {
             if self.data_map.len() >= self.max_capacity_elems {
-                return Err("");
+                return Err("queue is overflowing");
             }
+            let mut p_order = p_order;
             if let Some(mp) = &mut self.of_max_p {
+                if forse_to_max_p {
+                    p_order = mp.1.clone();
+                }
                 if mp.1 > p_order {
                     return Err("self.max_elem_p < p_order");
                 }
@@ -590,7 +603,7 @@ pub mod recv_queue {
             assert_eq!(waa.min_elem_id_and_p(), None);
 
             for x in addrt..max_x + addrt {
-                let res = waa.push(x * 2, x as u32, true);
+                let res = waa.push(x * 2, x as u32, false, true);
                 assert_eq!(res, Ok(()));
 
                 assert_eq!(waa.max_elem_id_and_p(), Some((x * 2, x as u32)));
@@ -624,7 +637,7 @@ pub mod recv_queue {
                 assert_eq!(waa.min_elem_id_and_p(), None);
 
                 for x in 0..max_x {
-                    let res = waa.push(x, x as u32, true);
+                    let res = waa.push(x, x as u32, false, true);
                     assert_eq!(res, Ok(()));
 
                     assert_eq!(waa.max_elem_id_and_p(), Some((x, x as u32)));
@@ -687,21 +700,44 @@ pub mod recv_queue {
 
                 assert_eq!(waa.min_elem_id_and_p(), Some((2, 2)));
 
-                waa.push(10, 10, true).unwrap();
-                waa.push(20, 1000, true).unwrap();
+                waa.push(10, 10, false, true).unwrap();
+                waa.push(20, 1000, false, true).unwrap();
 
-                assert_eq!(waa.push(30, 999, true).is_err(), true);
-                assert_eq!(waa.push(30, 1000, true).is_ok(), true); //is ok !!!!! order <= p
+                assert_eq!(waa.push(30, 999, false, true).is_err(), true);
+                assert_eq!(waa.push(30, 1000, false, true).is_ok(), true); //is ok !!!!! order <= p
 
-                assert_eq!(waa.push(30, 1000000, true).is_err(), true); // id is Some ^^^^^^
-                assert_eq!(waa.push(31, 1001, true).is_ok(), true); //is ok !!!!! order <= p\
+                assert_eq!(waa.push(30, 1000000, false, true).is_err(), true);
+                assert_eq!(waa.push(31, 1001, false, true).is_ok(), true); //is ok !!!!! order <= p\
 
                 waa.remove(2).unwrap();
                 waa.remove(20).unwrap();
                 waa.remove(6).unwrap();
                 waa.remove(10).unwrap();
+
+                assert_eq!(waa.push(50, 0, true, true).is_ok(), true);
+                assert_eq!(waa.push(51, 43, true, true).is_ok(), true);
+                assert_eq!(waa.push(52, 6, true, true).is_ok(), true);
+                assert_eq!(
+                    waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
+                        .iter()
+                        .map(|x| (x.0.clone()))
+                        .collect::<Vec<u64>>(),
+                    vec![3, 30, 31, 50, 51, 52]
+                );
+
+                assert_eq!(
+                    waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
+                        .iter()
+                        .map(|x| (x.1.clone()))
+                        .collect::<Vec<u32>>(),
+                    vec![3, 1000, 1001, 1001, 1001, 1001]
+                );
+
                 waa.remove(31).unwrap();
                 waa.remove(30).unwrap();
+                waa.remove(50).unwrap();
+                waa.remove(51).unwrap();
+                waa.remove(52).unwrap();
 
                 /*
                 println!("==============");
