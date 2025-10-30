@@ -1,9 +1,9 @@
-use crate::t1pology::PackTopology;
-use crate::t1queue_tcpudp::recv_queue::{WSUdplike, WStcplike};
+/*use crate::t1pology::PackTopology;
+use crate::t1queue_tcpudp::recv_queue::{WSTcpLike, WSUdpLike};
 
 enum Wtype {
-    WTCP(WStcplike),
-    WUDP(WSUdplike<Box<[u8]>>),
+    WTCP(WSTcpLike),
+    WUDP(WSUdpLike<Box<[u8]>>),
 }
 
 pub struct WQueue {
@@ -21,7 +21,7 @@ impl WQueue {
         crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     ) -> Result<Self, &'static str> {
         Ok(Self::universal_construct(
-            Wtype::WTCP(WStcplike::new(mtu, pack_topology, crcfn)?),
+            Wtype::WTCP(WSTcpLike::new(mtu, pack_topology, crcfn)?),
             mtu,
             pack_topology,
             crcfn,
@@ -35,7 +35,7 @@ impl WQueue {
         crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     ) -> Result<Self, &'static str> {
         Ok(Self::universal_construct(
-            Wtype::WUDP(WSUdplike::new(sizecap)?),
+            Wtype::WUDP(WSUdpLike::new(sizecap)?),
             mtu,
             pack_topology,
             crcfn,
@@ -91,3 +91,5 @@ impl WQueue {
         Err("")
     }
 }
+
+*/
