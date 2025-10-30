@@ -179,7 +179,7 @@ pub mod recv_queue {
                         //getting the length of the packet from the length field in the packet.
                         let len_of_curent_pack =
                             t1fields::get_len(&self.u_buf[ptr_to_start..], &self.pack_topology)
-                                .map_err(|err| WSQueueErr::Critical(err))?;
+                                .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
                         //if the length value in the length field is greater than MTU,
                         // then the packet is corrupted, an error is caused.
                         if len_of_curent_pack > self.mtu {
