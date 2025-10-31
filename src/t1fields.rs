@@ -1,57 +1,63 @@
-use std::f32::consts::E;
-
 use crate::t1pology::PackTopology;
 use crate::{t1pology, wutils};
 
 #[derive(Debug, Clone)]
-pub enum ErrType {
+pub enum WTypeErr {
     LenSizeErr(&'static str),
     NoneFieldErr(&'static str),
     PackageDamaged(&'static str),
+    WorkTimeErr(&'static str),
 }
 
-impl ErrType {
+impl WTypeErr {
     pub fn is_len_small_err(&self) -> bool {
         match self {
-            ErrType::LenSizeErr(_) => true,
+            WTypeErr::LenSizeErr(_) => true,
             _ => false,
         }
     }
 
     pub fn is_none_field(&self) -> bool {
         match self {
-            ErrType::NoneFieldErr(_) => true,
+            WTypeErr::NoneFieldErr(_) => true,
             _ => false,
         }
     }
 
-    pub fn is_(&self) -> bool {
+    pub fn is_pascage_damaget(&self) -> bool {
         match self {
-            ErrType::PackageDamaged(_) => true,
+            WTypeErr::PackageDamaged(_) => true,
+            _ => false,
+        }
+    }
+    pub fn is_work_time_err(&self) -> bool {
+        match self {
+            WTypeErr::WorkTimeErr(_) => true,
             _ => false,
         }
     }
 
     pub fn err_to_str(&self) -> &'static str {
         match self {
-            ErrType::LenSizeErr(x) => x,
-            ErrType::NoneFieldErr(x) => x,
-            ErrType::PackageDamaged(x) => x,
+            WTypeErr::LenSizeErr(x) => x,
+            WTypeErr::NoneFieldErr(x) => x,
+            WTypeErr::PackageDamaged(x) => x,
+            WTypeErr::WorkTimeErr(x) => x,
         }
     }
 }
 
-impl PartialEq for ErrType {
+impl PartialEq for WTypeErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (ErrType::LenSizeErr(x), ErrType::LenSizeErr(y)) => {
+            (WTypeErr::LenSizeErr(x), WTypeErr::LenSizeErr(y)) => {
                 if x == y {
                     true
                 } else {
                     false
                 }
             }
-            (ErrType::NoneFieldErr(x), ErrType::NoneFieldErr(y)) => {
+            (WTypeErr::NoneFieldErr(x), WTypeErr::NoneFieldErr(y)) => {
                 if x == y {
                     true
                 } else {
@@ -59,7 +65,14 @@ impl PartialEq for ErrType {
                 }
             }
 
-            (ErrType::PackageDamaged(x), ErrType::PackageDamaged(y)) => {
+            (WTypeErr::PackageDamaged(x), WTypeErr::PackageDamaged(y)) => {
+                if x == y {
+                    true
+                } else {
+                    false
+                }
+            }
+            (WTypeErr::WorkTimeErr(x), WTypeErr::WorkTimeErr(y)) => {
                 if x == y {
                     true
                 } else {
@@ -214,6 +227,38 @@ pub enum Cryptlag {
     Encrypt,
     Decrypt,
 }
+#[derive(Debug, Clone)]
+pub enum StatusDecrypt {
+    PackageDamaged,
+    DecodedCorrectly,
+}
+
+impl StatusDecrypt {
+    pub fn is_correctly(&self) -> bool {
+        match self {
+            Self::DecodedCorrectly => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_damaged(&self) -> bool {
+        match self {
+            Self::PackageDamaged => true,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for StatusDecrypt {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (StatusDecrypt::DecodedCorrectly, StatusDecrypt::DecodedCorrectly) => true,
+            (StatusDecrypt::PackageDamaged, StatusDecrypt::PackageDamaged) => true,
+
+            _ => false,
+        }
+    }
+}
 
 pub trait EncWis: Sized {
     fn new(key: &[u8]) -> Result<Self, &'static str>;
@@ -235,7 +280,7 @@ pub trait EncWis: Sized {
         auth_tag: &mut [u8],
         nonce_countr: u64,
         nonce: Option<&[u8]>,
-    ) -> Result<(), &'static str>;
+    ) -> Result<StatusDecrypt, &'static str>;
 }
 
 /// computes and validates the header crc checksum using a user-provided crc function
@@ -263,14 +308,14 @@ pub fn set_get_head_crc(
     pack: &mut [u8],
     topology: &PackTopology,
     crcfn: fn(&[u8], &mut [u8]) -> Result<(), &'static str>,
-) -> Result<bool, ErrType> {
+) -> Result<bool, WTypeErr> {
     if let Some((start, end, len)) = topology.head_crc_slice() {
         if len > t1pology::MAXIMAL_CRC_LEN {
-            return Err(ErrType::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
+            return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
         if pack.len() < end {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
 
@@ -283,7 +328,7 @@ pub fn set_get_head_crc(
             head_sl.fill(0); // crc in head = 0
         }
 
-        crcfn(&head, &mut temp_new[..len]).map_err(|x| ErrType::PackageDamaged(x))?; //
+        crcfn(&head, &mut temp_new[..len]).map_err(|x| WTypeErr::PackageDamaged(x))?; //
 
         head[start..end].copy_from_slice(if create_new_crc_summ {
             &temp_new[..len] //crc
@@ -293,7 +338,7 @@ pub fn set_get_head_crc(
         return Ok(temp_new[..len] == temp_old[..len]);
     }
 
-    Err(ErrType::NoneFieldErr("head_crc_slice not in PackTopology"))
+    Err(WTypeErr::NoneFieldErr("head_crc_slice not in PackTopology"))
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
@@ -314,34 +359,35 @@ pub fn set_ttl(
     ttl_i_edit: i64,
     ttl_max: u64,
     is_start_ttl: bool,
-) -> Result<(), ErrType> {
+) -> Result<(), WTypeErr> {
     if let Some((start, end, len)) = pack_topology.ttl_slice() {
         if pack.len() < end {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         // println!("{:?}   {:?}",wutils::bytes_to_u64(&data[start..end])?, &data[start..end]);
         let temp = wutils::add_u64_i64(
             if is_start_ttl {
                 0
             } else {
-                wutils::bytes_to_u64(&pack[start..end]).map_err(|x| ErrType::LenSizeErr(x))?
+                wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?
             },
             ttl_i_edit,
         )
-        .map_err(|x| ErrType::PackageDamaged(x))?;
+        .map_err(|x| WTypeErr::PackageDamaged(x))?;
         if ttl_max <= temp {
-            return Err(ErrType::PackageDamaged("ttl_max <=ttl "));
+            return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
         }
         if temp > wutils::len_byte_maximal_capacyty_cheak(len).0 {
-            return Err(ErrType::PackageDamaged(
+            return Err(WTypeErr::PackageDamaged(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
         }
-        wutils::u64_to_1_8bytes(temp, &mut pack[start..end]).map_err(|x| ErrType::LenSizeErr(x))?;
+        wutils::u64_to_1_8bytes(temp, &mut pack[start..end])
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
 
         return Ok(());
     }
-    Err(ErrType::NoneFieldErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
 }
 
 ///
@@ -350,14 +396,14 @@ pub fn set_ttl(
 /// reads from the slice defined in topology; parsing uses bytes_to_u64
 /// should be called on unmodified packet data before any ttl updates for accurate inspection
 /// both functions require ttl_slice to be properly defined in PackTopology during construction
-pub fn get_ttl(pack: &[u8], pack_topology: &PackTopology) -> Result<u64, ErrType> {
+pub fn get_ttl(pack: &[u8], pack_topology: &PackTopology) -> Result<u64, WTypeErr> {
     if let Some((start, end, _)) = pack_topology.ttl_slice() {
         if pack.len() < end {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        return wutils::bytes_to_u64(&pack[start..end]).map_err(|x| ErrType::LenSizeErr(x));
+        return wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x));
     }
-    Err(ErrType::NoneFieldErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
 }
 
 /// set_len sets the packet length field in the header based on the actual size of the packet
@@ -368,29 +414,29 @@ pub fn get_ttl(pack: &[u8], pack_topology: &PackTopology) -> Result<u64, ErrType
 /// ensures the length value fits within the allocated field (1–8 bytes); if too large, returns error
 /// encodes the length using u64_to_1_8bytes to match the field’s byte size and writes it into place
 /// used in stream-based protocols (e.g., TCP-like) where length is needed for framing and parsing
-pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Result<(), ErrType> {
+pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
     let sls = pack_topology
         .len_slice()
-        .ok_or(ErrType::NoneFieldErr(" pack_topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))?;
 
     if pack.len() < sls.1 {
-        return Err(ErrType::LenSizeErr("pack len non correct"));
+        return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
     let plen = pack.len();
 
     if plen > mtu {
-        return Err(ErrType::LenSizeErr("pack len non correct"));
+        return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
     if plen > wutils::len_byte_maximal_capacyty_cheak(sls.2).0 as usize {
-        return Err(ErrType::LenSizeErr(
+        return Err(WTypeErr::LenSizeErr(
             "pack.len()> len_byte_maximal_capacyty_cheak(len)",
         ));
     }
 
     wutils::u64_to_1_8bytes(pack.len() as u64, &mut pack[sls.0..sls.1])
-        .map_err(|x| ErrType::LenSizeErr(x))?;
+        .map_err(|x| WTypeErr::WorkTimeErr(x))?;
 
     Ok(())
 }
@@ -401,14 +447,14 @@ pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Res
 /// decodes bytes via bytes_to_u64 and converts to usize; returns error on parsing failure
 /// useful for determining packet boundaries during parsing or validation
 /// both functions assume the length field is unencrypted and located in the packet header
-pub fn get_len(pack: &[u8], pack_topology: &PackTopology) -> Result<usize, ErrType> {
+pub fn get_len(pack: &[u8], pack_topology: &PackTopology) -> Result<usize, WTypeErr> {
     let sls = pack_topology
         .len_slice()
-        .ok_or(ErrType::NoneFieldErr(" pack_topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))?;
     if pack.len() < sls.1 {
-        return Err(ErrType::LenSizeErr("pack len non correct"));
+        return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
-    Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(|x| ErrType::LenSizeErr(x))? as usize)
+    Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(|x| WTypeErr::WorkTimeErr(x))? as usize)
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
@@ -425,22 +471,22 @@ pub fn set_id_conn(
     topology: &PackTopology,
     id_conn: u64,
     send_bit: bool,
-) -> Result<(), ErrType> {
+) -> Result<(), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
         if pack.len() < x.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         if id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >> 1 {
-            return Err(ErrType::PackageDamaged(
+            return Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >>1",
             ));
         }
         wutils::u64_to_1_8bytes((id_conn << 1) | send_bit as u64, &mut pack[x.0..x.1])
-            .map_err(|x| ErrType::LenSizeErr(x))?;
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
         return Ok(());
     }
 
-    Err(ErrType::NoneFieldErr("topology.idconn_slice is None"))
+    Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
 }
 
 /// get_id_conn extracts the connection id and sender role from the packet header
@@ -450,15 +496,15 @@ pub fn set_id_conn(
 /// returns an error if idconn_slice is not present in the topology or parsing fails
 /// used to determine the session the packet belongs to and its sender role
 /// both functions assume that the idconn field is unencrypted and is in the packet header
-pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, bool), ErrType> {
+pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, bool), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
         if pack.len() < x.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| ErrType::LenSizeErr(x))?;
+        let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
         return Ok((reta >> 1, (reta & 1) == 1));
     }
-    Err(ErrType::NoneFieldErr("topology.idconn_slice is None"))
+    Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
 }
 
 /// set_id_sender_and_recv sets both sender and receiver identifiers in the packet header
@@ -473,29 +519,29 @@ pub fn set_id_sender_and_recv(
     topology: &PackTopology,
     id_sender: u64,
     id_recv: u64,
-) -> Result<(), ErrType> {
+) -> Result<(), WTypeErr> {
     if let (Some(x_s), Some(x_r)) = (
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
         let maxim = wutils::len_byte_maximal_capacyty_cheak(x_s.2).0;
         if pack.len() < x_s.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         if maxim < id_recv || maxim < id_sender {
-            return Err(ErrType::PackageDamaged(
+            return Err(WTypeErr::PackageDamaged(
                 "maxim < id_recv OR maxim < id_sender",
             ));
         }
 
         wutils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1])
-            .map_err(|x| ErrType::LenSizeErr(x))?;
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
         wutils::u64_to_1_8bytes(id_sender, &mut pack[x_s.0..x_s.1])
-            .map_err(|x| ErrType::LenSizeErr(x))?;
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
         return Ok(());
     }
 
-    Err(ErrType::NoneFieldErr(
+    Err(WTypeErr::NoneFieldErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -506,20 +552,23 @@ pub fn set_id_sender_and_recv(
 /// parses values using bytes_to_u64 from the defined slices in the header
 /// allows endpoints to identify source and destination without external context
 /// both functions require that sender and receiver fields are present and of equal length, as per protocol rules
-pub fn get_id_sender_and_recv(pack: &[u8], topology: &PackTopology) -> Result<(u64, u64), ErrType> {
+pub fn get_id_sender_and_recv(
+    pack: &[u8],
+    topology: &PackTopology,
+) -> Result<(u64, u64), WTypeErr> {
     if let (Some(x_s), Some(x_r)) = (
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
         if pack.len() < x_s.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return Ok((
-            wutils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(|x| ErrType::LenSizeErr(x))?,
-            wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(|x| ErrType::LenSizeErr(x))?,
+            wutils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?,
+            wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?,
         ));
     }
-    Err(ErrType::NoneFieldErr(
+    Err(WTypeErr::NoneFieldErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -538,23 +587,23 @@ pub fn set_counter(
     topology: &PackTopology,
     countr: u64,
     last_bit_in_countr: WPackageType,
-) -> Result<(u64, u64), ErrType> {
+) -> Result<(u64, u64), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let max_cap = wutils::len_byte_maximal_capacyty_cheak(x.2).0 >> 1;
 
         let pack_ctr = ((max_cap & countr) << 1) | last_bit_in_countr.bit_as() as u64;
         if pack.len() < x.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1])
-            .map_err(|x| ErrType::LenSizeErr(x))?;
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
 
         return Ok((pack_ctr, max_cap));
     }
-    Err(ErrType::NoneFieldErr("topology.counter_slice() is none"))
+    Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
 }
 
 /// set_counter writes the packet counter value into the header with a control bit
@@ -583,19 +632,27 @@ pub fn get_counter(
     topology: &PackTopology,
     countr1: u64,
     countr2: u64,
-) -> Result<(u64, WPackageType), ErrType> {
+) -> Result<(u64, WPackageType), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let ctr_in_pack =
-            wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| ErrType::LenSizeErr(x))?;
+            wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
         let (max_cap, _) = wutils::len_byte_maximal_capacyty_cheak(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
         let bt = (ctr_in_pack & 1) as u8;
 
         let countr = if bt == 1 { countr1 } else { countr2 };
+
+        //When working with the algorithm,
+        //keep in mind that the counter in the packet has a smaller field than the real counter,
+        //so if the packet numbers differ significantly,
+        //so that the difference in values is greater than the maximum capacity,
+        //the real counter will be determined incorrectly,
+        //the incorrect counter will give an incorrect initial state for the cipher,
+        //resulting in the packet being identified as a damaged packet, thanks to the tag field.
 
         //                     older bytes       ctr_ pack
         let real_countr = (countr & (!max_cap)) | pack_ctr;
@@ -605,16 +662,16 @@ pub fn get_counter(
                     .checked_add(
                         max_cap
                             .checked_add(1)
-                            .ok_or(ErrType::PackageDamaged("overflow max_cap+1"))?,
+                            .ok_or(WTypeErr::WorkTimeErr("overflow max_cap+1"))?,
                     )
-                    .ok_or(ErrType::PackageDamaged("overflow real_countr+OLDER BIT"))?
+                    .ok_or(WTypeErr::WorkTimeErr("overflow real_countr+OLDER BIT"))?
             } else {
                 real_countr
             },
             WPackageType::new((ctr_in_pack & 1) as u8),
         ));
     }
-    Err(ErrType::NoneFieldErr("topology.counter_slice() is none"))
+    Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
 }
 
 /// set_user_field generates and fills the user-defined field (aka "trash field") in the packet header
@@ -635,17 +692,17 @@ pub fn set_user_field(
     counter: u64,
     full_len: usize,
     field_gen: fn(&mut [u8], u64, usize) -> Result<(), &'static str>,
-) -> Result<(), ErrType> {
+) -> Result<(), WTypeErr> {
     if let Some((start, end, _)) = topology.trash_content_slice() {
         if pack.len() < end {
-            return Err(ErrType::LenSizeErr("pack len non correct"));
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         field_gen(&mut pack[start..end], counter, full_len)
-            .map_err(|x| ErrType::PackageDamaged(x))?; //
+            .map_err(|x| WTypeErr::PackageDamaged(x))?; //
         return Ok(());
     }
 
-    Err(ErrType::NoneFieldErr("user_field not in PackTopology"))
+    Err(WTypeErr::NoneFieldErr("user_field not in PackTopology"))
 }
 
 /// crypt performs encryption or decryption of the packet payload and computes authentication tag
@@ -691,14 +748,16 @@ pub fn crypt<Tenc>(
     countr: Option<u64>,
     nonce_gener: Option<fn(&mut [u8]) -> Result<(), &'static str>>,
     //crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>
-) -> Result<(), &'static str>
+) -> Result<(), WTypeErr>
 where
     Tenc: EncWis,
 {
     let p_len = pack.len();
 
     if p_len < topology.total_minimal_len() {
-        return Err("pack.len()< topology.total_minimal_len()");
+        return Err(WTypeErr::LenSizeErr(
+            "pack.len()< topology.total_minimal_len()",
+        ));
     }
 
     let is_encrypt = match enc_mode {
@@ -713,14 +772,17 @@ where
     if is_encrypt {
         let (n, c) = (
             if let Some(x) = topology.nonce_slice() {
-                nonce_gener.ok_or("nonce_gener required")?(&mut pack[x.0..x.1])?;
+                nonce_gener.ok_or(WTypeErr::NoneFieldErr("nonce_gener required"))?(
+                    &mut pack[x.0..x.1],
+                )
+                .map_err(|x| WTypeErr::WorkTimeErr(x))?;
                 1
             } else {
                 0
             },
             if let Some(_) = topology.counter_slice() {
                 if countr.is_none() {
-                    return Err("counter required");
+                    return Err(WTypeErr::NoneFieldErr("counter_field required"));
                 }
                 1
             } else {
@@ -728,7 +790,7 @@ where
             },
         );
         if 0 == n + c {
-            return Err("invalid combination");
+            return Err(WTypeErr::NoneFieldErr("Incorrect combination, the packet must have either a counter field, a nonce field, or a nonce field + a counter field. This topology has neither a counter field nor a nonce field."));
         }
     }
 
@@ -761,9 +823,19 @@ where
     };
 
     if is_encrypt {
-        enc_struct.encrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)?;
+        enc_struct
+            .encrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
     } else {
-        enc_struct.decrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)?;
+        if enc_struct
+            .decrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+            .map_err(|x| WTypeErr::WorkTimeErr(x))?
+            .is_damaged()
+        {
+            return Err(WTypeErr::PackageDamaged(
+                "error return during decryption associated with packet corruption",
+            ));
+        }
     }
 
     if let Some((s, e, len)) = topology.ttl_slice() {
@@ -776,6 +848,8 @@ where
 
     Ok(())
 }
+/*
+//IN FUTURE
 
 //7   6   5   4   3   2   1   0
 //┌───┬───┬───┬───┬───┬───┬───┬───┐
@@ -811,22 +885,25 @@ pub fn set_head_byte(
     return Ok(());
 }
 
+
+*/
+
 ///(array(head fields len + headbyte len + paload len+ tag len),(payload start pos,  pauload endpos) )
 pub fn pre_alloc(
     topology: &PackTopology,
     mtu: usize,
     payloadlen: usize,
-) -> Result<(Box<[u8]>, (usize, usize)), &'static str> {
+) -> Result<(Box<[u8]>, (usize, usize)), WTypeErr> {
     let len_pack = topology
         .total_minimal_len()
         .checked_add(payloadlen)
-        .ok_or("owerflow payloadlen + minimal_len()")?;
+        .ok_or(WTypeErr::LenSizeErr("owerflow payloadlen + minimal_len()"))?;
 
     return Ok((
         vec![
             0;
             if len_pack > mtu {
-                return Err("len_pack > mtu");
+                return Err(WTypeErr::LenSizeErr("len_pack > mtu"));
             } else {
                 len_pack
             }
@@ -952,7 +1029,7 @@ mod tests {
             auth_tag: &mut [u8],
             _nonce_countr: u64,
             nonce: Option<&[u8]>,
-        ) -> Result<(), &'static str> {
+        ) -> Result<StatusDecrypt, &'static str> {
             let mut tag = 0_u32;
             let mut tag_index = 0_usize;
             //tag
@@ -970,7 +1047,7 @@ mod tests {
             //tagin
             for x in auth_tag.iter_mut() {
                 if *x != tag as u8 {
-                    return Err("dumm dec tag err");
+                    return Ok(StatusDecrypt::PackageDamaged);
                 }
                 *x = tag as u8;
                 tag = tag.rotate_left(1);
@@ -985,7 +1062,7 @@ mod tests {
                 *x = (*x).wrapping_sub(i as u8);
             }
 
-            Ok(())
+            Ok(StatusDecrypt::DecodedCorrectly)
         }
     }
 
@@ -1014,14 +1091,17 @@ mod tests {
 
                 if ingame == 0 {
                     assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                    assert_eq!(cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
+                    assert_eq!(
+                        cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
+                        Ok(StatusDecrypt::DecodedCorrectly)
+                    );
                 } else {
                     if ingame_2 == 0 {
                         assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
                         h[ingame] = !h[ingame];
                         assert_eq!(
                             cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Err("dumm dec tag err")
+                            Ok(StatusDecrypt::PackageDamaged)
                         );
                     }
                     if ingame_2 == 1 {
@@ -1029,7 +1109,7 @@ mod tests {
                         e[ingame] = !e[ingame];
                         assert_eq!(
                             cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Err("dumm dec tag err")
+                            Ok(StatusDecrypt::PackageDamaged)
                         );
                     }
                 }
@@ -1060,7 +1140,7 @@ mod tests {
 
         assert_eq!(
             pre_alloc(&result, total + 50 + 19, 50),
-            Err("len_pack > mtu")
+            Err(WTypeErr::LenSizeErr("len_pack > mtu"))
         );
         assert_eq!(
             pre_alloc(&result, total + 50 + 19, 49),
@@ -1078,7 +1158,7 @@ mod tests {
 
         assert_eq!(
             pre_alloc(&result, !0_usize, (!0_usize) - 1),
-            Err("owerflow payloadlen + minimal_len()")
+            Err(WTypeErr::LenSizeErr("owerflow payloadlen + minimal_len()"))
         );
 
         let mut t = pre_alloc(&result, 100000, 43).unwrap();
@@ -1273,12 +1353,12 @@ mod tests {
 
             assert_eq!(
                 set_get_head_crc(false, &mut bb[..4], &result, dummy_crc_gen),
-                Err(ErrType::LenSizeErr("pack len non correct"))
+                Err(WTypeErr::LenSizeErr("pack len non correct"))
             );
 
             assert_eq!(
                 set_get_head_crc(false, &mut bb, &result_non_crc, dummy_crc_gen),
-                Err(ErrType::NoneFieldErr("head_crc_slice not in PackTopology"))
+                Err(WTypeErr::NoneFieldErr("head_crc_slice not in PackTopology"))
             );
         }
     }
@@ -1337,187 +1417,189 @@ mod tests {
 
         assert_eq!(
             set_ttl(&mut bb, &result, 1000, 9, false),
-            Err(ErrType::PackageDamaged("ttl_max <=ttl "))
+            Err(WTypeErr::PackageDamaged("ttl_max <=ttl "))
         );
         assert_eq!(
             set_ttl(&mut bb, &result_no_ttl, 1000, 90000, false),
-            Err(ErrType::NoneFieldErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
         );
         assert_eq!(
             set_ttl(&mut bb[..9], &result, 1000, 90000, false),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         assert_eq!(
             get_ttl(&bb[..5], &result),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             get_ttl(&bb, &result_no_ttl),
-            Err(ErrType::NoneFieldErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
         );
     }
+    /*
+    IN FUTURE
+        #[test]
+        fn test_head_byte() {
+            let fields = vec![
+                //t2page::PakFields::HeadByte,
+                t1pology::PakFields::Counter(7),
+                t1pology::PakFields::IdConnect(6),
+                t1pology::PakFields::UserField(10),
+                t1pology::PakFields::HeadCRC(4),
+                t1pology::PakFields::TTL(4),
+            ];
 
-    #[test]
-    fn test_head_byte() {
-        let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
-            t1pology::PakFields::IdConnect(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::TTL(4),
-        ];
+            let result = PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = PackTopology::new(5, &fields, true, false).unwrap();
+            let mut bb = vec![0_u8; result.total_minimal_len()];
 
-        let mut bb = vec![0_u8; result.total_minimal_len()];
+            for x in bb.iter_mut().enumerate() {
+                *x.1 = x.0 as u8;
+            }
 
-        for x in bb.iter_mut().enumerate() {
-            *x.1 = x.0 as u8;
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((WPascageMode::NotEPV, WKeyMode::Defauld, WPackageType::Data))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::WaitTime,
+                    WKeyMode::Defauld,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::WaitTime,
+                    WKeyMode::Defauld,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_ne!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_ne!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_ne!(
+                set_head_byte(
+                    &mut bb[..2],
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
         }
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Defauld,
-                WPackageType::Data
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Defauld,
-                WPackageType::Data
-            ))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::KillConnect,
-                WKeyMode::Gener,
-                WPackageType::Fback
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::KillConnect,
-                WKeyMode::Gener,
-                WPackageType::Fback
-            ))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::NotEPV,
-                WKeyMode::Defauld,
-                WPackageType::Data
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            get_head_byte(&bb, &result),
-            Ok((WPascageMode::NotEPV, WKeyMode::Defauld, WPackageType::Data))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::WaitTime,
-                WKeyMode::Defauld,
-                WPackageType::Fback
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::WaitTime,
-                WKeyMode::Defauld,
-                WPackageType::Fback
-            ))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Gener,
-                WPackageType::Fback
-            ),
-            Ok(())
-        );
-        assert_eq!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Gener,
-                WPackageType::Fback
-            ))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Defauld,
-                WPackageType::Data
-            ),
-            Ok(())
-        );
-        assert_ne!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Gener,
-                WPackageType::Data
-            ))
-        );
-
-        assert_eq!(
-            set_head_byte(
-                &mut bb,
-                &result,
-                WPascageMode::NotEPV,
-                WKeyMode::Gener,
-                WPackageType::Data
-            ),
-            Ok(())
-        );
-        assert_ne!(
-            get_head_byte(&bb, &result),
-            Ok((
-                WPascageMode::KillConnect,
-                WKeyMode::Gener,
-                WPackageType::Fback
-            ))
-        );
-
-        assert_ne!(
-            set_head_byte(
-                &mut bb[..2],
-                &result,
-                WPascageMode::NotEPV,
-                WKeyMode::Gener,
-                WPackageType::Data
-            ),
-            Ok(())
-        );
-    }
-
+    */
     #[test]
     fn test_crypt() {
         let fields = vec![
@@ -1656,7 +1738,9 @@ mod tests {
                     ctr_n,
                     opt_non
                 ),
-                Err("dumm dec tag err")
+                Err(WTypeErr::PackageDamaged(
+                    "error return during decryption associated with packet corruption"
+                ))
             );
         }
     }
@@ -1719,27 +1803,27 @@ mod tests {
 
         assert_eq!(
             set_len(&mut bb, &result, 435,),
-            Err(ErrType::LenSizeErr(
+            Err(WTypeErr::LenSizeErr(
                 "pack.len()> len_byte_maximal_capacyty_cheak(len)"
             ))
         );
 
         assert_eq!(
             set_len(&mut bb[..0], &result, 435,),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             set_len(&mut bb, &result_non_len, 435,),
-            Err(ErrType::NoneFieldErr(" pack_topology.len_slice() is none"))
+            Err(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))
         );
 
         assert_eq!(
             get_len(&bb[..0], &result),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             get_len(&bb, &result_non_len),
-            Err(ErrType::NoneFieldErr(" pack_topology.len_slice() is none"))
+            Err(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))
         );
     }
 
@@ -1794,11 +1878,11 @@ mod tests {
 
         assert_eq!(
             set_user_field(&mut bb3, &result1, 987, 765, dummy_usf),
-            Err(ErrType::NoneFieldErr("user_field not in PackTopology"))
+            Err(WTypeErr::NoneFieldErr("user_field not in PackTopology"))
         );
         assert_eq!(
             set_user_field(&mut bb4[..10], &result, 12213, 987, dummy_usf),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         assert_eq!(
@@ -1856,11 +1940,11 @@ mod tests {
 
         assert_eq!(
             set_counter(&mut bb[..2], &result, 21, WPackageType::new(1)),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             get_counter(&mut bb[..2], &result, 21, 1),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
     }
 
@@ -1907,26 +1991,26 @@ mod tests {
 
         assert_eq!(
             get_id_conn(&bb, &result2),
-            Err(ErrType::NoneFieldErr("topology.idconn_slice is None"))
+            Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
         );
         assert_eq!(
             get_id_conn(&bb[0..3], &result1),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         assert_eq!(
             set_id_conn(&mut bb, &result1, 2312123213213221221, true),
-            Err(ErrType::PackageDamaged(
+            Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >>1"
             ))
         );
         assert_eq!(
             set_id_conn(&mut bb[0..2], &result1, 2, true),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             set_id_conn(&mut bb, &result2, 213214, true),
-            Err(ErrType::NoneFieldErr("topology.idconn_slice is None"))
+            Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
         );
     }
 
@@ -1974,23 +2058,23 @@ mod tests {
 
         assert_eq!(
             get_id_sender_and_recv(&bb, &result2),
-            Err(ErrType::NoneFieldErr(
+            Err(WTypeErr::NoneFieldErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
         assert_eq!(
             get_id_sender_and_recv(&bb[..5], &result1),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
             set_id_sender_and_recv(&mut bb, &result2, 987, 123),
-            Err(ErrType::NoneFieldErr(
+            Err(WTypeErr::NoneFieldErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
         assert_eq!(
             set_id_sender_and_recv(&mut bb[..5], &result1, 7, 1),
-            Err(ErrType::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
     }
 
@@ -2104,6 +2188,9 @@ mod tests {
             true
         );
 
+        /*
+        IN FUTURE
+
         assert_eq!(
             set_head_byte(
                 &mut pack,
@@ -2114,7 +2201,8 @@ mod tests {
             )
             .is_ok(),
             true
-        );
+        )
+        ;*/
         let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 45]).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
@@ -2312,6 +2400,10 @@ mod tests {
             pack[topology.content_start_pos()..pack.len() - topology.tag_len()],
             vec![0x71; pack.len() - (topology.content_start_pos() + topology.tag_len())]
         );
+        /*
+        IN FUTUTE
+
+
         assert_eq!(
             get_head_byte(&pack, &topology),
             Ok((
@@ -2320,6 +2412,7 @@ mod tests {
                 WPackageType::Data
             ))
         );
+        */
         assert_eq!(get_id_conn(&pack, &topology).unwrap(), (id_c, id_c_b));
 
         assert_eq!(
