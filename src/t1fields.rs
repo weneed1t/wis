@@ -1,6 +1,9 @@
 use crate::t1pology::PackTopology;
 use crate::{t1pology, wutils};
 
+pub const IS_FBACK: u8 = 1;
+pub const DATA_PACK: u8 = 0;
+
 #[derive(Debug, Clone)]
 pub enum WTypeErr {
     LenSizeErr(&'static str),
@@ -50,39 +53,19 @@ impl WTypeErr {
 impl PartialEq for WTypeErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (WTypeErr::LenSizeErr(x), WTypeErr::LenSizeErr(y)) => {
-                if x == y {
-                    true
-                } else {
-                    false
-                }
-            }
-            (WTypeErr::NoneFieldErr(x), WTypeErr::NoneFieldErr(y)) => {
-                if x == y {
-                    true
-                } else {
-                    false
-                }
-            }
-
-            (WTypeErr::PackageDamaged(x), WTypeErr::PackageDamaged(y)) => {
-                if x == y {
-                    true
-                } else {
-                    false
-                }
-            }
-            (WTypeErr::WorkTimeErr(x), WTypeErr::WorkTimeErr(y)) => {
-                if x == y {
-                    true
-                } else {
-                    false
-                }
-            }
+            (WTypeErr::LenSizeErr(x), WTypeErr::LenSizeErr(y)) => x == y,
+            (WTypeErr::NoneFieldErr(x), WTypeErr::NoneFieldErr(y)) => x == y,
+            (WTypeErr::PackageDamaged(x), WTypeErr::PackageDamaged(y)) => x == y,
+            (WTypeErr::WorkTimeErr(x), WTypeErr::WorkTimeErr(y)) => x == y,
             _ => false,
         }
     }
 }
+
+/*
+IN FUTURE
+
+
 
 #[derive(Debug, Clone)]
 pub enum WPackageType {
@@ -190,6 +173,9 @@ impl PartialEq for WPascageMode {
         }
     }
 }
+
+    */
+///======================================================================================================
 
 /*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), &'static str>
 where &[u8] is the head, the data that is not encrypted,
@@ -586,7 +572,7 @@ pub fn set_counter(
     pack: &mut [u8],
     topology: &PackTopology,
     countr: u64,
-    last_bit_in_countr: WPackageType,
+    last_bit_in_countr: u8,
 ) -> Result<(u64, u64), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
@@ -594,10 +580,8 @@ pub fn set_counter(
         }
         let max_cap = wutils::len_byte_maximal_capacyty_cheak(x.2).0 >> 1;
 
-        let pack_ctr = ((max_cap & countr) << 1) | last_bit_in_countr.bit_as() as u64;
-        if pack.len() < x.1 {
-            return Err(WTypeErr::LenSizeErr("pack len non correct"));
-        }
+        let pack_ctr = ((max_cap & countr) << 1) | last_bit_in_countr as u64;
+
         wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1])
             .map_err(|x| WTypeErr::WorkTimeErr(x))?;
 
@@ -632,7 +616,7 @@ pub fn get_counter(
     topology: &PackTopology,
     countr1: u64,
     countr2: u64,
-) -> Result<(u64, WPackageType), WTypeErr> {
+) -> Result<(u64, u8), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -668,7 +652,7 @@ pub fn get_counter(
             } else {
                 real_countr
             },
-            WPackageType::new((ctr_in_pack & 1) as u8),
+            (ctr_in_pack & 1) as u8,
         ));
     }
     Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
@@ -811,9 +795,10 @@ where
 
     let enc_start = topology.encrypt_start_pos();
     let enc_end = p_len - topology.tag_len();
-
+    //Previously, a check was performed to ensure that p_len < topology.total_minimal_len(),
+    //which means that the packet length is large enough so that the operation of splitting into
+    //slays does not cause panic.
     let (free_data, mac_only) = pack.split_at_mut(enc_end);
-
     let (head, to_enc_only) = free_data.split_at_mut(enc_start);
 
     let nonce = if let Some(x) = topology.nonce_slice() {
@@ -1171,6 +1156,8 @@ mod tests {
 
         println!("{:?}   /n{} /n {}", t.0, count, count0);
     }
+    /*
+        IN FUTURE
 
     #[test]
     fn test_wkey_mode() {
@@ -1208,40 +1195,40 @@ mod tests {
         assert_ne!(WPackageType::Data, WPackageType::Fback);
     }
 
-    #[test]
-    fn test_wpascage_mode_conversions() {
-        let test_cases = [
-            (0, WPascageMode::NotEPV),
-            (1, WPascageMode::WaitTime),
-            (2, WPascageMode::FastEPVQeuqe),
-            (3, WPascageMode::KillConnect),
-        ];
+        #[test]
+        fn test_wpascage_mode_conversions() {
+            let test_cases = [
+                (0, WPascageMode::NotEPV),
+                (1, WPascageMode::WaitTime),
+                (2, WPascageMode::FastEPVQeuqe),
+                (3, WPascageMode::KillConnect),
+            ];
 
-        for (bits, mode) in test_cases {
-            assert_eq!(mode.bits_as(), bits);
-            assert_eq!(WPascageMode::new(bits), Ok(mode.clone()));
-            assert_eq!(WPascageMode::new(mode.bits_as()).unwrap(), mode);
+            for (bits, mode) in test_cases {
+                assert_eq!(mode.bits_as(), bits);
+                assert_eq!(WPascageMode::new(bits), Ok(mode.clone()));
+                assert_eq!(WPascageMode::new(mode.bits_as()).unwrap(), mode);
+            }
+
+            assert!(WPascageMode::new(4).is_err());
+            assert!(WPascageMode::new(255).is_err());
         }
 
-        assert!(WPascageMode::new(4).is_err());
-        assert!(WPascageMode::new(255).is_err());
-    }
-
-    #[test]
-    fn test_wpascage_mode_equality() {
-        let modes = [
-            WPascageMode::NotEPV,
-            WPascageMode::WaitTime,
-            WPascageMode::FastEPVQeuqe,
-            WPascageMode::KillConnect,
-        ];
-        for (i, mode1) in modes.iter().enumerate() {
-            for (j, mode2) in modes.iter().enumerate() {
-                assert_eq!(mode1 == mode2, i == j);
+        #[test]
+        fn test_wpascage_mode_equality() {
+            let modes = [
+                WPascageMode::NotEPV,
+                WPascageMode::WaitTime,
+                WPascageMode::FastEPVQeuqe,
+                WPascageMode::KillConnect,
+            ];
+            for (i, mode1) in modes.iter().enumerate() {
+                for (j, mode2) in modes.iter().enumerate() {
+                    assert_eq!(mode1 == mode2, i == j);
+                }
             }
         }
-    }
-
+    */
     #[test]
     fn test_gen_head_crc() {
         let fields = vec![
@@ -1921,15 +1908,12 @@ mod tests {
                 for y in 0..120 {
                     let ccc = if tt { i1 } else { i2 };
 
-                    assert_eq!(
-                        set_counter(&mut bb, &result, ccc, WPackageType::new(tt as u8)).is_ok(),
-                        true
-                    );
+                    assert_eq!(set_counter(&mut bb, &result, ccc, tt as u8).is_ok(), true);
                     assert_eq!(get_counter(&mut bb, &result, i1, i2).is_ok(), true);
 
                     assert_eq!(
                         get_counter(&mut bb, &result, i1, i2).unwrap(),
-                        (if tt { i1 } else { i2 }, WPackageType::new(tt as u8)),
+                        (if tt { i1 } else { i2 }, tt as u8),
                         "from get_counter {:?}  real {:?}  i:{i}  tt:{tt}  y:{y}",
                         get_counter(&mut bb, &result, i1 - y, i2 - y).unwrap(),
                         (if tt { i1 } else { i2 }, tt)
@@ -1939,7 +1923,7 @@ mod tests {
         }
 
         assert_eq!(
-            set_counter(&mut bb[..2], &result, 21, WPackageType::new(1)),
+            set_counter(&mut bb[..2], &result, 21, IS_FBACK),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
@@ -2142,7 +2126,7 @@ mod tests {
 
         //COUNTER
         assert_eq!(
-            set_counter(&mut pack, &topology, ctr_m, WPackageType::new(1)).is_ok(),
+            set_counter(&mut pack, &topology, ctr_m, IS_FBACK).is_ok(),
             true
         );
         assert_eq!(
@@ -2151,15 +2135,15 @@ mod tests {
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 17, ctr_m - 30),
-            Ok((ctr_m, WPackageType::new(1)))
+            Ok((ctr_m, 1))
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 100, ctr_m - 31,),
-            Ok((ctr_m, WPackageType::new(1)))
+            Ok((ctr_m, 1))
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 123, ctr_m - 23,),
-            Ok((ctr_m, WPackageType::new(1)))
+            Ok((ctr_m, 1))
         );
 
         //TTL
@@ -2421,7 +2405,7 @@ mod tests {
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 10, ctr_m - 11),
-            Ok((ctr_m, WPackageType::new(1)))
+            Ok((ctr_m, IS_FBACK))
         );
         assert_eq!(get_ttl(&pack, &topology).unwrap(), ttl as u64);
         assert_eq!(

@@ -1,11 +1,18 @@
 // I HATE FUCKING RUST!
 
+const U64_LEN_IN_BYTES: usize = 8;
+
 pub mod recv_queue {
-    use crate::t1fields;
     use crate::t1pology::PackTopology;
+    use crate::wutils;
+    use crate::{t1fields, t1queue_tcpudp::U64_LEN_IN_BYTES};
+
+    use std::fmt::Debug;
+    use std::usize;
     use std::{
         collections::HashMap,
         hash::{BuildHasher, Hasher},
+        u64,
     };
 
     #[cfg_attr(test, derive(Debug))]
@@ -51,6 +58,7 @@ pub mod recv_queue {
             }
         }
     }
+    #[derive(Clone)]
     pub struct WSTcpLike {
         elems_in_buf: usize,
         u_buf: Box<[u8]>,
@@ -225,6 +233,7 @@ pub mod recv_queue {
     //Since there is no packet number 4 in the queue,
     ///the queue has a continuity gap and will wait for packet number 4.
     ///Upon receiving packet number 4, the queue will be able to return a vector of packets 4,5,6,7.
+    #[derive(Clone)]
     pub struct WSUdpLike<T> {
         in_queue: usize,
         k_mod: usize,
@@ -354,7 +363,7 @@ pub mod recv_queue {
             self.hash = i;
         }
     }
-    #[derive(Default)]
+    #[derive(Default, Clone)]
     struct IdentityBuildHasher;
 
     impl BuildHasher for IdentityBuildHasher {
@@ -364,6 +373,7 @@ pub mod recv_queue {
             IdentityHasher::default()
         }
     }
+    #[derive(Clone)]
     struct ElemMy<T, P> {
         cl: Option<u64>,
         cb: Option<u64>,
@@ -373,7 +383,8 @@ pub mod recv_queue {
     ///Queue of packets, access to get, remove, and push takes O(1),
     ///uses a hash table internally, the table was chosen because
     ///a binary tree showed extremely slow read and write operations in performance tests.
-    pub struct WaitQueue<T, P> {
+    #[derive(Clone)]
+    pub struct WSWaitQueue<T, P> {
         data_map: HashMap<u64, ElemMy<T, P>, IdentityBuildHasher>,
         max_capacity_elems: usize,
         of_min_p: Option<(u64, P)>,
@@ -382,13 +393,13 @@ pub mod recv_queue {
         //max_elem_p: Option<P>,
     }
 
-    impl<T: Clone, P: PartialEq + PartialOrd + Clone> WaitQueue<T, P> {
+    impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
         pub fn new(max_elems: usize) -> Result<Self, WSQueueErr> {
             if max_elems == 0 {
                 return Err(WSQueueErr::Critical("max_elems is 0"));
             }
 
-            Ok(WaitQueue {
+            Ok(WSWaitQueue {
                 //data_map: HashMap::with_capacity_and_hasher(max_elems, IdentityBuildHasher),
                 data_map: HashMap::with_hasher(IdentityBuildHasher),
                 max_capacity_elems: max_elems,
@@ -586,15 +597,223 @@ pub mod recv_queue {
             self.of_min_p.as_ref().map(|x| (x.0, x.1.clone()))
         }
     }
+    #[derive(Clone)]
+    pub struct WSRecvQueueCtrs {
+        data: Box<[u64]>,
+        ptr: usize,
+        ctr_slice_len: usize,
+        max: u64,
+        min: u64,
+        mtu: usize,
+    }
+
+    impl WSRecvQueueCtrs {
+        pub fn max_len_from_mtu(
+            pack_topology: &PackTopology,
+            mtu: usize,
+        ) -> Result<usize, &'static str> {
+            let ctr_slice_len = pack_topology
+                .counter_slice()
+                .ok_or("error in pack_topology no field for counter")?
+                .2;
+            if ctr_slice_len == 0 {
+                return Err("pack_topology
+                .counter_slice() == 0");
+            }
+            let ctrs = mtu
+                .checked_sub(pack_topology.total_minimal_len())
+                .ok_or("mtu < pack_topology.total_minimal_len()")?
+                .checked_sub(U64_LEN_IN_BYTES)
+                .ok_or("mtu < (pack_topology.total_minimal_len() + U64_LEN_IN_BYTES )")?
+                / ctr_slice_len;
+
+            if ctrs == 0 {
+                return Err("The MTU is too small to accommodate even one counter.");
+            }
+
+            return Ok(ctrs);
+        }
+
+        pub fn new(
+            pack_topology: &PackTopology,
+            max_len: usize,
+            mtu: usize,
+        ) -> Result<Self, &'static str> {
+            if max_len > Self::max_len_from_mtu(&pack_topology, mtu)? {
+                return Err("The byte representation of the maximum length must be less than or equal to mtu.");
+            }
+
+            Ok(Self {
+                data: vec![0; max_len].into_boxed_slice(),
+                ptr: 0,
+                ctr_slice_len: pack_topology
+                    .counter_slice()
+                    .ok_or("error in pack_topology no field for counter")?
+                    .2,
+                max: 0,
+                min: 0,
+                mtu,
+            })
+        }
+
+        pub fn push(&mut self, ctr_elem: u64) -> Result<usize, &'static str> {
+            if self.ptr >= self.data.len() {
+                return Err("the queue is full");
+            }
+            self.max = if self.max > ctr_elem {
+                self.max
+            } else {
+                ctr_elem
+            };
+
+            self.min = if self.min < ctr_elem && 0 < self.ptr {
+                self.min
+            } else {
+                ctr_elem
+            };
+
+            if self.max.checked_sub(self.min).expect(
+                "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?",
+            ) > wutils::len_byte_maximal_capacyty_cheak(self.ctr_slice_len).0
+            {
+                return Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold.");
+            }
+
+            self.data[self.ptr] = ctr_elem;
+            self.ptr = self.ptr.checked_add(1).expect("counter overflow");
+
+            Ok(self
+                .data
+                .len()
+                .checked_sub(self.ptr)
+                .expect("obvious algorithm error"))
+        }
+
+        pub fn payload_len(&self) -> usize {
+            //U64_LEN_IN_BYTES + (self.ptr * self.ctr_slice_len)
+            self.ptr
+                .checked_mul(self.ctr_slice_len)
+                .expect("self.payload_len()* self.ctr_slice_len overflow")
+                .checked_add(U64_LEN_IN_BYTES)
+                .expect("(self.payload_len()* self.ctr_slice_len) + U64_LEN_IN_BYTES overflow")
+        }
+
+        pub fn len(&self) -> usize {
+            self.ptr
+        }
+
+        pub fn get_ctrs_as_vec(&mut self) -> Vec<u8> {
+            let mut ret_vec = vec![0; self.payload_len()];
+
+            self.get_ctrs_in_slice(&mut ret_vec)
+                .expect("algorithm error; if the code has been tested, there should be no errors ");
+            ret_vec
+        }
+
+        pub fn get_ctrs_in_slice(
+            &mut self,
+            pack_payload_slice: &mut [u8],
+        ) -> Result<(), &'static str> {
+            if self.payload_len() != pack_payload_slice.len() {
+                return Err("self.payload_len() != pack_payload_slice.len()");
+            }
+            wutils::u64_to_1_8bytes(self.min, &mut pack_payload_slice[..U64_LEN_IN_BYTES])?;
+            for sls in pack_payload_slice[U64_LEN_IN_BYTES..]
+                .chunks_exact_mut(self.ctr_slice_len)
+                .zip(self.data.iter())
+            {
+                wutils::u64_to_1_8bytes((*sls.1).checked_sub(self.min).expect("algorithm error, the minimum value must be less than any value in the array"), sls.0).unwrap();
+            }
+
+            self.ptr = 0;
+            self.max = 0;
+            self.min = 0;
+
+            Ok(())
+        }
+
+        pub fn len_check<'a>(
+            payload: &'a [u8],
+            len_ctr_slise: usize,
+        ) -> Result<(u64, usize, std::slice::ChunksExact<'a, u8>), &'static str> {
+            let ret_len_ctrs = payload.len().checked_sub(U64_LEN_IN_BYTES)
+            .ok_or("The packet length is less than the reference counter length, which is an invalid packet.")?;
+
+            if 0 == len_ctr_slise {
+                panic!("0 == len_ctr_slise")
+            }
+
+            if 0 != ret_len_ctrs % len_ctr_slise {
+                return Err("The packet length is incorrect because the packet length (the length of the reference counter) is not a multiple of the counter field length in the packet topology.");
+            }
+
+            Ok((
+                wutils::bytes_to_u64(&payload[..U64_LEN_IN_BYTES])?,
+                ret_len_ctrs / len_ctr_slise,
+                payload[U64_LEN_IN_BYTES..].chunks_exact(len_ctr_slise),
+            ))
+        }
+
+        pub fn split_byte_ctrs_pack_to_vec(
+            pack: &[u8],
+            pack_topology: &PackTopology,
+        ) -> Result<Vec<u64>, &'static str> {
+            let len_ctr_slise = pack_topology
+                .counter_slice()
+                .ok_or("error in pack_topology no field for counter")?
+                .2;
+
+            let pre_pross = Self::len_check(pack, len_ctr_slise)?;
+
+            let mut ret = vec![0; pre_pross.1];
+
+            for (ctr_chank, ret_el) in pre_pross.2.zip(ret.iter_mut()) {
+                *ret_el = pre_pross
+                    .0
+                    .checked_add(wutils::bytes_to_u64(ctr_chank)?)
+                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+            }
+
+            Ok(ret)
+        }
+
+        pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T, P>(
+            pack: &[u8],
+            len_ctr_slise: usize,
+            wait_queue: &mut WSWaitQueue<T, P>,
+        ) -> Result<usize, &'static str>
+        where
+            T: Clone + Debug,
+            P: PartialEq + PartialOrd + Clone + Debug,
+        {
+            let pre_pross = Self::len_check(pack, len_ctr_slise)?;
+            let mut how_was_deleted = 0;
+            for ctr_chank in pre_pross.2 {
+                let ret_el = pre_pross
+                    .0
+                    .checked_add(wutils::bytes_to_u64(ctr_chank)?)
+                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+
+                how_was_deleted += (wait_queue.remove(ret_el).is_some() as usize & 1);
+            }
+
+            Ok(how_was_deleted)
+        }
+
+        pub fn get_min_max(&self) -> (u64, u64) {
+            (self.min, self.max)
+        }
+    }
+
     #[cfg(test)]
     mod test_wait {
         use super::*;
 
         #[test]
         fn test_one() {
-            assert_eq!(WaitQueue::<bool, u32>::new(0).is_err(), true);
+            assert_eq!(WSWaitQueue::<bool, u32>::new(0).is_err(), true);
 
-            let mut waa = WaitQueue::<bool, u32>::new(10).unwrap();
+            let mut waa = WSWaitQueue::<bool, u32>::new(10).unwrap();
 
             let max_x = 10;
             let addrt = 10;
@@ -628,7 +847,7 @@ pub mod recv_queue {
         #[test]
         fn test_main() {
             {
-                let mut waa = WaitQueue::<bool, u32>::new(10).unwrap();
+                let mut waa = WSWaitQueue::<bool, u32>::new(10).unwrap();
 
                 let max_x = 10;
                 //let addrt = 10;
@@ -1196,5 +1415,105 @@ pub mod recv_queue {
             println!("{:}", std_start.elapsed().as_secs_f32());
             //assert!(false)
         }*/
+    }
+}
+
+#[cfg(test)]
+mod test_recv_queue_ctrs {
+
+    use crate::t1pology::{PackTopology, PakFields};
+    use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
+    use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+    #[test]
+    fn test_base() {
+        let fields = vec![PakFields::Counter(2)];
+
+        let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
+
+        for x in 1..20 {
+            let x = x * 26;
+
+            assert_eq!(
+                WSRecvQueueCtrs::max_len_from_mtu(&pack_topology, x).unwrap(),
+                (x - pack_topology.total_minimal_len() - U64_LEN_IN_BYTES)
+                    / pack_topology.counter_slice().unwrap().2
+            );
+        }
+
+        assert_eq!(
+            WSRecvQueueCtrs::max_len_from_mtu(&pack_topology, 10),
+            Err("mtu < pack_topology.total_minimal_len()")
+        );
+
+        assert_eq!(
+            WSRecvQueueCtrs::max_len_from_mtu(
+                &pack_topology,
+                pack_topology.total_minimal_len() + U64_LEN_IN_BYTES + 1
+            ),
+            Err("The MTU is too small to accommodate even one counter.")
+        );
+
+        assert_eq!(WSRecvQueueCtrs::new(&pack_topology, 39, 100).is_ok(), true);
+    }
+
+    #[test]
+    fn test_wait() {
+        let ctr_len = 1; //dnt touch
+        let fields = vec![PakFields::Counter(ctr_len)];
+
+        let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
+
+        let mut test_me = WSRecvQueueCtrs::new(&pack_topology, 500, 1000).unwrap();
+        let mut ws_wa: WSWaitQueue<String, f32> = WSWaitQueue::new(500).unwrap();
+
+        for x in (10000000..10000000 + 256).enumerate() {
+            assert_eq!(test_me.push(x.1).unwrap(), 500 - 1 - x.0);
+            assert_eq!(test_me.get_min_max(), (10000000, x.1));
+            assert_eq!(test_me.len(), x.0 + 1);
+            ws_wa
+                .push(x.1, x.1 as f32 * 1.2, false, "data".to_string())
+                .unwrap();
+        }
+
+        assert_eq!(test_me.push(10000000 + 256), Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold."));
+
+        let test_me_old = test_me.clone();
+
+        assert_eq!(test_me.len(), 256);
+
+        let ret_ve = test_me.get_ctrs_as_vec();
+
+        assert_eq!(test_me.len(), 0);
+        assert_eq!(test_me.get_min_max(), (0, 0));
+
+        assert_eq!(
+            test_me_old.payload_len(),
+            U64_LEN_IN_BYTES + test_me_old.len() * 1
+        );
+        assert_eq!(ws_wa.len(), 256);
+
+        let re_recv = WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
+            &ret_ve, ctr_len, &mut ws_wa,
+        )
+        .unwrap();
+
+        assert_eq!(re_recv, 256);
+        //assert_eq!(re_recv, 0);
+
+        assert_eq!(ws_wa.len(), 0);
+
+        let remap_ve =
+            WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..], &pack_topology).unwrap();
+
+        for x in (10000000..10000000 + 256).enumerate() {
+            assert_eq!(remap_ve[x.0], x.1);
+        }
+
+        // println!("{:?}", ret_ve);
+
+        // println!(
+        //    "{:?}",
+        //    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..], &pack_topology).unwrap()
+        //);
     }
 }

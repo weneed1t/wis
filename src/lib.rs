@@ -8,7 +8,8 @@ pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;
 pub use crate::t1queue_tcpudp::recv_queue::{
-    WSQueueErr as ErrType, WSTcpLike as TcpPackageSplitter, WaitQueue as UnconfirmedQueuePackets,
+    WSQueueErr as ErrType, WSRecvQueueCtrs, WSTcpLike as TcpPackageSplitter, WSUdpLike,
+    WSWaitQueue as UnconfirmedQueuePackets,
 };
 
 pub mod private_core {
