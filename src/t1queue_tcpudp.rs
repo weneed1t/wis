@@ -225,6 +225,27 @@ pub mod recv_queue {
             Ok(ret_paks.into_boxed_slice())
         }
     }
+
+    #[derive(Debug)]
+    pub enum WSQueueState {
+        ElemIdIsBig,
+        ElemIdIsSmall,
+        ElemIsAlreadyIn,
+        SuccessfulInsertion,
+    }
+
+    impl PartialEq for WSQueueState {
+        fn eq(&self, other: &Self) -> bool {
+            match (self, other) {
+                (WSQueueState::ElemIdIsBig, WSQueueState::ElemIdIsBig) => true,
+                (WSQueueState::ElemIdIsSmall, WSQueueState::ElemIdIsSmall) => true,
+                (WSQueueState::ElemIsAlreadyIn, WSQueueState::ElemIsAlreadyIn) => true,
+                (WSQueueState::SuccessfulInsertion, WSQueueState::SuccessfulInsertion) => true,
+                _ => false,
+            }
+        }
+    }
+
     ///The UDP packet queue accepts packets in random order,
     ///sorts them with O(1) sorting, and returns a continuous sequence of packets.
     ///For example, if the initial queue counter is 0,
@@ -237,9 +258,8 @@ pub mod recv_queue {
     pub struct WSUdpLike<T> {
         in_queue: usize,
         k_mod: usize,
-        last_give_num: u64,
+        last_give_num: Option<u64>,
         data: Box<[Option<(u64, T)>]>,
-        was_get_queue: bool,
     }
 
     impl<T: Clone> WSUdpLike<T> {
@@ -250,36 +270,40 @@ pub mod recv_queue {
             Ok(Self {
                 in_queue: 0,
                 k_mod: 0,
-                last_give_num: 0,
+                last_give_num: None,
                 data: vec![None; sizecap].into_boxed_slice(),
-                was_get_queue: false,
             })
         }
         /// insert(&mut self,item_ctr: u64, item: T)
         ///The element is u64, must always be increasing except when there are gaps
         ///  in the sequence, and must be unique. T is its data.
-        pub fn insert(&mut self, item_ctr: u64, item: &T) -> Result<(), WSQueueErr> {
-            if item_ctr < self.last_give_num {
-                return Err(WSQueueErr::NonCritical("Elem Id Is Small"));
+        pub fn insert(&mut self, item_ctr: u64, item: &T) -> WSQueueState {
+            let minimal_ctr = match self.last_give_num {
+                Some(x) => x + 1,
+                None => 0,
+            };
+
+            if item_ctr < minimal_ctr {
+                return WSQueueState::ElemIdIsSmall;
             }
 
-            let pos = ((item_ctr - self.last_give_num) - self.was_get_queue as u64) as usize;
+            let pos = (item_ctr - minimal_ctr) as usize;
 
             if pos >= self.data.len() {
-                return Err(WSQueueErr::NonCritical("Elem Id Is Big"));
+                return WSQueueState::ElemIdIsBig;
             }
 
             let elem_url = &mut self.data[(pos + self.k_mod) % self.data.len()];
 
             if elem_url.is_some() {
-                return Err(WSQueueErr::NonCritical("Elem Is Already In"));
+                return WSQueueState::ElemIsAlreadyIn;
             }
 
             *elem_url = Some((item_ctr, item.clone()));
 
             self.in_queue += 1;
 
-            Ok(())
+            WSQueueState::SuccessfulInsertion
         }
 
         fn k_add(&mut self, addin: usize) {
@@ -306,7 +330,7 @@ pub mod recv_queue {
 
             self.k_add(size_of_ret);
 
-            self.last_give_num = last_item_num;
+            self.last_give_num = Some(last_item_num);
         }
 
         pub fn get_queue(&mut self) -> Box<[(u64, T)]> {
@@ -332,15 +356,13 @@ pub mod recv_queue {
                 },
             );
 
-            self.was_get_queue = true;
-
             copied_slice
         }
 
         pub fn how_items_in_queue(&self) -> usize {
             self.in_queue
         }
-        pub fn last_num_get(&self) -> u64 {
+        pub fn last_num_get(&self) -> Option<u64> {
             self.last_give_num
         }
     }
@@ -1139,49 +1161,9 @@ pub mod recv_queue {
     #[cfg(test)]
     mod tests_wudp {
 
+        use crate::t1fields::WTypeErr;
+
         use super::*;
-
-        #[test]
-        fn test_work_subsequence() {
-            let mut xx: WSUdpLike<u32> = WSUdpLike::new(50).unwrap();
-
-            let mut xxx = 0;
-            let emeee = 0;
-            for _ in 0..30_u64 {
-                for az in 0..50u64 {
-                    let _ = xx.insert(xxx + (az + 17) % 50, &emeee);
-
-                    if az % 5 == 0 {
-                        if let Err(x) = xx.insert(xxx + (az + 17) % 50, &emeee) {
-                            if x.is_critical() {
-                                assert!(false, "{:?}", x)
-                            }
-                        }
-                    }
-
-                    if az % 11 == 0 && az > 60 {
-                        if let Err(x) = xx.insert(xxx + (az + 17) % 10, &emeee) {
-                            if x.is_critical() {
-                                assert!(false, "{:?}", x)
-                            }
-                        }
-                    }
-                }
-                xxx += 50;
-
-                let tempo = xx.get_queue().to_vec();
-
-                //println!("{:?}",tempo.iter().map(|x|{x.0}).collect::<Vec<usize>>());
-                let mut t = tempo.first().unwrap().0;
-                //println!("tempo.len() = {:?}", tempo.len());
-                for l in tempo.iter().skip(1) {
-                    assert!(l.0 > t, "> l.0 = {} is not greater than t = {}", l.0, t);
-                    assert!(l.0 - 1 == t, "==tempo[{}].0 is not greater than {}", l.0, t);
-                    t = l.0;
-                    //println!("l.0 = {}", l.0);
-                }
-            }
-        }
 
         #[test]
         fn test_segment() {
@@ -1221,22 +1203,16 @@ pub mod recv_queue {
         fn test_hands() {
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(8).unwrap();
             let eleme = 0.0;
-            assert_eq!(xx.insert(4, &eleme), Ok(())); //1
-            assert_eq!(xx.insert(0, &eleme), Ok(())); //2
-            assert_eq!(xx.insert(2, &eleme), Ok(())); //3
-            assert_eq!(xx.insert(3, &eleme), Ok(())); //4
-            assert_eq!(xx.insert(5, &eleme), Ok(())); //5
-            assert_eq!(xx.insert(6, &eleme), Ok(())); //6
-            assert_eq!(xx.insert(7, &eleme), Ok(())); //7
-            assert_eq!(
-                xx.insert(8, &eleme),
-                Err(WSQueueErr::NonCritical("Elem Id Is Big"))
-            ); //8
-            assert_eq!(
-                xx.insert(3, &eleme),
-                Err(WSQueueErr::NonCritical("Elem Is Already In"))
-            ); //9
-            assert_eq!(xx.insert(1, &eleme), Ok(())); //10
+            assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //1
+            assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //2
+            assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
+            assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
+            assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //5
+            assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //6
+            assert_eq!(xx.insert(7, &eleme), WSQueueState::SuccessfulInsertion); //7
+            assert_eq!(xx.insert(8, &eleme), WSQueueState::ElemIdIsBig); //8
+            assert_eq!(xx.insert(3, &eleme), WSQueueState::ElemIsAlreadyIn); //9
+            assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //10
 
             assert_eq!(xx.in_queue, 8);
 
@@ -1255,16 +1231,16 @@ pub mod recv_queue {
                 .into_boxed_slice()
             );
 
-            assert_eq!(xx.insert(9, &eleme), Ok(()));
-            assert_eq!(xx.insert(11, &eleme), Ok(()));
-            assert_eq!(xx.insert(12, &eleme), Ok(()));
+            assert_eq!(xx.insert(9, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(11, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(12, &eleme), WSQueueState::SuccessfulInsertion);
             assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
 
-            assert_eq!(xx.insert(10, &eleme), Ok(()));
-            assert_eq!(xx.insert(13, &eleme), Ok(()));
+            assert_eq!(xx.insert(10, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(13, &eleme), WSQueueState::SuccessfulInsertion);
             assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
 
-            assert_eq!(xx.insert(8, &eleme), Ok(()));
+            assert_eq!(xx.insert(8, &eleme), WSQueueState::SuccessfulInsertion);
             assert_eq!(
                 xx.get_queue(),
                 (vec![
@@ -1277,26 +1253,22 @@ pub mod recv_queue {
                 ])
                 .into_boxed_slice()
             );
+            assert_eq!(xx.insert(12, &eleme), WSQueueState::ElemIdIsBig);
+            assert_eq!(xx.insert(13, &eleme), WSQueueState::ElemIdIsBig);
 
-            assert_eq!(
-                xx.insert(22, &eleme),
-                Err(WSQueueErr::NonCritical("Elem Id Is Big"))
-            );
-            assert_eq!(xx.insert(21, &eleme), Ok(()));
-            assert_eq!(
-                xx.insert(2, &eleme),
-                Err(WSQueueErr::NonCritical("Elem Id Is Small"))
-            );
-            assert_eq!(xx.insert(14, &eleme), Ok(()));
+            assert_eq!(xx.insert(22, &eleme), WSQueueState::ElemIdIsBig);
+            assert_eq!(xx.insert(21, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(2, &eleme), WSQueueState::ElemIdIsSmall);
+            assert_eq!(xx.insert(14, &eleme), WSQueueState::SuccessfulInsertion);
             assert_eq!(xx.get_queue(), (vec![(14, 0.0)]).into_boxed_slice());
 
-            assert_eq!(xx.insert(15, &eleme), Ok(()));
-            assert_eq!(xx.insert(16, &eleme), Ok(()));
+            assert_eq!(xx.insert(15, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(16, &eleme), WSQueueState::SuccessfulInsertion);
 
-            assert_eq!(xx.insert(17, &eleme), Ok(()));
-            assert_eq!(xx.insert(18, &eleme), Ok(()));
-            assert_eq!(xx.insert(19, &eleme), Ok(()));
-            assert_eq!(xx.insert(20, &eleme), Ok(()));
+            assert_eq!(xx.insert(17, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(18, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(19, &eleme), WSQueueState::SuccessfulInsertion);
+            assert_eq!(xx.insert(20, &eleme), WSQueueState::SuccessfulInsertion);
 
             assert_eq!(
                 xx.get_queue(),
@@ -1314,13 +1286,13 @@ pub mod recv_queue {
 
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(7).unwrap();
 
-            assert_eq!(xx.insert(0, &eleme), Ok(())); //1
-            assert_eq!(xx.insert(1, &eleme), Ok(())); //2
-            assert_eq!(xx.insert(2, &eleme), Ok(())); //3
-            assert_eq!(xx.insert(3, &eleme), Ok(())); //4
-            assert_eq!(xx.insert(4, &eleme), Ok(())); //5
-            assert_eq!(xx.insert(5, &eleme), Ok(())); //6
-            assert_eq!(xx.insert(6, &eleme), Ok(())); //7
+            assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //1
+            assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //2
+            assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
+            assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
+            assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //5
+            assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //6
+            assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //7
             assert_eq!(xx.in_queue, 7);
             assert_eq!(
                 xx.get_queue(),
@@ -1338,11 +1310,11 @@ pub mod recv_queue {
 
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(7).unwrap();
 
-            assert_eq!(xx.insert(0, &eleme), Ok(())); //1
+            assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //1
             assert_eq!(xx.in_queue, 1);
             assert_eq!(xx.get_queue(), (vec![(0, 0.0)]).into_boxed_slice());
 
-            assert_eq!(xx.insert(1, &eleme), Ok(())); //2
+            assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //2
             assert_eq!(xx.in_queue, 1);
             assert_eq!(
                 xx.get_queue(),
@@ -1351,26 +1323,23 @@ pub mod recv_queue {
                 xx.data
             );
 
-            assert_eq!(xx.insert(2, &eleme), Ok(())); //3
+            assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
 
             assert_eq!(xx.in_queue, 1);
             assert_eq!(xx.get_queue(), (vec![(2, 0.0)]).into_boxed_slice());
 
-            assert_eq!(xx.insert(3, &eleme), Ok(())); //4
+            assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
             assert_eq!(xx.in_queue, 1);
             assert_eq!(xx.get_queue(), (vec![(3, 0.0)]).into_boxed_slice());
 
-            assert_eq!(xx.insert(4, &eleme), Ok(())); //5
-            assert_eq!(xx.insert(5, &eleme), Ok(())); //6
-            assert_eq!(xx.insert(6, &eleme), Ok(())); //7
-            assert_eq!(xx.insert(7, &eleme), Ok(())); //5
-            assert_eq!(xx.insert(8, &eleme), Ok(())); //6
-            assert_eq!(xx.insert(9, &eleme), Ok(())); //7
-            assert_eq!(xx.insert(10, &eleme), Ok(())); //5
-            assert_eq!(
-                xx.insert(11, &eleme),
-                Err(WSQueueErr::NonCritical("Elem Id Is Big"))
-            ); //6
+            assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //5
+            assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //6
+            assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //7
+            assert_eq!(xx.insert(7, &eleme), WSQueueState::SuccessfulInsertion); //5
+            assert_eq!(xx.insert(8, &eleme), WSQueueState::SuccessfulInsertion); //6
+            assert_eq!(xx.insert(9, &eleme), WSQueueState::SuccessfulInsertion); //7
+            assert_eq!(xx.insert(10, &eleme), WSQueueState::SuccessfulInsertion); //5
+            assert_eq!(xx.insert(11, &eleme), WSQueueState::ElemIdIsBig); //6
             assert_eq!(xx.in_queue, 7);
             assert_eq!(
                 xx.get_queue(),
@@ -1579,22 +1548,65 @@ pub mod recv_queue {
         let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
 
         let mut ctrs_que =
-            WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1000).unwrap();
-        let mut wait_que: WSWaitQueue<String, f32> = WSWaitQueue::new(500).unwrap();
-        let mut udp_que: WSUdpLike<String> = WSUdpLike::new(50).unwrap();
+            WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 130, 1000).unwrap();
+        let mut wait_que: WSWaitQueue<String, f32> = WSWaitQueue::new(1000).unwrap();
+        let mut udp_que: WSUdpLike<String> = WSUdpLike::new(1000).unwrap();
 
         let mut net_steak = Vec::new();
         let mut net_steak_recv: Vec<Vec<u8>> = Vec::new();
         let mut un_blear_ctr = 0;
 
-        for time_soon in 0..10_000 {
-            let pac_ctr = time_soon;
+        let mut pack_to_inp = 0;
+
+        let net_stable = 0.1;
+
+        let max_ctrs = 120_000;
+
+        for time_soon in 0..1200_000 {
+            if time_soon % 500 == 0 {
+                println!(
+                    "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent confirmation:{:<5} |",
+                    udp_que.how_items_in_queue(),
+                    un_blear_ctr,
+                    wait_que.len(),
+                    ctrs_que.len()
+                );
+            }
+
             //send generrr
-            if coof(0.8, randr(time_soon)) {
-                net_steak.push(pac_ctr);
-                wait_que
-                    .push(pac_ctr, time_soon as f32 * 1.1, false, "str".to_string())
-                    .unwrap();
+            if coof(0.7, randr(time_soon)) {
+                {
+                    //resending packets
+                    let get_non_proff_ctr = wait_que.get_elements_to(time_soon as f32 * 1.1);
+
+                    for non_prosf in get_non_proff_ctr {
+                        net_steak.push(non_prosf.0);
+                        wait_que.remove(non_prosf.0).unwrap();
+                        wait_que
+                            .push(
+                                non_prosf.0,
+                                (time_soon as f32 * 1.1) + 20.0,
+                                false,
+                                "str".to_string(),
+                            )
+                            .unwrap();
+                    }
+                    if pack_to_inp < max_ctrs {
+                        //last k
+                        net_steak.push(pack_to_inp);
+                        if wait_que
+                            .push(
+                                pack_to_inp,
+                                (time_soon as f32 * 1.1) + 20.0,
+                                false,
+                                "str".to_string(),
+                            )
+                            .is_ok()
+                        {
+                            pack_to_inp += 1;
+                        }
+                    }
+                }
 
                 for xxx in net_steak_recv.iter() {
                     WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
@@ -1604,19 +1616,20 @@ pub mod recv_queue {
                     )
                     .unwrap();
                 }
+                net_steak_recv = Vec::new();
             }
 
             //seng//net unstable
-            if net_steak.len() > 10 && coof(0.9, randr(time_soon)) {
-                shuffle(&mut net_steak[..], time_soon);
+            if net_steak.len() > 10 + randr(time_soon.rotate_left(6)) as usize % 10 {
+                shuffle(&mut net_steak[..], time_soon.rotate_left(5));
 
                 let mut mc_t = Vec::new();
 
                 for x in net_steak.iter() {
                     //30% is loss 20% is dublicate
-                    if coof(0.7, randr(time_soon)) {
+                    if coof(net_stable, randr(time_soon.rotate_left(6))) {
                         mc_t.push(*x);
-                        if coof(0.20, randr(time_soon)) {
+                        if coof(1.0 - net_stable, randr(time_soon.rotate_left(7))) {
                             mc_t.push(*x);
                         }
                     }
@@ -1628,8 +1641,13 @@ pub mod recv_queue {
 
             //recv
             for x in net_steak.iter() {
-                udp_que.insert(*x, &"str".to_string()).unwrap();
-                let cap = ctrs_que.push(*x).unwrap();
+                let inert_in_rcv = match udp_que.insert(*x, &"str".to_string()) {
+                    WSQueueState::ElemIdIsBig => false,
+                    _ => true,
+                };
+                if inert_in_rcv {
+                    ctrs_que.push(*x).unwrap();
+                }
                 //udp wue cheak
                 for pack in udp_que.get_queue() {
                     if pack.0 > 0 {
@@ -1641,7 +1659,7 @@ pub mod recv_queue {
                     }
                 }
 
-                if ctrs_que.len() - cap > 10 {
+                if ctrs_que.len() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
                     let mut ret = vec![0; ctrs_que.payload_len()];
                     ctrs_que.get_ctrs_in_slice(&mut ret).unwrap();
                     net_steak_recv.push(ret);
@@ -1651,7 +1669,7 @@ pub mod recv_queue {
             let mut t2 = Vec::new();
 
             for x2 in net_steak_recv.iter() {
-                if coof(0.8, randr(time_soon)) {
+                if coof(net_stable, randr(time_soon)) {
                     t2.push(x2.clone());
                 }
             }
@@ -1660,5 +1678,7 @@ pub mod recv_queue {
             //clear
             net_steak = Vec::new();
         }
+
+        println!("{:?}", wait_que.get_elements_to(999999999999999.0));
     }
 }
