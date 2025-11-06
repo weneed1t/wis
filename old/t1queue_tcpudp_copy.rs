@@ -5,7 +5,7 @@ const U64_LEN_IN_BYTES: usize = 8;
 pub mod recv_queue {
     use crate::t1pology::PackTopology;
     use crate::wutils;
-    use crate::{t1fields, t1queue_tcpudp::U64_LEN_IN_BYTES};
+    use crate::{t1fields, t1queue_tcpudp_copy::U64_LEN_IN_BYTES};
 
     use std::fmt::Debug;
     use std::usize;
@@ -78,7 +78,7 @@ pub mod recv_queue {
     ///Note that WSTcpLike is resistant to packets being split during transmission,
     /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long),
     /// will be partially accepted as a stream of 290 bytes,
-    ///  which will be transferred to  split_byte_stream_into_packages(), and the remaining 10 bytes,
+    ///  which will be transferred to  buf_in(), and the remaining 10 bytes,
     ///  then WSTcpLike will return two separate packets 1 (100 bytes long) 2(150 bytes long),
     ///  after which it will wait to receive the remaining part of packet number 3 (10 bytes),
     ///  and then return packet number 3 (50 bytes long).
@@ -101,10 +101,7 @@ pub mod recv_queue {
             })
         }
 
-        pub fn split_byte_stream_into_packages(
-            &mut self,
-            data: &[u8],
-        ) -> Result<Box<[Box<[u8]>]>, WSQueueErr> {
+        pub fn buf_in(&mut self, data: &[u8]) -> Result<Box<[Box<[u8]>]>, WSQueueErr> {
             let _ = self
                 .pack_topology
                 .len_slice()
@@ -147,8 +144,17 @@ pub mod recv_queue {
                     break;
                 }
                 //copying copy_elems_to_buf from data to a buffer using offsets
-                self.u_buf[self.elems_in_buf..self.elems_in_buf + copy_elems_to_buf]
-                    .copy_from_slice(&data[pos_in_data..pos_in_data + copy_elems_to_buf]);
+                self.u_buf[self.elems_in_buf
+                    ..self
+                        .elems_in_buf
+                        .checked_add(copy_elems_to_buf)
+                        .expect("overflow when elems_in_buf add copy_elems_to_buf")]
+                    .copy_from_slice(
+                        &data[pos_in_data
+                            ..pos_in_data
+                                .checked_add(copy_elems_to_buf)
+                                .expect("overflow during pos_in_data add copy_elems_to_buf")],
+                    );
 
                 //Updating offsets to copy_elems_to_buf value
                 self.elems_in_buf = self.elems_in_buf.checked_add(copy_elems_to_buf).ok_or(
@@ -158,7 +164,7 @@ pub mod recv_queue {
                     pos_in_data
                         .checked_add(copy_elems_to_buf)
                         .ok_or(WSQueueErr::Critical(
-                            "err in pos_in_data + opy_elems_to_buf",
+                            "err in pos_in_data add opy_elems_to_buf",
                         ))?;
 
                 let mut ptr_to_start = 0;
@@ -202,7 +208,9 @@ pub mod recv_queue {
                         //and you need to wait until the packet arrives in its entirety.
                         if elem_in_buf_quque >= len_of_curent_pack {
                             //current package is a full in buf
-                            ptr_to_start += len_of_curent_pack;
+                            ptr_to_start = ptr_to_start
+                                .checked_add(len_of_curent_pack)
+                                .expect("overflo ptr_to_start add len_of_curent_pack");
                         } else {
                             break;
                         }
@@ -266,27 +274,23 @@ pub mod recv_queue {
     }
 
     impl<T: Clone> WSUdpLike<T> {
-        pub fn new(sizecap: usize) -> Result<Self, WSQueueErr> {
-            if sizecap == 0 {
-                return Err(WSQueueErr::Critical("sizecap must be greater than zero"));
+        pub fn new(max_len: usize) -> Result<Self, WSQueueErr> {
+            if max_len == 0 {
+                return Err(WSQueueErr::Critical("max_len must be greater than zero"));
             }
             Ok(Self {
                 in_queue: 0,
                 k_mod: 0,
                 last_give_num: None,
-                data: vec![None; sizecap].into_boxed_slice(),
+                data: vec![None; max_len].into_boxed_slice(),
             })
         }
         /// insert(&mut self,item_ctr: u64, item: T)
         ///The element is u64, must always be increasing except when there are gaps
         ///  in the sequence, and must be unique. T is its data.
         pub fn insert(&mut self, item_ctr: u64, item: &T) -> WSQueueState {
-            if item_ctr == u64::MAX {
-                panic!("item_ctr == u64::MAX ")
-            }
-
             let minimal_ctr = match self.last_give_num {
-                Some(x) => x + 1,
+                Some(x) => x.checked_add(1).expect("overflow when adding an element"),
                 None => 0,
             };
 
@@ -294,13 +298,18 @@ pub mod recv_queue {
                 return WSQueueState::ElemIdIsSmall;
             }
 
-            let pos = (item_ctr - minimal_ctr) as usize;
+            let pos = (item_ctr
+                .checked_add(minimal_ctr)
+                .expect("Critical error: item_ctr < minimal_ctr")) as usize;
 
             if pos >= self.data.len() {
                 return WSQueueState::ElemIdIsBig;
             }
 
-            let elem_url = &mut self.data[(pos + self.k_mod) % self.data.len()];
+            let elem_url = &mut self.data[(pos
+                .checked_add(self.k_mod)
+                .expect("overflow when adding position and initial shift u64"))
+                % self.data.len()];
 
             if elem_url.is_some() {
                 return WSQueueState::ElemIsAlreadyIn;
@@ -308,18 +317,32 @@ pub mod recv_queue {
 
             *elem_url = Some((item_ctr, item.clone()));
 
-            self.in_queue += 1;
+            self.in_queue = self
+                .in_queue
+                .checked_add(1)
+                .expect(" overflow self.in_queue add 1 ");
 
+            if self.in_queue > self.data.len() {
+                panic!("Critical algorithm error: self.in_queue should never be greater than the length of data.");
+            }
             WSQueueState::SuccessfulInsertion
         }
 
         fn k_add(&mut self, addin: usize) {
-            self.k_mod = (self.k_mod + addin) % self.data.len();
+            self.k_mod = (self
+                .k_mod
+                .checked_add(addin)
+                .expect("overflow k_mod add 1 addin"))
+                % self.data.len();
         }
 
         fn edit_my_state(&mut self, size_of_ret: usize, last_item_num: u64) {
             let le = self.data.len();
-            for x in self.k_mod..size_of_ret + self.k_mod {
+            for x in self.k_mod
+                ..size_of_ret
+                    .checked_add(self.k_mod)
+                    .expect("overflow size_of_ret add k_mod ")
+            {
                 self.data[x % le] = None;
             }
 
@@ -349,8 +372,7 @@ pub mod recv_queue {
                 .take(self.data.len())
                 .take_while(|opt| opt.is_some())
                 .map(|opt| opt.as_ref().unwrap().clone())
-                .collect::<Vec<_>>()
-                .into_boxed_slice();
+                .collect::<Box<[_]>>();
 
             self.edit_my_state(
                 copied_slice.len(),
@@ -601,9 +623,9 @@ pub mod recv_queue {
                     reta_vec.push((temp_id, temp.p_order.clone(), temp.data.clone()));
                 }
                 //The last element in the sequence does not have a reference to the next element,
-                //so if x + 1 == self.data_map.len(),
+                //so if x add 1 == self.data_map.len(),
                 //then this element is the last one and there is no need to take cl from it, since it is None.
-                if x + 1 == self.data_map.len() {
+                if x.checked_add(1).expect("overflow x add 1") == self.data_map.len() {
                     break;
                 }
                 temp_id = temp
@@ -646,7 +668,7 @@ pub mod recv_queue {
             }
             let ctrs = payload_mtu
                 .checked_sub(U64_LEN_IN_BYTES)
-                .ok_or("mtu < (pack_topology.total_minimal_len() + U64_LEN_IN_BYTES )")?
+                .ok_or("mtu < (pack_topology.total_minimal_len() add U64_LEN_IN_BYTES )")?
                 / len_ctr_slise;
 
             if ctrs == 0 {
@@ -714,15 +736,15 @@ pub mod recv_queue {
                 .checked_mul(self.ctr_slice_len)
                 .expect("self.payload_len()* self.ctr_slice_len overflow")
                 .checked_add(U64_LEN_IN_BYTES)
-                .expect("(self.payload_len()* self.ctr_slice_len) + U64_LEN_IN_BYTES overflow")
+                .expect("(self.payload_len()* self.ctr_slice_len) add U64_LEN_IN_BYTES overflow")
         }
 
         pub fn len(&self) -> usize {
             self.ptr
         }
 
-        pub fn get_ctrs_as_vec(&mut self) -> Vec<u8> {
-            let mut ret_vec = vec![0; self.payload_len()];
+        pub fn get_ctrs_as_vec(&mut self) -> Box<[u8]> {
+            let mut ret_vec = vec![0; self.payload_len()].into_boxed_slice();
 
             self.get_ctrs_in_slice(&mut ret_vec)
                 .expect("algorithm error; if the code has been tested, there should be no errors ");
@@ -776,7 +798,7 @@ pub mod recv_queue {
         pub fn split_byte_ctrs_pack_to_vec(
             pack: &[u8],
             pack_topology: &PackTopology,
-        ) -> Result<Vec<u64>, &'static str> {
+        ) -> Result<Box<[u64]>, &'static str> {
             let len_ctr_slise = pack_topology
                 .counter_slice()
                 .ok_or("error in pack_topology no field for counter")?
@@ -784,13 +806,13 @@ pub mod recv_queue {
 
             let pre_pross = Self::len_check(pack, len_ctr_slise)?;
 
-            let mut ret = vec![0; pre_pross.1];
+            let mut ret = vec![0; pre_pross.1].into_boxed_slice();
 
             for (ctr_chank, ret_el) in pre_pross.2.zip(ret.iter_mut()) {
                 *ret_el = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
-                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+                    .ok_or("The reference counter add one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
             }
 
             Ok(ret)
@@ -811,7 +833,7 @@ pub mod recv_queue {
                 let ret_el = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
-                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+                    .ok_or("The reference counter add one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
 
                 how_was_deleted += wait_queue.remove(ret_el).is_some() as usize & 1;
             }
@@ -1066,9 +1088,7 @@ pub mod recv_queue {
                     datas_x.1[index..].to_vec()
                 };
                 index += *s;
-                let ret = w_tcp
-                    .split_byte_stream_into_packages(&data.into_boxed_slice())
-                    .unwrap();
+                let ret = w_tcp.buf_in(&data.into_boxed_slice()).unwrap();
 
                 for i in ret.iter() {
                     assert_eq!(i.to_vec(), *arepackets.next().unwrap());
@@ -1096,7 +1116,7 @@ pub mod recv_queue {
                 };
                 index += *s;
 
-                let ret = w_tcp.split_byte_stream_into_packages(&data.into_boxed_slice());
+                let ret = w_tcp.buf_in(&data.into_boxed_slice());
                 if ret.is_err() {
                     assert_eq!(ret, Err(WSQueueErr::Critical("len_of_curent_pack > mtu")));
                     return;
@@ -1135,7 +1155,7 @@ pub mod recv_queue {
                     data[0] = !data[0];
                 }
 
-                let ret = w_tcp.split_byte_stream_into_packages(&data.into_boxed_slice());
+                let ret = w_tcp.buf_in(&data.into_boxed_slice());
                 if ret.is_err() {
                     assert_eq!(ret, Err(WSQueueErr::Critical("package is damaged")));
                     return;
@@ -1169,6 +1189,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wudp {
+
+        use crate::t1fields::WTypeErr;
 
         use super::*;
 
@@ -1260,8 +1282,8 @@ pub mod recv_queue {
                 ])
                 .into_boxed_slice()
             );
-            assert_eq!(xx.insert(12, &eleme), WSQueueState::ElemIdIsSmall);
-            assert_eq!(xx.insert(13, &eleme), WSQueueState::ElemIdIsSmall);
+            assert_eq!(xx.insert(12, &eleme), WSQueueState::ElemIdIsBig);
+            assert_eq!(xx.insert(13, &eleme), WSQueueState::ElemIdIsBig);
 
             assert_eq!(xx.insert(22, &eleme), WSQueueState::ElemIdIsBig);
             assert_eq!(xx.insert(21, &eleme), WSQueueState::SuccessfulInsertion);
@@ -1386,10 +1408,11 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_recv_queue_ctrs {
+        use crate::{t1fields, t1queue_tcpudp_copy::U64_LEN_IN_BYTES};
 
         use crate::t1pology::{PackTopology, PakFields};
         use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
-        use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+
         #[test]
         fn test_base() {
             let fields = vec![PakFields::Counter(2)];
@@ -1524,6 +1547,8 @@ pub mod recv_queue {
 
     #[test]
     fn test_full_colab_test() {
+        const SEED_RAND: u64 = 321;
+
         fn randr(mut inn: u64) -> u64 {
             for x in 17..47 {
                 inn = inn.wrapping_add(inn.rotate_left(7));
@@ -1531,6 +1556,8 @@ pub mod recv_queue {
                 inn ^= inn
                     .wrapping_add(inn.rotate_left((x * 7) as u32 & 0b111_111))
                     .rotate_left(32);
+
+                inn = inn.wrapping_add(SEED_RAND);
             }
             inn
         }
@@ -1556,7 +1583,7 @@ pub mod recv_queue {
 
         let mut ctrs_que =
             WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 130, 1000).unwrap();
-        let mut wait_que: WSWaitQueue<String, f32> = WSWaitQueue::new(1000).unwrap();
+        let mut wait_que: WSWaitQueue<(String, usize), f32> = WSWaitQueue::new(1000).unwrap();
         let mut udp_que: WSUdpLike<String> = WSUdpLike::new(1000).unwrap();
 
         let mut net_steak = Vec::new();
@@ -1565,18 +1592,25 @@ pub mod recv_queue {
 
         let mut pack_to_inp = 0;
 
-        let net_stable = 0.30;
+        let net_stable = 0.1;
 
-        let max_ctrs = 120_0;
+        let max_ctrs = 120_000;
 
-        for time_soon in 0..3_000 {
+        let mut how_matct_is_re_send = 0;
+
+        for time_soon in 0..100000 {
+            if un_blear_ctr >= max_ctrs - 10 {
+                break;
+            }
+
             if time_soon % 500 == 0 {
                 println!(
-                    "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent confirmation:{:<5} |",
+                    "| stack:{:<6} | queue continuity:{:<6} | unconfirmed:{:<6} | not sent confirmation:{:<6} |, max resend:{:<6}",
                     udp_que.how_items_in_queue(),
                     un_blear_ctr,
                     wait_que.len(),
-                    ctrs_que.len()
+                    ctrs_que.len(),
+                    how_matct_is_re_send
                 );
             }
 
@@ -1586,7 +1620,13 @@ pub mod recv_queue {
                     //resending packets
                     let get_non_proff_ctr = wait_que.get_elements_to(time_soon as f32 * 1.1);
 
-                    for non_prosf in get_non_proff_ctr {
+                    for mut non_prosf in get_non_proff_ctr {
+                        non_prosf.2 .1 += 1;
+
+                        if non_prosf.2 .1 > how_matct_is_re_send {
+                            how_matct_is_re_send = non_prosf.2 .1;
+                        }
+
                         net_steak.push(non_prosf.0);
                         wait_que.remove(non_prosf.0).unwrap();
                         wait_que
@@ -1594,7 +1634,7 @@ pub mod recv_queue {
                                 non_prosf.0,
                                 (time_soon as f32 * 1.1) + 20.0,
                                 false,
-                                "str".to_string(),
+                                non_prosf.2,
                             )
                             .unwrap();
                     }
@@ -1606,7 +1646,7 @@ pub mod recv_queue {
                                 pack_to_inp,
                                 (time_soon as f32 * 1.1) + 20.0,
                                 false,
-                                "str".to_string(),
+                                ("str".to_string(), 0),
                             )
                             .is_ok()
                         {
