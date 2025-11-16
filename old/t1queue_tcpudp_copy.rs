@@ -730,7 +730,7 @@ pub mod recv_queue {
                 .expect("obvious algorithm error The pointer counter is always no longer than the length of the Box."))
         }
 
-        pub fn payload_len(&self) -> usize {
+        pub fn payload_len_in_bytes(&self) -> usize {
             //U64_LEN_IN_BYTES + (self.ptr * self.ctr_slice_len)
             self.ptr
                 .checked_mul(self.ctr_slice_len)

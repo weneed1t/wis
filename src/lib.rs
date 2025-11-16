@@ -5,6 +5,7 @@ pub mod t1pology;
 pub mod t2fields_gen;
 pub mod t2router;
 pub mod t3conn;
+pub mod t3poc_files;
 pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;
