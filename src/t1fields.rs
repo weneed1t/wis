@@ -363,7 +363,7 @@ pub fn set_ttl(
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
         }
-        if temp > wutils::len_byte_maximal_capacyty_cheak(len).0 {
+        if temp > wutils::len_byte_maximal_capacity_cheak(len).0 {
             return Err(WTypeErr::PackageDamaged(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
@@ -415,9 +415,9 @@ pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Res
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
-    if plen > wutils::len_byte_maximal_capacyty_cheak(sls.2).0 as usize {
+    if plen > wutils::len_byte_maximal_capacity_cheak(sls.2).0 as usize {
         return Err(WTypeErr::LenSizeErr(
-            "pack.len()> len_byte_maximal_capacyty_cheak(len)",
+            "pack.len()> len_byte_maximal_capacity_cheak(len)",
         ));
     }
 
@@ -462,9 +462,9 @@ pub fn set_id_conn(
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        if id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >> 1 {
+        if id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >> 1 {
             return Err(WTypeErr::PackageDamaged(
-                "id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >>1",
+                "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1",
             ));
         }
         wutils::u64_to_1_8bytes((id_conn << 1) | send_bit as u64, &mut pack[x.0..x.1])
@@ -510,7 +510,7 @@ pub fn set_id_sender_and_recv(
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
-        let maxim = wutils::len_byte_maximal_capacyty_cheak(x_s.2).0;
+        let maxim = wutils::len_byte_maximal_capacity_cheak(x_s.2).0;
         if pack.len() < x_s.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
@@ -578,7 +578,7 @@ pub fn set_counter(
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let max_cap = wutils::len_byte_maximal_capacyty_cheak(x.2).0 >> 1;
+        let max_cap = wutils::len_byte_maximal_capacity_cheak(x.2).0 >> 1;
 
         let pack_ctr = ((max_cap & countr) << 1) | last_bit_in_countr as u64;
 
@@ -623,7 +623,7 @@ pub fn get_counter(
         }
         let ctr_in_pack =
             wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
-        let (max_cap, _) = wutils::len_byte_maximal_capacyty_cheak(x.2);
+        let (max_cap, _) = wutils::len_byte_maximal_capacity_cheak(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
         let bt = (ctr_in_pack & 1) as u8;
@@ -1791,7 +1791,7 @@ mod tests {
         assert_eq!(
             set_len(&mut bb, &result, 435,),
             Err(WTypeErr::LenSizeErr(
-                "pack.len()> len_byte_maximal_capacyty_cheak(len)"
+                "pack.len()> len_byte_maximal_capacity_cheak(len)"
             ))
         );
 
@@ -1985,7 +1985,7 @@ mod tests {
         assert_eq!(
             set_id_conn(&mut bb, &result1, 2312123213213221221, true),
             Err(WTypeErr::PackageDamaged(
-                "id_conn > wutils::len_byte_maximal_capacyty_cheak(x.2).0 >>1"
+                "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1"
             ))
         );
         assert_eq!(

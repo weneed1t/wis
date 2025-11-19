@@ -32,7 +32,7 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
         return Err("bytes.len() > 8 ||bytes.len() ==0");
     }
 
-    let buffer = num.to_be_bytes();
+    let buffer: [u8; 8] = num.to_be_bytes();
     bytes.copy_from_slice(&buffer[&buffer.len() - bytes.len()..]);
     return Ok(());
 }
@@ -100,12 +100,56 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     Ok(())
 }
 
-pub fn len_byte_maximal_capacyty_cheak(len: usize) -> (u64, usize) {
+pub fn len_byte_maximal_capacity_cheak(len: usize) -> (u64, usize) {
     if len > 7 {
         return (!0_u64, 64);
     }
     let t = len << 3;
     (!((!0_u64) << t), t)
+}
+
+/// # Examples
+/// ```
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x00), 1);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF), 1);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF), 2);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00), 2);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF), 3);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00), 3);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF), 4);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00), 4);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF), 5);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00), 5);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF), 6);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00_00), 6);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF), 7);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00_00_00), 7);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF_FF), 8);
+/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x10_FF_FF_FF_FF_FF_FF_FF), 8);
+/// ```
+pub fn len_u64_as_bytes(num: u64) -> usize {
+    if 0b1u64 << (1 << 3) > num {
+        return 1;
+    }
+    if 0b1u64 << (2 << 3) > num {
+        return 2;
+    }
+    if 0b1u64 << (3 << 3) > num {
+        return 3;
+    }
+    if 0b1u64 << (4 << 3) > num {
+        return 4;
+    }
+    if 0b1u64 << (5 << 3) > num {
+        return 5;
+    }
+    if 0b1u64 << (6 << 3) > num {
+        return 6;
+    }
+    if 0b1u64 << (7 << 3) > num {
+        return 7;
+    }
+    8
 }
 
 /// Splits a mutable slice into sub-slices based on lengths
@@ -121,10 +165,15 @@ pub fn len_byte_maximal_capacyty_cheak(len: usize) -> (u64, usize) {
 ///
 /// # Examples
 /// ```
+///
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
-/// let result = wisleess2::wutils::split_by_lengths(&mut data, &lengths, false);
-/// // Returns Ok([[1,2,3,4], [5], [6,7], [8,9]])
+/// let result = wisleess2::wutils::split_by_lengths(&mut data, &lengths, false).unwrap();
+/// assert_eq!(result[0],[1,2,3,4]);
+/// assert_eq!(result[1],[5]);
+/// assert_eq!(result[2],[6,7]);
+/// assert_eq!(result[3],[8,9]);
+///
 /// ```
 pub fn split_by_lengths<'a, T>(
     data: &'a mut [T],
@@ -216,28 +265,6 @@ pub fn split_by_positions<'a, T>(
         result.push(remaining_data);
     }
     Ok(result)
-}
-
-fn u32_compress_tou16(num: u32) -> u16 {
-    let mut t1s = 0;
-
-    for x in 0..32 {
-        if 1 == (num >> (32 - x)) & 1 {
-            t1s = x;
-            break;
-        }
-    }
-
-    if t1s > 21 {
-        return num as u16;
-    }
-    let mask = 0xFF_FF_FF_FFu32;
-
-    let shif = ((mask >> (t1s + 10)) & num) as f32;
-
-    //let t1 =
-
-    t1s as u16
 }
 
 pub fn u32_to_u16_lossy(x: u32) -> u16 {
