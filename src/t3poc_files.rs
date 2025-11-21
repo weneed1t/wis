@@ -2,7 +2,6 @@ use crate::wutils;
 
 const FILE_HEAD_LEN: usize = 9;
 
-use core::panic;
 use std::{cmp::min, rc::Rc};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -13,6 +12,11 @@ struct DataDrain {
     head: [u8; FILE_HEAD_LEN],
 }
 
+///The WSFileSplitter structure is needed to split the data stream into separate user-defined
+///  files of arbitrary length and to create files from user data
+///  for transmission over a TCP-like data stream.
+///  In protocols where there is no data splitting and data is not marked.
+///  The maximum file size is (2^64) - 9 bytes.
 #[derive(Debug, PartialEq, Clone)]
 pub struct WSFileSplitter {
     max_len_of_file: Option<usize>,
@@ -21,6 +25,10 @@ pub struct WSFileSplitter {
 }
 
 impl WSFileSplitter {
+    ///max_len_of_file is a variable that limits the maximum size of incoming and outgoing files.
+    ///  This is necessary to prevent systems with
+    ///  limited resources from allocating memory for very large files.
+    ///  If the limitation is not needed, leave the value as None.
     pub fn new(max_len_of_file: Option<usize>) -> Result<Self, &'static str> {
         if let Some(x) = max_len_of_file {
             if x == 0 {
@@ -34,7 +42,9 @@ impl WSFileSplitter {
             recv_data: None,
         })
     }
-
+    /// Write a new file get a file, Rc<Vec<u8>> Rc is used to minimize the overhead of
+    ///  copying data to a new vector. Only one file can be in the WSFileSplitter structure
+    ///  at a time. To find out if a file is in the structure, call remaining_len_of_rc_file(&self).
     pub fn write_new_rc_file(&mut self, rc_file: Rc<Vec<u8>>) -> Result<(), &'static str> {
         if self.send_file.is_some() {
             return Err("WSFileSplitter already has an unprocessed file ");
@@ -47,12 +57,16 @@ impl WSFileSplitter {
         if rc_file.len() == 0 {
             return Err("rc_file must be greater than zero");
         }
-
+        if rc_file.len() > u64::MAX as usize {
+            panic!("rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :(");
+        }
+        //Calculates how many bytes the file size will fit into
         let cap_head_of_rc = wutils::len_u64_as_bytes(rc_file.len() as u64);
 
         if cap_head_of_rc > u8::MAX as usize {
             panic!("panic because the values from cap_head_of_rc.1 must be in a range smaller than u8::MAX");
         }
+
         if cap_head_of_rc + 1 > FILE_HEAD_LEN {
             panic!("Panic because the file header (u64 as bytes len + 1 byte length) is larger than FILE_HEAD_LEN");
         }
@@ -63,7 +77,10 @@ impl WSFileSplitter {
             len_of_head: 1 + cap_head_of_rc,
             head: [0; FILE_HEAD_LEN],
         };
-
+        //The structure of the slice contained in WSFileSplitter is as follows:
+        // |-----------------------|---------------------------------------|------------------|
+        // | 1 byte length counter |length of user data (from 1 to 8 bytes)|bytes of user data|
+        // |-----------------------|---------------------------------------|------------------|
         new_file.head[0] = cap_head_of_rc as u8;
         wutils::u64_to_1_8bytes(
             rc_file.len() as u64,
@@ -74,51 +91,90 @@ impl WSFileSplitter {
         Ok(())
     }
 
-    pub fn file_to_slices(&mut self, slice: &mut [u8]) -> usize {
+    ///file_to_slices accepts multiple slices of varying lengths and copies file data into them.
+    ///  IMPORTANT: file_to_slices DOES NOT MARK THE SEQUENCE OF SLICES IN ANY WAY!
+    ///  THE ORDER IN WHICH THE SLICES WERE TRANSFERRED
+    ///  IS THE ORDER IN WHICH THEY MUST BE RECEIVED IN slices_to_file!.
+    ///
+    ///Note that slices can be of any length.
+    ///  If a slice is shorter than the file or the remaining part of the file,
+    ///  the remaining end of the slice will be filled with zeros.
+    ///  To calculate the slice length more optimally,
+    ///  you can find out the size of the remaining bytes by calling remaining_len_of_rc_file($self).
+    ///
+    ///  If the file bytes in the structure have ended, and remaining_len_of_rc_file($self) == None,
+    ///  then the structure can accept the next file in write_new_rc_file().
+    /// This function returns -> Option<usize> because it involves remaining_len_of_rc_file($self)
+    /// internally, so if file_to_slices() == None, it means the file is finished.
+
+    pub fn file_to_slices(&mut self, slice: &mut [u8]) -> Option<usize> {
         let mut how_much_left = 0;
-
+        //if the file exists
         if let Some(rfile) = &mut self.send_file {
-            let slice =/*copy head*/ if rfile.0.ptr_in_head < rfile.0.len_of_head {
-                let min_len = min(slice.len(), rfile.0.len_of_head - rfile.0.ptr_in_head);
+            //slice with truncated header bytes
 
+            let slice_after_head =/*copy head*/ if rfile.0.ptr_in_head < rfile.0.len_of_head/*if not all of the head is copied*/ {
+                //checking which is smaller, the slice length or the remaining bytes in the header
+                let min_len = min(slice.len(), rfile.0.len_of_head - rfile.0.ptr_in_head);
+                //copying bytes from the header to the slice
                 slice[..min_len].copy_from_slice(&rfile.0.head[rfile.0.ptr_in_head..rfile.0.ptr_in_head + min_len] );
+                //adding the number of bytes copied from the header to the copied bytes pointer
                 rfile.0.ptr_in_head += min_len;
+                //return the slice with the already filled part truncated to slice_after_head
                 &mut slice[min_len..]
             } else {
+                //if the head has already been copied, return the untouched slice to slice_after_head
                 slice
             };
             //body
             if rfile.0.ptr_in_body < rfile.1.len() {
-                let min_len = min(slice.len(), rfile.1.len() - rfile.0.ptr_in_body);
-
-                slice[..min_len]
+                //checking which is smaller, the slice length or the remaining bytes in the body
+                let min_len = min(slice_after_head.len(), rfile.1.len() - rfile.0.ptr_in_body);
+                //If there are any untouched bytes left at the end of the slice,
+                // they must be filled with zeros to clear them of user garbage.
+                if min_len < slice_after_head.len() {
+                    slice_after_head[min_len..].fill(0);
+                }
+                //copying bytes from the body to the slice
+                slice_after_head[..min_len]
                     .copy_from_slice(&rfile.1[rfile.0.ptr_in_body..rfile.0.ptr_in_body + min_len]);
                 rfile.0.ptr_in_body += min_len;
             }
-
-            how_much_left = rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).expect("panic an impossible state The pointer len_of_head must always be less than or equal to ptr_in_head.").checked_add( rfile.1.len().checked_sub(rfile.0.ptr_in_body).expect("panic an impossible state The pointer rfile.1.len() must always be less than or equal to rfile.0.ptr_in_body.")).expect("usize type is overflow");
+            //rfile.0.len_of_head - rfile.0.ptr_in_head + (file.1.len() -rfile.0.ptr_in_body )
+            how_much_left = self.remaining_len_of_rc_file().expect("impossible state, if &mut self.send_file == Some() then self.remaining_len_of_rc_file() must also return Some(usize)");
+        } else {
+            //If the file does not exist,
+            // fill the entire slice with zeros so that there
+            // is no garbage in it that could have been left by the user.
+            slice.fill(0)
         }
-
+        //if there are no more bytes left in the file, then the file will be deleted from the structure
         if 0 == how_much_left {
-            self.send_file = None
+            //println!(" self.send_file = None");
+            self.send_file = None;
+            return None;
         }
 
-        how_much_left
+        Some(how_much_left)
     }
 
-    fn start_proc_file<'a>(&mut self, slice: &'a [u8]) -> Option<&'a [u8]> {
+    fn start_proc_file<'a>(&mut self, slice: &'a [u8]) -> Result<Option<&'a [u8]>, &'static str> {
         let slice = if self.recv_data.is_none() {
             if let Some(index) = slice.iter().position(|&x| x > 0) {
+                if slice[index] > 8 {
+                    return Err("error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  ");
+                }
+
                 &slice[index..]
             } else {
-                return None;
+                return Ok(None);
             }
         } else {
             &slice
         };
 
         if 0 == slice.len() {
-            return None;
+            return Ok(None);
         }
 
         if self.recv_data.is_none() {
@@ -131,44 +187,69 @@ impl WSFileSplitter {
                 },
                 None,
             ));
+            if 1 == slice.len() {
+                Ok(None)
+            } else {
+                Ok(Some(&slice[1..])) //index 0 is a len of head slice[1..len_of_head+1] is a u64
+            }
+        } else {
+            Ok(Some(slice)) //index 0 is a len of head slice[1..len_of_head+1] is a u64
         }
-        Some(slice)
     }
 
-    pub fn slices_to_file(&mut self, slice: &[u8]) -> usize {
-        let slice = if let Some(slic) = self.start_proc_file(slice) {
-            slic
-        } else {
-            return 0;
-        };
+    pub fn slices_to_file(&mut self, slice: &[u8]) -> Result<(usize, Vec<Vec<u8>>), &'static str> {
+        let mut slice = slice;
+        let mut old_slice_len = slice.len();
 
-        if if let Some(recv_me) = &mut self.recv_data {
-            // (1 byte of len) + (1-8bytes of u64)
-
-            let (slice, head_is_full) = if recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head {
-                let min_len = min(
-                    slice.len(),
-                    recv_me.0.len_of_head + 1 - recv_me.0.ptr_in_head,
-                );
-                let shif = FILE_HEAD_LEN - recv_me.0.len_of_head;
-                recv_me.0.head
-                    [shif + recv_me.0.ptr_in_head..shif + recv_me.0.ptr_in_head + min_len]
-                    .copy_from_slice(&slice[..min_len]);
-
-                recv_me.0.ptr_in_body += min_len;
-                (
-                    &slice[min_len..],                                   //new slice
-                    (recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head), //bool
-                )
+        let mut reta = vec![];
+        loop {
+            slice = if let Some(slic) = self.start_proc_file(slice)? {
+                slic
             } else {
-                (slice, true)
+                return Ok((0, reta));
             };
 
-            if recv_me.1.is_none() && head_is_full {
-                recv_me.1 = Some(vec![0; wutils::bytes_to_u64(&recv_me.0.head[1..])
-                        .expect("impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.") as usize]);
-                false
-            } else {
+            if if let Some(recv_me) = &mut self.recv_data {
+                // (1 byte of len) + (1-8bytes of u64)
+
+                let head_is_full = if recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head {
+                    let min_len = min(
+                        slice.len(),
+                        recv_me.0.len_of_head + 1 - recv_me.0.ptr_in_head,
+                    );
+                    recv_me.0.head[recv_me.0.ptr_in_head..recv_me.0.ptr_in_head + min_len]
+                        .copy_from_slice(&slice[..min_len]);
+
+                    recv_me.0.ptr_in_head += min_len;
+
+                    slice = &slice[min_len..]; //new slice
+                    !(recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head) //bool
+                } else {
+                    true
+                };
+                if !head_is_full {
+                    return Ok((0, reta));
+                }
+
+                if recv_me.1.is_none() {
+                    let len_vec =
+                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect("impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.");
+
+                    if len_vec > usize::MAX as u64 {
+                        panic!("len_vec > usize::MAX as u64  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :(");
+                    }
+
+                    if 0 == len_vec {
+                        return Err("An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted");
+                    }
+                    if let Some(m_len) = self.max_len_of_file {
+                        if len_vec as usize > m_len {
+                            return   Err("The size of the received file exceeds the maximum max_len_of_file.");
+                        }
+                    }
+
+                    recv_me.1 = Some(vec![0; len_vec as usize]);
+                }
                 if let Some(file_recv) = &mut recv_me.1 {
                     let min_len = min(slice.len(), file_recv.len() - recv_me.0.ptr_in_body);
 
@@ -177,26 +258,52 @@ impl WSFileSplitter {
 
                     recv_me.0.ptr_in_body += min_len;
 
+                    slice = &slice[min_len..]; //new slice
+
                     recv_me.0.ptr_in_body >= file_recv.len() //bool
                 } else {
                     panic!("impossible state, Some is created above");
                 }
-            }
-        } else {
-            panic!("impossible state, Some is created above");
-        } {
-            println!("{:?}", self.recv_data.clone().unwrap().1.unwrap());
-            self.recv_data = None
-        }
+            } else {
+                panic!("impossible state, Some is created above");
+            } {
+                reta.push(
+                    std::mem::replace(&mut self.recv_data, None)
+                        .expect("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")
+                    .1
+                    .expect("Panic is an impossible state because this code only executes when self.recv_data is Some() and it has Some() vector and it's only called when the file is completely received, at this point the file should be longer than 0")
 
-        0
+                );
+
+                self.recv_data = None
+            }
+
+            if 0 == slice.len() {
+                break;
+            }
+
+            if old_slice_len == slice.len() {
+                panic!("Error in algorithm development: in each iteration of the loop, the value of slice.len() should decrease!");
+            }
+            old_slice_len = slice.len()
+        }
+        Ok((0, reta))
     }
 
     pub fn len_of_recv_file() {}
     pub fn len_of_rc_file() {}
 
-    pub fn remaining_len_of_rc_file() -> usize {
-        0
+    pub fn remaining_len_of_rc_file(&self) -> Option<usize> {
+        if let Some(ref rfile) = self.send_file {
+            Some( rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
+            expect("panic an impossible state The pointer len_of_head must always be less than or equal to ptr_in_head.").
+            checked_add( rfile.1.len().
+            checked_sub(rfile.0.ptr_in_body).
+            expect("panic an impossible state The pointer rfile.1.len() must always be less than or equal to rfile.0.ptr_in_body.")).
+            expect("usize type is overflow"))
+        } else {
+            None
+        }
     }
     pub fn remaining_len_of_recv_file() -> usize {
         0
@@ -215,6 +322,13 @@ mod tests_wudp {
         assert_eq!(tw_s_z, Err("max_len_of_recv must be greater than zero"));
 
         let _tw_n = WSFileSplitter::new(None).unwrap();
+    }
+
+    #[test]
+    fn test_simple_err() {
+        let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
+
+        assert_eq!(tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]), Err("An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted"));
     }
     #[test]
     fn test_file_splitt() {
@@ -236,13 +350,13 @@ mod tests_wudp {
             Err("WSFileSplitter already has an unprocessed file ")
         );
 
-        let mut reta1 = vec![0; 20];
-        let mut reta2 = vec![0; 0];
-        let mut reta3 = vec![0; 7];
-        let mut reta4 = vec![0; 11];
-        let mut reta5 = vec![0; 19];
+        let mut reta1 = vec![1; 20];
+        let mut reta2 = vec![1; 0];
+        let mut reta3 = vec![1; 7];
+        let mut reta4 = vec![1; 11];
+        let mut reta5 = vec![1; 19];
 
-        assert_eq!(tw_s.file_to_slices(&mut reta1), 50 + 1 + 1 - 20);
+        assert_eq!(tw_s.file_to_slices(&mut reta1).unwrap(), 50 + 1 + 1 - 20);
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
             DataDrain {
@@ -253,7 +367,10 @@ mod tests_wudp {
             }
         );
 
-        assert_eq!(tw_s.file_to_slices(&mut reta2), 50 + 1 + 1 - 20 - 0);
+        assert_eq!(
+            tw_s.file_to_slices(&mut reta2).unwrap(),
+            50 + 1 + 1 - 20 - 0
+        );
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
             DataDrain {
@@ -264,7 +381,10 @@ mod tests_wudp {
             }
         );
 
-        assert_eq!(tw_s.file_to_slices(&mut reta3), 50 + 1 + 1 - 20 - 0 - 7);
+        assert_eq!(
+            tw_s.file_to_slices(&mut reta3).unwrap(),
+            50 + 1 + 1 - 20 - 0 - 7
+        );
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
             DataDrain {
@@ -276,7 +396,7 @@ mod tests_wudp {
         );
 
         assert_eq!(
-            tw_s.file_to_slices(&mut reta4),
+            tw_s.file_to_slices(&mut reta4).unwrap(),
             50 + 1 + 1 - 20 - 0 - 7 - 11
         );
         assert_eq!(
@@ -289,7 +409,7 @@ mod tests_wudp {
             }
         );
 
-        assert_eq!(tw_s.file_to_slices(&mut reta5), 0);
+        assert_eq!(tw_s.file_to_slices(&mut reta5), None);
         assert_eq!(tw_s.clone().send_file.is_none(), true);
 
         println!("{:?}", reta1);
@@ -318,13 +438,99 @@ mod tests_wudp {
 
         let rc: Rc<Vec<u8>> = Rc::new((0..50).map(|x| x).collect());
 
+        let rc2: Rc<Vec<u8>> = Rc::new((0..20).map(|x| 20 - x).collect());
+
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
-        let mut reta1 = vec![0; 55];
+        let mut reta1 = vec![0; 95];
         //let mut reta5 = vec![0; 19];
 
-        tw_s.file_to_slices(&mut reta1);
+        tw_s.file_to_slices(&mut reta1[10..]);
 
-        tw_s.slices_to_file(&reta1);
+        assert_eq!(tw_s.write_new_rc_file(rc2.clone()), Ok(()));
+
+        tw_s.file_to_slices(&mut reta1[71..]);
+
+        tw_s.slices_to_file(&reta1).unwrap();
+    }
+
+    #[test]
+    fn test_spkit_to_file_flow() {
+        let mut tw_s = WSFileSplitter::new(Some(9500)).unwrap();
+
+        let mut vecca: Vec<u8> = Vec::new();
+
+        let fs_vec = [
+            40, 10, 15, 7, 1, 12, 1148, 3876, 5, 4, 43, 99, 29, 134, 17, 14, 95, 1523, 50, 9, 5, 6,
+            8214, 65, 3217, 45, 43, 99, 299, 134, 117, 90, 5, 72, 4, 6, 3865, 1, 626, 3, 1, 78, 54,
+            6, 94, 2, 1, 564, 7, 60, 1, 3, 1, 29, 6, 729, 4, 23,
+        ];
+
+        for file_size_in_iter in fs_vec {
+            let rc: Rc<Vec<u8>> = Rc::new((0..file_size_in_iter).map(|x| x as u8).collect());
+
+            assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
+
+            let mut over_len = 0;
+
+            for chunk_size in [
+                4, 6, 7, 5, 6, 0, 3, 1, 45, 90, 5, 72, 4, 6, 35, 0, 62, 3, 1, 78, 5, 6, 94, 2, 1,
+                64, 7, 60, 1, 3, 1, 2, 6, 79, 4, 23,
+            ]
+            .iter()
+            .cycle()
+            {
+                //if *infl == 1 {
+                //    print!("INFIL: {}", infl)
+                //}
+
+                let trash_noise = *chunk_size as u8;
+                let mut nw = vec![ /*trash bytes*/ trash_noise ; *chunk_size];
+
+                assert_eq!(
+                    tw_s.file_to_slices(&mut nw),
+                    tw_s.remaining_len_of_rc_file()
+                );
+
+                //  println!("          real {} | {:?}", nw.len(), nw);
+
+                //if over_len > 200 {
+                // nw[0] = 0;
+                // }
+
+                vecca.extend_from_slice(&nw);
+
+                let get_me = tw_s.slices_to_file(&nw).unwrap().1;
+
+                for ggg in get_me {
+                    // println!("----------{}| {:?} ", ggg.len(), ggg);
+
+                    let lelel = ggg.len();
+
+                    let xo: Vec<u8> = (0..lelel).map(|x| x as u8).collect();
+
+                    let me_co = ggg
+                        .clone()
+                        .iter()
+                        .zip(xo.iter())
+                        .map(|x| x.0.abs_diff(*(x.1)))
+                        .collect::<Vec<u8>>();
+
+                    assert_eq!(
+                        ggg,
+                        xo,
+                        "\n_-_-_-_meco{:?} ||||| {:?}",
+                        me_co,
+                        me_co.iter().position(|&x| x > 0)
+                    );
+                }
+                if over_len >= file_size_in_iter + 10 {
+                    break;
+                }
+                over_len += *chunk_size;
+            }
+        }
+
+        assert_eq!(tw_s.slices_to_file(&vecca).unwrap().1.len(), fs_vec.len());
     }
 }
