@@ -141,7 +141,7 @@ impl WSFileSplitter {
                 rfile.0.ptr_in_body += min_len;
             }
             //rfile.0.len_of_head - rfile.0.ptr_in_head + (file.1.len() -rfile.0.ptr_in_body )
-            how_much_left = self.remaining_len_of_rc_file().expect("impossible state, if &mut self.send_file == Some() then self.remaining_len_of_rc_file() must also return Some(usize)");
+            how_much_left = self.remaining_len_of_send_file().expect("impossible state, if &mut self.send_file == Some() then self.remaining_len_of_rc_file() must also return Some(usize)");
         } else {
             //If the file does not exist,
             // fill the entire slice with zeros so that there
@@ -150,7 +150,6 @@ impl WSFileSplitter {
         }
         //if there are no more bytes left in the file, then the file will be deleted from the structure
         if 0 == how_much_left {
-            //println!(" self.send_file = None");
             self.send_file = None;
             return None;
         }
@@ -290,10 +289,29 @@ impl WSFileSplitter {
         Ok((0, reta))
     }
 
-    pub fn len_of_recv_file() {}
-    pub fn len_of_rc_file() {}
+    pub fn len_of_recv_file(&self) -> Option<usize> {
+        if let Some(ref hea) = self.recv_data {
+            if let Some(ref dataa) = hea.1 {
+                Some(dataa.len())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+    pub fn len_of_send_file(&self) -> Option<usize> {
+        if let Some(ref rfile) = self.send_file {
+            Some(rfile.1.len())
+        } else {
+            None
+        }
+    }
+    pub fn i_have_some_recv(&self) -> bool {
+        self.recv_data.is_some()
+    }
 
-    pub fn remaining_len_of_rc_file(&self) -> Option<usize> {
+    pub fn remaining_len_of_send_file(&self) -> Option<usize> {
         if let Some(ref rfile) = self.send_file {
             Some( rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
             expect("panic an impossible state The pointer len_of_head must always be less than or equal to ptr_in_head.").
@@ -305,8 +323,18 @@ impl WSFileSplitter {
             None
         }
     }
-    pub fn remaining_len_of_recv_file() -> usize {
-        0
+    pub fn remaining_len_of_recv_file(&self) -> Option<usize> {
+        if let Some(ref hea) = self.recv_data {
+            if let Some(ref dataa) = hea.1 {
+                Some(dataa.len().checked_sub(hea.0.ptr_in_body).expect(
+                    "impossible condition, hea.0.ptr_in_bod must always be less than dataa.len()",
+                ))
+            } else {
+                None
+            }
+        } else {
+            None
+        }
     }
 }
 
@@ -328,6 +356,8 @@ mod tests_wudp {
     fn test_simple_err() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
+        assert_eq!(tw_s.slices_to_file(&vec![9, 1, 1, 1, 1, ]), Err("error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  "));
+
         assert_eq!(tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]), Err("An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted"));
     }
     #[test]
@@ -343,7 +373,7 @@ mod tests_wudp {
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
-        println!("{:?}", tw_s.clone().send_file.unwrap().0);
+        //println!("{:?}", tw_s.clone().send_file.unwrap().0);
 
         assert_eq!(
             tw_s.write_new_rc_file(rc),
@@ -412,12 +442,12 @@ mod tests_wudp {
         assert_eq!(tw_s.file_to_slices(&mut reta5), None);
         assert_eq!(tw_s.clone().send_file.is_none(), true);
 
-        println!("{:?}", reta1);
+        // println!("{:?}", reta1);
         //println!("{:?}", reta2);is zero size
-        println!("{:?}", reta3);
+        //println!("{:?}", reta3);
 
-        println!("{:?}", reta4);
-        println!("{:?}", reta5);
+        //println!("{:?}", reta4);
+        //println!("{:?}", reta5);
 
         assert_eq!(
             reta1,
@@ -472,7 +502,7 @@ mod tests_wudp {
             assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
             let mut over_len = 0;
-
+            let mut max_me = 0;
             for chunk_size in [
                 4, 6, 7, 5, 6, 0, 3, 1, 45, 90, 5, 72, 4, 6, 35, 0, 62, 3, 1, 78, 5, 6, 94, 2, 1,
                 64, 7, 60, 1, 3, 1, 2, 6, 79, 4, 23,
@@ -489,7 +519,7 @@ mod tests_wudp {
 
                 assert_eq!(
                     tw_s.file_to_slices(&mut nw),
-                    tw_s.remaining_len_of_rc_file()
+                    tw_s.remaining_len_of_send_file()
                 );
 
                 //  println!("          real {} | {:?}", nw.len(), nw);
@@ -502,6 +532,35 @@ mod tests_wudp {
 
                 let get_me = tw_s.slices_to_file(&nw).unwrap().1;
 
+                over_len += *chunk_size;
+                // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
+                // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
+                //checking that remaining_len_of_recv_file() returns the correct number of bytes remaining in the file
+                //it does not take into account the length of the head
+                max_me = if max_me < tw_s.remaining_len_of_recv_file().unwrap_or(0) {
+                    assert_eq!(
+                        tw_s.remaining_len_of_recv_file().unwrap_or(0) + chunk_size,
+                        file_size_in_iter as usize
+                            + wutils::len_u64_as_bytes(file_size_in_iter)
+                            + 1
+                    );
+
+                    tw_s.remaining_len_of_recv_file().unwrap_or(0)
+                } else {
+                    max_me
+                };
+                // println!(
+                //     "rema leng {}   over{}   mm {} chs {}",
+                //     tw_s.remaining_len_of_recv_file().unwrap_or(0),
+                //     over_len,
+                //     max_me,
+                //      chunk_size
+                //  );
+
+                for _xxx in get_me.clone() {
+                    //println!("{}", _xxx.len());
+                    max_me = 0;
+                }
                 for ggg in get_me {
                     // println!("----------{}| {:?} ", ggg.len(), ggg);
 
@@ -524,10 +583,10 @@ mod tests_wudp {
                         me_co.iter().position(|&x| x > 0)
                     );
                 }
-                if over_len >= file_size_in_iter + 10 {
+                if over_len >= file_size_in_iter as usize + 10 {
                     break;
                 }
-                over_len += *chunk_size;
+                //over_len += *chunk_size;
             }
         }
 
