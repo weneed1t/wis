@@ -676,6 +676,8 @@ pub mod recv_queue {
             self.of_min_p.as_ref().map(|x| (x.0, x.1.clone()))
         }
     }
+
+    ///WSRecvQueueCtrs structure for creating and receiving accepted counters from the protocol packet field
     #[derive(Clone)]
     pub struct WSRecvQueueCtrs {
         data: Box<[u64]>,
@@ -683,6 +685,7 @@ pub mod recv_queue {
         ctr_slice_len: usize,
         max: u64,
         min: u64,
+        ptr_of_min: usize,
     }
 
     impl WSRecvQueueCtrs {
@@ -705,6 +708,22 @@ pub mod recv_queue {
 
             return Ok(ctrs);
         }
+        ///payload_mtu indicates the maximum payload length in your network in bytes
+        ///len_ctr_slise is a variable that takes the length of the counter field in bytes.
+        ///max_len is the maximum number of counters in pieces that can be in the WSRecvQueueCtrs structure.
+        ///
+        ///
+        ///  UPDATE !! blurred_boundaries always equals TRUE !!!
+        ///
+        ///
+        ///  blurred_boundaries: Since WSRecvQueueCtrs was designed as a structure that
+        ///  forms packet delivery confirmation packets, analogous to ACK packets in TCP,
+        ///  such packets are usually much shorter than packets with useful data.
+        ///  To make it more difficult to identify an ACK packet,
+        ///  you can use blurred_boundaries == true,
+        ///
+        ///
+        ///  What does blurred_boundaries == true affect? See pub fn copy_ctrs_pack_to_slice.
 
         pub fn new(
             len_ctr_slise: usize,
@@ -721,14 +740,27 @@ pub mod recv_queue {
                 ctr_slice_len: len_ctr_slise,
                 max: 0,
                 min: 0,
-                //mtu,
+                ptr_of_min: 0,
             })
         }
 
-        pub fn push(&mut self, ctr_elem: u64) -> Result<usize, &'static str> {
+        ///push also checks that abs_diff (the largest counter in the queue,
+        ///  the smallest counter in the queue) was not greater than what can fit into 2^(8*len_ctr_slice)
+        ///
+        /// Please note that push does NOT implement SET() and uniqueness checks in order to save space,
+        ///  which means that some counters in the queue may be duplicated.  
+        pub fn push(&mut self, ctr_elem: u64) -> Result<(), &'static str> {
             if self.ptr >= self.data.len() {
                 return Err("the queue is full");
             }
+            //Removing duplicates of maximum and minimum counters is necessary
+            // for the correct operation of end boundary determination when
+            // setting end_is_max_ctr (fuzzy slice boundaries,
+            //see the description of the new() function for details).
+            if self.ptr > 0 && (self.max == ctr_elem || self.min == ctr_elem) {
+                return Ok(());
+            }
+
             self.max = if self.max > ctr_elem && 0 < self.ptr {
                 self.max
             } else {
@@ -738,6 +770,7 @@ pub mod recv_queue {
             self.min = if self.min < ctr_elem && 0 < self.ptr {
                 self.min
             } else {
+                self.ptr_of_min = self.ptr;
                 ctr_elem
             };
 
@@ -751,13 +784,25 @@ pub mod recv_queue {
             self.data[self.ptr] = ctr_elem;
             self.ptr = self.ptr.checked_add(1).expect("counter overflow");
 
-            Ok(self
+            Ok(())
+        }
+
+        pub fn free_space(&self) -> usize {
+            self
                 .data
                 .len()
                 .checked_sub(self.ptr)
-                .expect("obvious algorithm error The pointer counter is always no longer than the length of the Box."))
+                .expect("obvious algorithm error The pointer counter is always no longer than the length of the Box.")
         }
 
+        ///returns the length of the entire queue in bytes
+        ///queue structure
+        ///
+        //// |--------------------|-----|-----|-----|----|-----|
+        ///  |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
+        //// |--------------------|-----|-----|-----|----|-----|
+        ///
+        /// ctr len = len_ctr_slise
         pub fn payload_len_in_bytes(&self) -> usize {
             //U64_LEN_IN_BYTES + (self.ptr * self.ctr_slice_len)
             self.ptr
@@ -770,30 +815,68 @@ pub mod recv_queue {
         pub fn len(&self) -> usize {
             self.ptr
         }
-
-        pub fn get_ctrs_as_vec(&mut self) -> Vec<u8> {
+        ///get_ctrs_as_byte_pack_vec is a wrapper for  copy_ctrs_pack_to_slice
+        pub fn get_ctrs_as_byte_pack_vec(&mut self) -> Vec<u8> {
             let mut ret_vec = vec![0; self.payload_len_in_bytes()];
 
-            self.get_ctrs_in_slice(&mut ret_vec)
+            self.copy_ctrs_pack_to_slice(&mut ret_vec)
                 .expect("algorithm error; if the code has been tested, there should be no errors ");
             ret_vec
         }
-
-        pub fn get_ctrs_in_slice(
+        /// get the full set of reverse counters, but copy them to a byte array to avoid additional memory allocation  
+        /// To find out what the length of pack_payload_slice should be, call self.payload_len_in_bytes().
+        /// get_ctrs_as_byte_pack_vec and copy_ctrs_pack_to_slice return all contents of the queue,
+        /// and the WSRecvQueueCtrs structure is completely cleared of internal objects.
+        ///
+        ///  UPDATE !! blurred_boundaries always equals TRUE !!!
+        ///
+        /// if blurred_boundaries == true
+        ///then pack_payload_slice: &mut [u8] can be GREATER THAN OR EQUAL TO self.payload_len_in_bytes() usize,
+        ///
+        ///queue structure
+        ///
+        //// |--------------------|-----|-----|-----|----|-----|
+        ///  |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
+        //// |--------------------|-----|-----|-----|----|-----|
+        ///
+        /// ctr len = len_ctr_slise
+        ///The counter under the number ctr_N, i.e. the last counter, is always equal to 0.
+        pub fn copy_ctrs_pack_to_slice(
             &mut self,
             pack_payload_slice: &mut [u8],
         ) -> Result<(), &'static str> {
-            if self.payload_len_in_bytes() != pack_payload_slice.len() {
-                return Err("self.payload_len() != pack_payload_slice.len()");
+            if pack_payload_slice.len() < self.payload_len_in_bytes() {
+                return Err("self.payload_len() > pack_payload_slice.len()");
             }
+
+            if 0 == self.ptr {
+                pack_payload_slice.fill(0);
+                return Ok(());
+            }
+            /*
+            because if you subtract the minimum value from
+            the minimum value, you get 0, since there is only
+            one maximum and minimum value in self.data,
+            so the position of the minimum element (0)
+            swaps zero to the end of the array.
+            */
+            let temp_swap = self.data[self.ptr_of_min];
+            self.data[self.ptr_of_min] = self.data[self
+                .ptr
+                .checked_sub(1)
+                .expect("impossible state overflow when subtracting ")];
+            self.data[self.ptr - 1] = temp_swap;
+
+            //copying the reference counter to the swing slice
             wutils::u64_to_1_8bytes(self.min, &mut pack_payload_slice[..U64_LEN_IN_BYTES])?;
+
             for sls in pack_payload_slice[U64_LEN_IN_BYTES..]
                 .chunks_exact_mut(self.ctr_slice_len)
-                .zip(self.data.iter())
+                .zip(self.data[..self.ptr].iter())
             {
                 wutils::u64_to_1_8bytes((*sls.1).checked_sub(self.min).expect("algorithm error, the minimum value must be less than any value in the array"), sls.0).unwrap();
             }
-
+            //cleansing of the internal state
             self.ptr = 0;
             self.max = 0;
             self.min = 0;
@@ -801,7 +884,7 @@ pub mod recv_queue {
             Ok(())
         }
 
-        pub fn len_check<'a>(
+        fn len_check<'a>(
             payload: &'a [u8],
             len_ctr_slise: usize,
         ) -> Result<(u64, usize, std::slice::ChunksExact<'a, u8>), &'static str> {
@@ -812,9 +895,10 @@ pub mod recv_queue {
                 panic!("0 == len_ctr_slise")
             }
 
-            if 0 != ret_len_ctrs % len_ctr_slise {
-                return Err("The packet length is incorrect because the packet length (the length of the reference counter) is not a multiple of the counter field length in the packet topology.");
-            }
+            // UPDATE !! blurred_boundaries always equals TRUE !!!
+            //if 0 != ret_len_ctrs % len_ctr_slise {
+            //    return Err("The packet length is incorrect because the packet length (the length of the reference counter) is not a multiple of the counter field length in the packet topology.");
+            //}
 
             Ok((
                 wutils::bytes_to_u64(&payload[..U64_LEN_IN_BYTES])?,
@@ -822,30 +906,39 @@ pub mod recv_queue {
                 payload[U64_LEN_IN_BYTES..].chunks_exact(len_ctr_slise),
             ))
         }
-
+        ///receives a slice as input, i.e.
+        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec method,
+        ///  and then returns an array of u64 values that are counters.
         pub fn split_byte_ctrs_pack_to_vec(
             pack: &[u8],
-            pack_topology: &PackTopology,
+            len_ctr_slise: usize,
         ) -> Result<Vec<u64>, &'static str> {
-            let len_ctr_slise = pack_topology
-                .counter_slice()
-                .ok_or("error in pack_topology no field for counter")?
-                .2;
-
             let pre_pross = Self::len_check(pack, len_ctr_slise)?;
 
-            let mut ret = vec![0; pre_pross.1];
+            let mut ret = Vec::with_capacity(pre_pross.1);
 
-            for (ctr_chank, ret_el) in pre_pross.2.zip(ret.iter_mut()) {
-                *ret_el = pre_pross
+            for ctr_chank in pre_pross.2 {
+                let r_ctr = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
                     .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+
+                ret.push(r_ctr);
+                if r_ctr == pre_pross.0 {
+                    //if this is the final element, then the payload is complete
+                    return Ok(ret);
+                }
             }
 
             Ok(ret)
         }
-
+        ///receives a slice as input, i.e.
+        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec method,
+        ///
+        /// Since WSRecvQueueCtrs is intended to be used with WSWaitQueue to avoid unnecessary allocation,
+        ///  it receives a mutable wait_queue: &mut WSWaitQueue<T, P>,
+        ///  and removes from it all counters that are encoded in pack: &[u8],
+        /// returns usize, a value that indicates how many counters were removed from WSWaitQueue
         pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T, P>(
             pack: &[u8],
             len_ctr_slise: usize,
@@ -864,11 +957,15 @@ pub mod recv_queue {
                     .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
 
                 how_was_deleted += wait_queue.remove(ret_el).is_some() as usize & 1;
+                if pre_pross.0 == ret_el {
+                    //if this is the final element, then the payload is complete
+                    return Ok(how_was_deleted);
+                }
             }
 
             Ok(how_was_deleted)
         }
-
+        //get the maximum and minimum counters currently in the queue
         pub fn get_min_max(&self) -> (u64, u64) {
             (self.min, self.max)
         }
@@ -1291,7 +1388,7 @@ pub mod recv_queue {
                 .into_boxed_slice()
             );
             {
-                assert_eq!(xx.gap_in_queue(), true);
+                assert_eq!(xx.gap_in_queue(), false);
                 assert_eq!(xx.insert(9, &eleme), WSQueueState::SuccessfulInsertion);
 
                 assert_eq!(xx.insert(11, &eleme), WSQueueState::SuccessfulInsertion);
@@ -1500,6 +1597,8 @@ pub mod recv_queue {
         use crate::t1pology::{PackTopology, PakFields};
         use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
         use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+
+        use ::std::collections::HashMap;
         #[test]
         fn test_base() {
             let fields = vec![PakFields::Counter(2)];
@@ -1540,15 +1639,20 @@ pub mod recv_queue {
             let mut ws_wa: WSWaitQueue<String, f32> = WSWaitQueue::new(500).unwrap();
 
             for iterata_ma in [10_000_000, 10_000, 10, 100_000_000, 500, 123456789] {
+                let mut hm: HashMap<u64, u64> = HashMap::new();
+
                 println!("| {:>10} |===================================", iterata_ma);
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
-                    assert_eq!(test_me.push(x.1).unwrap(), 500 - 1 - x.0);
+                    hm.insert(x.1, x.1);
+                    test_me.push(x.1).unwrap();
+                    assert_eq!(test_me.free_space(), 500 - 1 - x.0);
                     assert_eq!(test_me.get_min_max(), (iterata_ma, x.1));
                     assert_eq!(test_me.len(), x.0 + 1);
                     ws_wa
                         .push(x.1, x.1 as f32 * 1.2, false, "data".to_string())
                         .unwrap();
                 }
+                assert_eq!(hm.len(), 256);
 
                 assert_eq!(test_me.push(iterata_ma + 256), Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold."));
 
@@ -1556,7 +1660,9 @@ pub mod recv_queue {
 
                 assert_eq!(test_me.len(), 256);
 
-                let ret_ve = test_me.get_ctrs_as_vec();
+                let ret_ve = test_me.get_ctrs_as_byte_pack_vec();
+
+                //println!("{:?}", ret_ve);
 
                 assert_eq!(test_me.len(), 0);
                 assert_eq!(test_me.get_min_max(), (0, 0));
@@ -1577,14 +1683,16 @@ pub mod recv_queue {
 
                 assert_eq!(ws_wa.len(), 0);
 
-                let remap_ve =
-                    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..], &pack_topology)
-                        .unwrap();
+                let remap_ve = WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(
+                    &ret_ve[..],
+                    pack_topology.counter_slice().unwrap().2,
+                )
+                .unwrap();
 
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
-                    assert_eq!(remap_ve[x.0], x.1);
+                    hm.remove(&remap_ve[x.0]);
                 }
-
+                assert_eq!(hm.len(), 0)
                 // println!("{:?}", ret_ve);
 
                 // println!(
@@ -1592,6 +1700,78 @@ pub mod recv_queue {
                 //    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..], &pack_topology).unwrap()
                 //);
             }
+        }
+
+        #[test]
+        fn test_wait_blurred_boundaries() {
+            let ctr_len = 2; //dnt touch
+
+            let mut ws_wa: WSWaitQueue<String, f32> = WSWaitQueue::new(500).unwrap();
+
+            let mut test_me = WSRecvQueueCtrs::new(ctr_len, 500, 1100).unwrap();
+
+            for iterata_ma in [10_000_000, 10_000, 10, 100_000_000, 500, 123456789] {
+                println!("| {:>10} |===================================", iterata_ma);
+                for x in [
+                    56, 29, 45, 6, 100, 100, 100, 100, 100, 23, 4, 5, 1, 2, 6, 54, 95, 45, 12, 39,
+                    91, 42, 36, 4, 1, 56, 1, 1, 100, 1, 100, 5, 4, 16u64, 0,
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let x = iterata_ma + x.1;
+                    test_me.push(x).unwrap();
+                    let _ = ws_wa.push(x, x as f32 * 1.2, true, "333".to_string());
+                }
+
+                assert_eq!(ws_wa.len(), 19);
+                let mut tc2 = test_me.clone();
+
+                let mut temp_vec_sl = vec![42u8/*42 is trash */; 200];
+
+                tc2.copy_ctrs_pack_to_slice(&mut temp_vec_sl).unwrap();
+                let vec_sl = test_me.get_ctrs_as_byte_pack_vec();
+
+                let h1 =
+                    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&temp_vec_sl, ctr_len).unwrap();
+
+                let h2 = WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vec_sl, ctr_len).unwrap();
+
+                WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
+                    &temp_vec_sl,
+                    ctr_len,
+                    &mut ws_wa,
+                )
+                .unwrap();
+                assert_eq!(ws_wa.len(), 0);
+                assert_eq!(h1, h2)
+            }
+
+            test_me.push(10).unwrap(); //1
+            test_me.push(1022).unwrap(); //2
+            test_me.push(1022).unwrap(); //3
+            test_me.push(10322).unwrap(); //4
+            test_me.push(10322).unwrap(); //5
+            test_me.push(10322).unwrap(); //6
+            test_me.push(1430).unwrap(); //7
+            test_me.push(18876).unwrap(); //8
+            test_me.push(652).unwrap(); //9
+            test_me.push(11).unwrap(); //10
+
+            let vet = test_me.get_ctrs_as_byte_pack_vec();
+
+            assert_eq!(22, vet.len());
+
+            assert_eq!(
+                WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vet, ctr_len).unwrap(),
+                [11, 1022, 10322, 1430, 18876, 652, 10]
+            );
+
+            assert_eq!(
+                WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vet[..vet.len() - 3], ctr_len)
+                    .unwrap(),
+                [11, 1022, 10322, 1430, 18876] /* -2 ctr*/
+            );
         }
 
         #[test]
@@ -1608,7 +1788,8 @@ pub mod recv_queue {
                 assert_eq!(
                     test_me.push(x),
                     if x < 500 {
-                        Ok(499 - x as usize)
+                        assert_eq!(499 - x as usize, test_me.free_space());
+                        Ok(())
                     } else {
                         Err("the queue is full")
                     }
@@ -1782,7 +1963,7 @@ pub mod recv_queue {
 
                 if ctrs_que.len() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
                     let mut ret = vec![0; ctrs_que.payload_len_in_bytes()];
-                    ctrs_que.get_ctrs_in_slice(&mut ret).unwrap();
+                    ctrs_que.copy_ctrs_pack_to_slice(&mut ret).unwrap();
                     net_steak_recv.push(ret);
                 }
             }
