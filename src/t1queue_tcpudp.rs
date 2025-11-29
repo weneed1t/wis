@@ -786,7 +786,7 @@ pub mod recv_queue {
 
             Ok(())
         }
-
+        ///calculates how many more times counters can be push()
         pub fn free_space(&self) -> usize {
             self
                 .data
@@ -938,32 +938,64 @@ pub mod recv_queue {
         /// Since WSRecvQueueCtrs is intended to be used with WSWaitQueue to avoid unnecessary allocation,
         ///  it receives a mutable wait_queue: &mut WSWaitQueue<T, P>,
         ///  and removes from it all counters that are encoded in pack: &[u8],
-        /// returns usize, a value that indicates how many counters were removed from WSWaitQueue
+        ///
+        /// --
+        ///
+        ///  returns (
+        ///
+        /// usize value that indicates how many counters were removed from WSWaitQueue,
+        ///
+        ///  Option<maximum P of the removed element from &mut WSWaitQueue<T, P>>,
+        ///
+        ///  Option<minimum P of the removed element from &mut WSWaitQueue<T, P>>
+        /// 
+        /// )
         pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T, P>(
             pack: &[u8],
             len_ctr_slise: usize,
             wait_queue: &mut WSWaitQueue<T, P>,
-        ) -> Result<usize, &'static str>
+        ) -> Result<(usize, Option<P>, Option<P>), &'static str>
         where
             T: Clone + Debug,
             P: PartialEq + PartialOrd + Clone + Debug,
         {
             let pre_pross = Self::len_check(pack, len_ctr_slise)?;
             let mut how_was_deleted = 0;
+            let mut min_del = None;
+            let mut max_del = None;
             for ctr_chank in pre_pross.2 {
                 let ret_el = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
                     .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
 
-                how_was_deleted += wait_queue.remove(ret_el).is_some() as usize & 1;
+                if let Some(ref del_elem) = wait_queue.remove(ret_el) {
+                    if let Some(min_xax) = &mut min_del {
+                        if *min_xax > del_elem.1 {
+                            *min_xax = del_elem.1.clone();
+                        }
+                    } else {
+                        min_del = Some(del_elem.1.clone())
+                    }
+
+                    if let Some(max_xax) = &mut max_del {
+                        if del_elem.1 > *max_xax {
+                            *max_xax = del_elem.1.clone();
+                        }
+                    } else {
+                        max_del = Some(del_elem.1.clone())
+                    }
+
+                    how_was_deleted += 1;
+                }
+
                 if pre_pross.0 == ret_el {
                     //if this is the final element, then the payload is complete
-                    return Ok(how_was_deleted);
+                    return Ok((how_was_deleted, min_del, max_del));
                 }
             }
 
-            Ok(how_was_deleted)
+            Ok((how_was_deleted, min_del, max_del))
         }
         //get the maximum and minimum counters currently in the queue
         pub fn get_min_max(&self) -> (u64, u64) {
@@ -1638,10 +1670,21 @@ pub mod recv_queue {
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1000).unwrap();
             let mut ws_wa: WSWaitQueue<String, f32> = WSWaitQueue::new(500).unwrap();
 
-            for iterata_ma in [10_000_000, 10_000, 10, 100_000_000, 500, 123456789] {
+            for iterata_ma in [
+                10_000_000,
+                10_000,
+                10,
+                100_000_000,
+                500,
+                123456789,
+                0,
+                12,
+                0xFF_FF_FF_FF_FF_FF_FE_11,
+                87667,
+            ] {
                 let mut hm: HashMap<u64, u64> = HashMap::new();
 
-                println!("| {:>10} |===================================", iterata_ma);
+                println!("| {:>20} |===================================", iterata_ma);
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
                     hm.insert(x.1, x.1);
                     test_me.push(x.1).unwrap();
@@ -1677,8 +1720,16 @@ pub mod recv_queue {
                     &ret_ve, ctr_len, &mut ws_wa,
                 )
                 .unwrap();
+                //println!("{:?}", re_recv);
 
-                assert_eq!(re_recv, 256);
+                assert_eq!(
+                    re_recv,
+                    (
+                        256,
+                        Some(iterata_ma as f32 * 1.2),
+                        Some((iterata_ma + 255) as f32 * 1.2)
+                    )
+                );
                 //assert_eq!(re_recv, 0);
 
                 assert_eq!(ws_wa.len(), 0);

@@ -158,12 +158,30 @@ impl WSFileSplitter {
     }
 
     fn start_proc_file<'a>(&mut self, slice: &'a [u8]) -> Result<Option<&'a [u8]>, &'static str> {
+        /*It's difficult to explain, but I'll try.
+        This method is mainly needed when a new file is created,
+        since it is assumed that files are transferred in a stream,
+        in some external packets, so it is assumed that there
+        may be some space between files in the stream
+        (necessarily filled with noise), for example,
+        a TCP stream. |head file1|file1 body |0,0,0,0,0,0,0, |head file2|file2 body |.
+        If recv_data:Option is not currently open in the structure,
+        this method skips all zeros until it finds a non-zero byte,
+        then checks that the first non-zero byte is in the range 1-8,
+        sets the header size in recv_data: Option HEAD,
+        1 byte of header length + (1-8 bytes of file body length).
+        and returns a slice with the truncated initial part
+        that it has already copied so as not to truncate it in the future.*/
+        //
+        //
+
         let slice = if self.recv_data.is_none() {
+            //if it is a new file, we look for the first non-zero byte; if the file is open, we return the slice unchanged
             if let Some(index) = slice.iter().position(|&x| x > 0) {
                 if slice[index] > 8 {
                     return Err("error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  ");
                 }
-
+                //trimming the slice so that it starts with useful data (head)
                 &slice[index..]
             } else {
                 return Ok(None);
@@ -171,21 +189,23 @@ impl WSFileSplitter {
         } else {
             &slice
         };
-
+        //just in case
         if 0 == slice.len() {
             return Ok(None);
         }
-
+        //
         if self.recv_data.is_none() {
             self.recv_data = Some((
                 DataDrain {
-                    len_of_head: slice[0] as usize,
+                    len_of_head: slice[0] as usize, //use first byte
                     ptr_in_body: 0,
                     ptr_in_head: 1, //len_of_head is first byte
                     head: [0; FILE_HEAD_LEN],
                 },
                 None,
             ));
+            //If the slice length is 1 and this is the beginning of the file,
+            // then 1 byte was used as the first byte in the header.
             if 1 == slice.len() {
                 Ok(None)
             } else {
@@ -289,6 +309,9 @@ impl WSFileSplitter {
         Ok((0, reta))
     }
 
+    ///Returns the full length of the received file,
+    /// returns ONLY the length of the payload
+    /// if the file header is not fully transmitted, returns None
     pub fn len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
             if let Some(ref dataa) = hea.1 {
@@ -300,6 +323,7 @@ impl WSFileSplitter {
             None
         }
     }
+    //full len of sending file
     pub fn len_of_send_file(&self) -> Option<usize> {
         if let Some(ref rfile) = self.send_file {
             Some(rfile.1.len())
@@ -307,10 +331,13 @@ impl WSFileSplitter {
             None
         }
     }
+    ///returns True if there is a started file in the structure
     pub fn i_have_some_recv(&self) -> bool {
         self.recv_data.is_some()
     }
-
+    ///Returns the remaining length of the file send by the structure.
+    ///
+    ///the remaining length in bytes will be returned.
     pub fn remaining_len_of_send_file(&self) -> Option<usize> {
         if let Some(ref rfile) = self.send_file {
             Some( rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
@@ -323,6 +350,12 @@ impl WSFileSplitter {
             None
         }
     }
+    ///Returns the remaining length of the file received by the structure.
+    ///
+    ///Note: if the file header was not transferred completely and
+    /// the length field is incomplete, the method will return None;
+    /// if the header was transferred completely,
+    /// then the remaining length will be returned.
     pub fn remaining_len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
             if let Some(ref dataa) = hea.1 {
