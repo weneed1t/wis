@@ -17,6 +17,7 @@ pub struct WsConnectParam {
     ///maximum packet size in bytes on the network</br>
     mtu: usize,
     //
+    //
     ///After sending the packet, the sender waits for a certain amount of time X.</br>
     ///  If no confirmation is received within the specified time X,</br>
     ///  the waiting time X is increased by the latency_increase_coefficient coefficient.</br>
@@ -25,18 +26,22 @@ pub struct WsConnectParam {
     ///  limit its limits so that the sender does not wait forever or wait 0.0 ms.</br>
     max_ms_latency: f32,
     //
+    //
     ///see description max_ms_latency ^^^</br></br>
     min_ms_latency: f32,
+    //
     //
     ///see description max_ms_latency ^^^ +</br></br>
     /// initial latency must be between max_ms_latency: f32 and min_ms_latency: f32,</br>
     start_ms_latency: f32,
+    //
     //
     ///see description max_ms_latency ^^^+</br></br>
     ///  if confirmation of the packet has not arrived within the waiting time X,</br>
     ///  the packet is sent again,</br>
     ///  and the waiting time for confirmation of this packet is set to this value</br>
     latency_increase_coefficient: f32,
+    //
     //
     ///If confirmation of the packet has not been received,</br>
     ///  it is sent again. If confirmation of the packet is not received several</br>
@@ -45,12 +50,14 @@ pub struct WsConnectParam {
     ///  the connection is terminated.</br>
     max_num_attempts_resend_package: usize,
     //
+    //
     ///The connection dynamically changes the latency time.</br>
     ///  To do this, it calculates the average latency of</br>
     ///  the last packages_measurement_window_size_determining_latency packets.</br>
     ///  The smaller this number is,</br>
     ///  the faster the algorithm will respond to changes in latency.</br>
     packages_measurement_window_size_determining_latency: usize,
+    //
     //
     ///see description max_ms_latency ^^^ and packages_measurement_window_size_determining_latency +
     ///Network latency is determined dynamically during algorithm execution when a</br>
@@ -60,6 +67,24 @@ pub struct WsConnectParam {
     ///  overhead_network_latency_relative_window (overhead_network_latency_relative_window>= 1.0).</br>
     ///  This value is necessary so that packets are not resent in case of minor network instability.</br>
     overhead_network_latency_relative_window: f32,
+    //
+    //
+    ///maximum_packet_delay_coefficient_fback This is the coefficient needed to calculate how long</br>
+    ///  to wait before sending a packet confirmation.</br>
+    ///  It must be greater than 0, but not greater than 2.</br>
+    ///  After the packet has been received by the recipient,</br>
+    ///  the recipient must send an fback confirmation packet,</br>
+    ///  but fback may contain several counters of received packets,</br>
+    ///  so the packet recipient waits for some time before sending the fback confirmation packet,</br>
+    ///  as it expects that more packets may arrive,</br>
+    ///  and the recipient will add several counters of received packets</br>
+    ///  to fback and send confirmation of several packets instead of one.</br></br>
+    ///The waiting time is calculated as</br>
+    ///  maximum_packet_delay_coefficient_fback multiplied by the current network delay time.</br>
+    ///  The maximum value of 2 is chosen for reasonableness,</br>
+    /// so that the maximum waiting time for sending fback is not very long.</br>
+    maximum_packet_delay_coefficient_fback: f32,
+    //
     //
     ///ttl is a standard field for TTL (Through The Line) Internet protocol algorithms.</br>
     ///  The first usize is the maximum number that the counter can accept; if it is greater</br>
@@ -113,13 +138,27 @@ pub struct WsConnectParam {
     ///#### 3 those that have been sent to fback from the recipient to the sender to confirm receipt.
     maximum_length_queue_unconfirmed_packages: usize,
     //
-
+    //
+    ///percent_fake_data_packets can be greater than 0 and less than 1.0.
+    ///  It is needed so that the protocol sends fake packets to make it difficult for traffic censorship
+    ///  tools to detect them. When creating a useful data packet, there is a chance that a packet of
+    ///  junk data will appear with the percent_fake_data_packets value.
+    percent_fake_data_packets: Option<f32>,
+    //
+    ///see description percent_fake_data_packets^^^
+    /// similar behavior for fback-type packets
+    percent_fake_fback_packets: Option<f32>,
     //
     //
-    percent_fake_packets: Option<f32>,
-    percent_scatter_random_long_trash_padding_in_data_packs: Option<f32>,
-    percent_scatter_random_long_trash_padding_in_fback_packs: Option<f32>,
-    //key_gen_data_scheme:(usize,[usize;]),
+    ///percent_scatter_random_long_trash_padding_in_data_packs also serves to add junk data to the end of a data packet.
+    ///  This is necessary to hide the actual size of the packet, especially fback packets,
+    ///  since such packets are often much shorter than data packets.
+    ///  usize is responsible for the maximum number of junk bytes added. As a result,
+    ///  a random number of bytes from 0 to usize will be added to the end of the packet.
+    percent_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
+    ///see description percent_scatter_random_long_trash_padding_in_data_packs^^^
+    /// similar behavior for fback-type packets
+    percent_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
 }
 
 //struct WsAllParam {}
