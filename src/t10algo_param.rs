@@ -75,10 +75,21 @@ pub struct WsConnectParam {
     ///  Carefully study the basics of Internet networks so you don't do anything stupid ;)
     ttl_max_start_cost: Option<(usize, usize, i64)>,
     //
-
     //
+    ///The maximum_length_udp_queue_packages value is used in the WSUdpLike class.
+    ///  For more details, see the WSUdpLike API. In short,
+    ///  WSUdpLike is needed to restore the sequence of packets
+    ///  if some packets arrived out of order/were duplicated/or to wait for lost packets.
+    ///  Ideally, maximum_length_udp_queue_packages should be greater than or equal to maximum_length_queue_unconfirmed_package.
+    ///  This is because if maximum_length_queue_unconfirmed_package is larger,
+    ///  a situation may arise where the WSUdpLike queue overflows and valid packets are rejected.
+    ///  This will lead to an increase in network load.
+    maximum_length_udp_queue_packages: usize,
+    //
+    //
+    ///
     maximum_length_fback_queue_packages: usize,
-    coefficient_maximum_length_queue_unconfirmed_packages: f32,
+    maximum_length_queue_unconfirmed_packages: usize,
     //
 
     //

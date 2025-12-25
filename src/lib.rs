@@ -22,6 +22,6 @@ pub mod private_core {
 }
 /* delete this in prod
 git add . &&
- git commit -m "DEATH TRUNK" &&
+git commit -m "DEATH TRUNK" &&
 git push origin
 */
