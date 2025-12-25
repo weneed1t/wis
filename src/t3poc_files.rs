@@ -106,7 +106,6 @@ impl WSFileSplitter {
     ///  then the structure can accept the next file in write_new_rc_file().
     /// This function returns -> Option<usize> because it involves remaining_len_of_rc_file($self)
     /// internally, so if file_to_slices() == None, it means the file is finished.
-
     pub fn file_to_slices(&mut self, slice: &mut [u8]) -> Option<usize> {
         let mut how_much_left = 0;
         //if the file exists
@@ -216,6 +215,7 @@ impl WSFileSplitter {
         }
     }
 
+    ///
     pub fn slices_to_file(&mut self, slice: &[u8]) -> Result<(usize, Vec<Vec<u8>>), &'static str> {
         let mut slice = slice;
         let mut old_slice_len = slice.len();
@@ -227,30 +227,35 @@ impl WSFileSplitter {
             } else {
                 return Ok((0, reta));
             };
-
+            // IF(if the file is full and completely filled) IF(is there a head )
             if if let Some(recv_me) = &mut self.recv_data {
                 // (1 byte of len) + (1-8bytes of u64)
-
-                let head_is_full = if recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head {
+                //head treatment
+                let head_is_non_full = if recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head {
+                    //find the minimum that is shorter than the length
+                    //of the slice or the length of the unfilled space in the head
                     let min_len = min(
                         slice.len(),
                         recv_me.0.len_of_head + 1 - recv_me.0.ptr_in_head,
                     );
+                    //copy a safe number of bytes to a file in the structure
                     recv_me.0.head[recv_me.0.ptr_in_head..recv_me.0.ptr_in_head + min_len]
                         .copy_from_slice(&slice[..min_len]);
-
+                    //move the pointer to the number of bytes copied
                     recv_me.0.ptr_in_head += min_len;
-
+                    //slice trimming
                     slice = &slice[min_len..]; //new slice
-                    !(recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head) //bool
+                                               //
+                    recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head //bool
                 } else {
-                    true
+                    false
                 };
-                if !head_is_full {
+                if head_is_non_full {
                     return Ok((0, reta));
                 }
-
+                //if there is no body (payload)
                 if recv_me.1.is_none() {
+                    //calculation of payload length
                     let len_vec =
                         wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect("impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.");
 
@@ -269,23 +274,33 @@ impl WSFileSplitter {
 
                     recv_me.1 = Some(vec![0; len_vec as usize]);
                 }
+                //if the load vector has already been allocated
                 if let Some(file_recv) = &mut recv_me.1 {
+                    //find the minimum that is shorter than the length
+                    //of the slice or the length of the unfilled space in the body
                     let min_len = min(slice.len(), file_recv.len() - recv_me.0.ptr_in_body);
-
+                    //copy a safe number of bytes to a file in the structure
                     file_recv[recv_me.0.ptr_in_body..recv_me.0.ptr_in_body + min_len]
                         .copy_from_slice(&slice[..min_len]);
-
+                    //move the pointer to the number of bytes copied
                     recv_me.0.ptr_in_body += min_len;
-
+                    //slice trimming
                     slice = &slice[min_len..]; //new slice
-
-                    recv_me.0.ptr_in_body >= file_recv.len() //bool
+                                               //
+                    if recv_me.0.ptr_in_body > file_recv.len() {
+                        panic!("impossible condition, according to the logic of the program, the pointer should not be longer than the length of the massva file");
+                    }
+                    //if the file is full and completely filled
+                    recv_me.0.ptr_in_body == file_recv.len() //bool
                 } else {
                     panic!("impossible state, Some is created above");
                 }
             } else {
                 panic!("impossible state, Some is created above");
             } {
+                //if the file is full and completely filled
+
+                //The file's payload is added to the array that needs to be returned.
                 reta.push(
                     std::mem::replace(&mut self.recv_data, None)
                         .expect("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")
@@ -300,7 +315,9 @@ impl WSFileSplitter {
             if 0 == slice.len() {
                 break;
             }
-
+            //Since a loop is used here, according to the standard,
+            //it is necessary to verify that
+            //the loop will not repeat indefinitely and will exit the loop 100% of the time.
             if old_slice_len == slice.len() {
                 panic!("Error in algorithm development: in each iteration of the loop, the value of slice.len() should decrease!");
             }

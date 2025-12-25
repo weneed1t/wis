@@ -113,7 +113,6 @@ pub mod recv_queue {
             let min_len = self.pack_topology.total_minimal_len();
             let mut ret_paks: Vec<Box<[u8]>> = Vec::with_capacity(10);
             let mut pos_in_data = 0;
-            //println!("\n__len pf p {}\n", data.len());
 
             while pos_in_data < data.len() {
                 // check. choosing the shorter length.
@@ -147,8 +146,17 @@ pub mod recv_queue {
                     break;
                 }
                 //copying copy_elems_to_buf from data to a buffer using offsets
-                self.u_buf[self.elems_in_buf..self.elems_in_buf + copy_elems_to_buf]
-                    .copy_from_slice(&data[pos_in_data..pos_in_data + copy_elems_to_buf]);
+                self.u_buf[self.elems_in_buf
+                    ..self
+                        .elems_in_buf
+                        .checked_add(copy_elems_to_buf)
+                        .expect("err in elems_in_buf + copy_elems_to_buf")]
+                    .copy_from_slice(
+                        &data[pos_in_data
+                            ..pos_in_data
+                                .checked_add(copy_elems_to_buf)
+                                .expect("err in pos_in_data + copy_elems_to_buf")],
+                    );
 
                 //Updating offsets to copy_elems_to_buf value
                 self.elems_in_buf = self.elems_in_buf.checked_add(copy_elems_to_buf).ok_or(
@@ -158,7 +166,7 @@ pub mod recv_queue {
                     pos_in_data
                         .checked_add(copy_elems_to_buf)
                         .ok_or(WSQueueErr::Critical(
-                            "err in pos_in_data + opy_elems_to_buf",
+                            "err in pos_in_data + copy_elems_to_buf",
                         ))?;
 
                 let mut ptr_to_start = 0;
@@ -202,12 +210,19 @@ pub mod recv_queue {
                         //and you need to wait until the packet arrives in its entirety.
                         if elem_in_buf_quque >= len_of_curent_pack {
                             //current package is a full in buf
-                            ptr_to_start += len_of_curent_pack;
+                            ptr_to_start = ptr_to_start
+                                .checked_add(len_of_curent_pack)
+                                .expect("err ptr_to_start + len_of_curent_pack");
                         } else {
                             break;
                         }
-                        let mut boxed_slice =
-                            vec![0u8; ptr_to_start - old_ret_pos].into_boxed_slice();
+                        let mut boxed_slice = vec![
+                            0u8;
+                            ptr_to_start
+                                .checked_sub(old_ret_pos)
+                                .expect("err ptr_to_start - old_ret_pos")
+                        ]
+                        .into_boxed_slice();
                         boxed_slice.copy_from_slice(&self.u_buf[old_ret_pos..ptr_to_start]);
                         ret_paks.push(boxed_slice);
 
@@ -295,7 +310,7 @@ pub mod recv_queue {
             }
 
             let minimal_ctr = match self.last_give_ctr {
-                Some(x) => x + 1,
+                Some(x) => x.checked_add(1).expect("err x +1"),
                 None => 0,
             };
 
@@ -308,7 +323,8 @@ pub mod recv_queue {
                 return WSQueueState::ElemIdIsBig;
             }
 
-            let elem_url = &mut self.data[(pos + self.k_mod) % self.data.len()];
+            let elem_url = &mut self.data
+                [(pos.checked_add(self.k_mod).expect("err pos + self.k_mod")) % self.data.len()];
 
             if elem_url.is_some() {
                 return WSQueueState::ElemIsAlreadyIn;
@@ -324,18 +340,26 @@ pub mod recv_queue {
 
             *elem_url = Some((item_ctr, item.clone()));
 
-            self.in_queue += 1;
+            self.in_queue = self.in_queue.checked_add(1).expect("err self.in_queue + 1");
 
             WSQueueState::SuccessfulInsertion
         }
 
         fn k_add(&mut self, addin: usize) {
-            self.k_mod = (self.k_mod + addin) % self.data.len();
+            self.k_mod = (self
+                .k_mod
+                .checked_add(addin)
+                .expect("err addin + self.k_mod"))
+                % self.data.len();
         }
 
         fn edit_my_state(&mut self, size_of_ret: usize, last_item_ctr: u64) {
             let le = self.data.len();
-            for x in self.k_mod..size_of_ret + self.k_mod {
+            for x in self.k_mod
+                ..size_of_ret
+                    .checked_add(self.k_mod)
+                    .expect("err self.k_mod + size_of_ret")
+            {
                 self.data[x % le] = None;
             }
 
@@ -405,16 +429,21 @@ pub mod recv_queue {
 
             if let Some(lctr) = self.largest_ctr {
                 let ad = self.last_give_ctr.is_some() as u64 & 1;
-                let ex = (self.in_queue as u64 + ad) < (lctr - lgctr) + 1;
+                let ex = ((self.in_queue as u64)
+                    .checked_add(ad)
+                    .expect("err ad + self.in_queue"))
+                    < (lctr.checked_sub(lgctr).expect("err (lctr - lgctr)"))
+                        .checked_add(1)
+                        .expect("(lctr - lgctr) + 1");
 
-                println!(
-                    "last {} larg {} sub {}  inq {}  gap {}",
-                    lctr,
-                    lgctr,
-                    (lctr - lgctr),
-                    self.in_queue,
-                    ex
-                );
+                //println!(
+                //    "last {} large {} sub {}  inq {}  gap {}",
+                //    lctr,
+                //    lgctr,
+                //    (lctr - lgctr),
+                //    self.in_queue,
+                //    ex
+                //);
                 ex
             } else {
                 false
@@ -492,15 +521,15 @@ pub mod recv_queue {
         /// p_order is a check object, usually f32/f64 or u32/64.
         /// If p_order is greater than all p_orders currently in the table,
         /// the insertion occurs in O(1); if p_order is smaller,
-        /// forse_to_max_p if  == true, then if the value of p_order is less than max_elem_id_and_p,
+        /// force_to_max_p if  == true, then if the value of p_order is less than max_elem_id_and_p,
         /// the element will be added, but its p_order will be equal to max_elem_id_and_p;
-        ///  if forse_to_max_p if  == false, then if the value of p_order for the element is
+        ///  if force_to_max_p if  == false, then if the value of p_order for the element is
         ///  less than max_elem_id_and_p, an error will be triggered.
         pub fn push(
             &mut self,
             id: u64,
             p_order: P,
-            forse_to_max_p: bool,
+            force_to_max_p: bool,
             elem: T,
         ) -> Result<(), &'static str> {
             if self.elems_in_me >= self.max_capacity_elems {
@@ -508,7 +537,7 @@ pub mod recv_queue {
             }
             let mut p_order = p_order;
             if let Some(mp) = &mut self.of_max_p {
-                if forse_to_max_p {
+                if force_to_max_p {
                     p_order = mp.1.clone();
                 }
                 if mp.1 > p_order {
@@ -527,7 +556,10 @@ pub mod recv_queue {
                         data: elem,
                         p_order: p_order.clone(),
                     });
-                    self.elems_in_me += 1;
+                    self.elems_in_me = self
+                        .elems_in_me
+                        .checked_add(1)
+                        .expect("err 1+ self.elems_in_me");
                 }
             };
 
@@ -653,7 +685,7 @@ pub mod recv_queue {
                 //The last element in the sequence does not have a reference to the next element,
                 //so if x + 1 ==self.elems_in_me,
                 //then this element is the last one and there is no need to take cl from it, since it is None.
-                if x + 1 == self.elems_in_me {
+                if x.checked_add(1).expect("err x + 1") == self.elems_in_me {
                     break;
                 }
                 temp_id = temp
@@ -865,7 +897,7 @@ pub mod recv_queue {
                 .ptr
                 .checked_sub(1)
                 .expect("impossible state overflow when subtracting ")];
-            self.data[self.ptr - 1] = temp_swap;
+            self.data[self.ptr.checked_sub(1).expect("err self.ptr - 1")] = temp_swap;
 
             //copying the reference counter to the swing slice
             wutils::u64_to_1_8bytes(self.min, &mut pack_payload_slice[..U64_LEN_IN_BYTES])?;
@@ -948,7 +980,7 @@ pub mod recv_queue {
         ///  Option<maximum P of the removed element from &mut WSWaitQueue<T, P>>,
         ///
         ///  Option<minimum P of the removed element from &mut WSWaitQueue<T, P>>
-        /// 
+        ///
         /// )
         pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T, P>(
             pack: &[u8],
@@ -960,7 +992,7 @@ pub mod recv_queue {
             P: PartialEq + PartialOrd + Clone + Debug,
         {
             let pre_pross = Self::len_check(pack, len_ctr_slise)?;
-            let mut how_was_deleted = 0;
+            let mut how_was_deleted: usize = 0;
             let mut min_del = None;
             let mut max_del = None;
             for ctr_chank in pre_pross.2 {
@@ -986,7 +1018,9 @@ pub mod recv_queue {
                         max_del = Some(del_elem.1.clone())
                     }
 
-                    how_was_deleted += 1;
+                    how_was_deleted = how_was_deleted
+                        .checked_add(1)
+                        .expect("err 1 + how_was_deleted");
                 }
 
                 if pre_pross.0 == ret_el {

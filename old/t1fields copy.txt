@@ -1,3 +1,5 @@
+use std::ops::Mul;
+
 use crate::t1pology::PackTopology;
 use crate::{t1pology, wutils};
 
@@ -62,6 +64,119 @@ impl PartialEq for WTypeErr {
     }
 }
 
+/*
+IN FUTURE
+
+
+
+#[derive(Debug, Clone)]
+pub enum WPackageType {
+    Data,  //0
+    Fback, //1
+}
+
+impl WPackageType {
+    pub fn bit_as(&self) -> u8 {
+        match self {
+            WPackageType::Data => 0,
+            WPackageType::Fback => 1,
+        }
+    }
+
+    pub fn new(bit: u8) -> WPackageType {
+        match bit {
+            0 => WPackageType::Data,
+            1 => WPackageType::Fback,
+            _ => WPackageType::Fback,
+        }
+    }
+}
+
+impl PartialEq for WPackageType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WPackageType::Data, WPackageType::Data) => true,
+            (WPackageType::Fback, WPackageType::Fback) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum WKeyMode {
+    Defauld, //0
+    Gener,   //1
+}
+
+impl WKeyMode {
+    pub fn bit_as(&self) -> u8 {
+        match self {
+            WKeyMode::Defauld => 0,
+            WKeyMode::Gener => 1,
+        }
+    }
+
+    pub fn new(bit: u8) -> WKeyMode {
+        match bit {
+            0 => WKeyMode::Defauld,
+            1 => WKeyMode::Gener,
+            _ => WKeyMode::Gener,
+        }
+    }
+}
+
+impl PartialEq for WKeyMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WKeyMode::Defauld, WKeyMode::Defauld) => true,
+            (WKeyMode::Gener, WKeyMode::Gener) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum WPascageMode {
+    NotEPV,       //0
+    WaitTime,     //1
+    FastEPVQeuqe, //2
+    KillConnect,  //3
+}
+
+impl WPascageMode {
+    pub fn bits_as(&self) -> u8 {
+        return match self {
+            WPascageMode::NotEPV => 0,
+            WPascageMode::WaitTime => 1,
+            WPascageMode::FastEPVQeuqe => 2,
+            WPascageMode::KillConnect => 3,
+        };
+    }
+
+    pub fn new(inp: u8) -> Result<Self, &'static str> {
+        return match inp {
+            0 => Ok(WPascageMode::NotEPV),
+            1 => Ok(WPascageMode::WaitTime),
+            2 => Ok(WPascageMode::FastEPVQeuqe),
+            3 => Ok(WPascageMode::KillConnect),
+            _ => Err("inp:u8 is not in range 0-3"),
+        };
+    }
+}
+
+impl PartialEq for WPascageMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (WPascageMode::NotEPV, WPascageMode::NotEPV) => true,
+            (WPascageMode::WaitTime, WPascageMode::WaitTime) => true,
+            (WPascageMode::FastEPVQeuqe, WPascageMode::FastEPVQeuqe) => true,
+            (WPascageMode::KillConnect, WPascageMode::KillConnect) => true,
+            _ => false,
+        }
+    }
+}
+
+    */
 ///======================================================================================================
 
 /*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), &'static str>
@@ -160,27 +275,6 @@ pub trait Noncer: Sized {
     fn new() -> Result<Self, &'static str>;
 
     fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
-}
-
-pub struct DumpNonser {}
-
-impl Noncer for DumpNonser {
-    fn new() -> Result<Self, &'static str> {
-        panic!(
-            "This panic is called from DumpNonser because it is a stub class,
-         none of its methods should be called in normal code and this class only
-          serves to indicate it as None in variable:Option<DumpNonser> = None;"
-        );
-        //Ok(Self {})
-    }
-    fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), &'static str> {
-        panic!(
-            "This panic is called from DumpNonser because it is a stub class,
-         none of its methods should be called in normal code and this class only
-          serves to indicate it as None in variable:Option<DumpNonser> = None;"
-        );
-        //Ok(())
-    }
 }
 
 /// computes and validates the header crc checksum using a user-provided crc function
@@ -670,10 +764,10 @@ where
     if is_encrypt {
         let (n, c) = (
             if let Some(x) = topology.nonce_slice() {
-                nonce_gener
-                    .ok_or(WTypeErr::NoneFieldErr("nonce_gener required"))?
-                    .set_nonce(&mut pack[x.0..x.1])
-                    .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+                nonce_gener.ok_or(WTypeErr::NoneFieldErr("nonce_gener required"))?(
+                    &mut pack[x.0..x.1],
+                )
+                .map_err(|x| WTypeErr::WorkTimeErr(x))?;
                 1
             } else {
                 0
@@ -747,6 +841,45 @@ where
 
     Ok(())
 }
+/*
+//IN FUTURE
+
+//7   6   5   4   3   2   1   0
+//┌───┬───┬───┬───┬───┬───┬───┬───┐
+//│ 0   0 │ 0   0 │  WPM  │WKM│WPT│
+//└───┴───┴───┴───┴───┴───┴───┴───┘
+pub fn get_head_byte(
+    pack: &[u8],
+    topology: &PackTopology,
+) -> Result<(WPascageMode, WKeyMode, WPackageType), &'static str> {
+    if pack.len() <= topology.head_byte_pos() {
+        return Err("pack.len(), = topology.head_byte_pos()");
+    }
+    let hb = pack[topology.head_byte_pos()];
+    Ok((
+        WPascageMode::new((hb >> 2) & 0b11)?,
+        WKeyMode::new((hb >> 1) & 0b1),
+        WPackageType::new(hb & 0b1),
+    ))
+}
+
+pub fn set_head_byte(
+    pack: &mut [u8],
+    topology: &PackTopology,
+    wpm: WPascageMode,
+    wkm: WKeyMode,
+    wpt: WPackageType,
+) -> Result<(), &'static str> {
+    if pack.len() <= topology.head_byte_pos() {
+        return Err("pack.len(), = topology.head_byte_pos()");
+    }
+    pack[topology.head_byte_pos()] =
+        0x00 | (WPascageMode::bits_as(&wpm) << 2) | (wkm.bit_as() << 1) | wpt.bit_as();
+    return Ok(());
+}
+
+
+*/
 
 ///(array(head fields len + headbyte len + paload len+ tag len),(payload start pos,  pauload endpos) )
 pub fn pre_alloc(
@@ -757,7 +890,7 @@ pub fn pre_alloc(
     let len_pack = topology
         .total_minimal_len()
         .checked_add(payloadlen)
-        .ok_or(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))?;
+        .ok_or(WTypeErr::LenSizeErr("owerflow payloadlen + minimal_len()"))?;
 
     return Ok((
         vec![
@@ -781,6 +914,206 @@ pub fn pre_alloc(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn dummy_usf(field: &mut [u8], counter: u64, full_len: usize) -> Result<(), &'static str> {
+        field.fill(123);
+        for (i, x) in field.iter_mut().enumerate() {
+            *x = x.wrapping_add(((i as u64 * counter).rotate_left(3)) as u8);
+            *x = x.rotate_right(5);
+            *x ^= ((!i).wrapping_add(full_len) as u64).rotate_left(3) as u8;
+        }
+        Ok(())
+    }
+
+    fn none_gen(mm: &mut [u8]) -> Result<(), &'static str> {
+        mm.fill(21);
+        Ok(())
+    }
+
+    fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
+        if crc.len() == 0 {
+            return Err("CRC  crc.len() == 0");
+        }
+        crc.fill(0);
+
+        let mut first_byte_value: u64 = 124252211;
+        let mut nvalue: u64 = 763232243643;
+
+        for (i, &byte) in inp.iter().enumerate() {
+            first_byte_value += {
+                let first_byte = crc.first_mut().unwrap();
+                (*first_byte ^ (((byte as usize + 17) + i) as u8) ^ crc.last().unwrap()) as u64
+            };
+            nvalue += (i as u64) * (byte as u64);
+            nvalue = nvalue.rotate_left(3);
+
+            first_byte_value ^=
+                first_byte_value.wrapping_add(first_byte_value.rotate_left(i as u32 % 61));
+
+            nvalue ^= nvalue.wrapping_mul(first_byte_value);
+            first_byte_value = first_byte_value.wrapping_add(nvalue.rotate_left((i & 11111) as u32))
+        }
+
+        first_byte_value ^= nvalue;
+
+        for y in crc.iter_mut().enumerate() {
+            *y.1 = first_byte_value
+                .rotate_left(y.0 as u32 % 61)
+                .wrapping_add(first_byte_value.rotate_right(y.0 as u32 * 17 / 63))
+                as u8;
+        }
+
+        Ok(())
+    }
+
+    struct CyptStruct {
+        key: Vec<u8>,
+    }
+
+    impl EncWis for CyptStruct {
+        fn new(key: &[u8]) -> Result<Self, &'static str> {
+            Ok(Self {
+                key: Vec::from(key),
+            })
+        }
+
+        fn encrypt(
+            &self,
+            non_enc_head: &[u8],
+            enc_payload: &mut [u8],
+            auth_tag: &mut [u8],
+            _nonce_countr: u64,
+            nonce: Option<&[u8]>,
+        ) -> Result<(), &'static str> {
+            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
+            //enc
+            let mut keee = self.key.iter().cycle();
+            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
+                *x = (*x).wrapping_add(i as u8);
+                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
+            }
+            let mut tag = 0_u32;
+            let mut tag_index = 0_usize;
+            //tag
+            for x in non_enc_head.iter() {
+                tag = tag.wrapping_add(*x as u32);
+                tag = tag.rotate_left(tag_index as u32 & 0b11111);
+                tag_index += 1;
+            }
+            //tag
+            for x in enc_payload.iter() {
+                tag = tag.wrapping_add(*x as u32);
+                tag = tag.rotate_left(tag_index as u32 & 0b11111);
+                tag_index += 1;
+            }
+            //tagin
+            for x in auth_tag.iter_mut() {
+                *x = tag as u8;
+                tag = tag.rotate_left(1);
+            }
+
+            Ok(())
+        }
+
+        fn decrypt(
+            &self,
+            non_enc_head: &[u8],
+            enc_payload: &mut [u8],
+            auth_tag: &mut [u8],
+            _nonce_countr: u64,
+            nonce: Option<&[u8]>,
+        ) -> Result<StatusDecrypt, &'static str> {
+            let mut tag = 0_u32;
+            let mut tag_index = 0_usize;
+            //tag
+            for x in non_enc_head.iter() {
+                tag = tag.wrapping_add(*x as u32);
+                tag = tag.rotate_left(tag_index as u32 & 0b11111);
+                tag_index += 1;
+            }
+            //tag
+            for x in enc_payload.iter() {
+                tag = tag.wrapping_add(*x as u32);
+                tag = tag.rotate_left(tag_index as u32 & 0b11111);
+                tag_index += 1;
+            }
+            //tagin
+            for x in auth_tag.iter_mut() {
+                if *x != tag as u8 {
+                    return Ok(StatusDecrypt::PackageDamaged);
+                }
+                *x = tag as u8;
+                tag = tag.rotate_left(1);
+            }
+
+            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
+            let mut keee = self.key.iter().cycle();
+            //enc
+            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
+                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
+
+                *x = (*x).wrapping_sub(i as u8);
+            }
+
+            Ok(StatusDecrypt::DecodedCorrectly)
+        }
+    }
+
+    #[test]
+    fn test_dumm() {
+        for ingame_2 in 0..2 {
+            for ingame in 0..32 {
+                let mut h = [0_u8; 32]; //
+                let mut e = [0_u8; 32]; //
+                let mut nonce = [0_u8; 32];
+                let mut tag = [0_u8; 32];
+
+                for (i, he) in h.iter_mut().enumerate() {
+                    *he = he.wrapping_add((i * 213) as u8);
+                }
+
+                for (i, he) in e.iter_mut().enumerate() {
+                    *he = he.wrapping_add((i * 43) as u8);
+                }
+
+                for (i, he) in nonce.iter_mut().enumerate() {
+                    *he = he.wrapping_add((i * 254) as u8);
+                }
+
+                let cs = CyptStruct::new(&vec![1, 2, 3, 5]).unwrap();
+
+                if ingame == 0 {
+                    assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
+                    assert_eq!(
+                        cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
+                        Ok(StatusDecrypt::DecodedCorrectly)
+                    );
+                } else {
+                    if ingame_2 == 0 {
+                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
+                        h[ingame] = !h[ingame];
+                        assert_eq!(
+                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
+                            Ok(StatusDecrypt::PackageDamaged)
+                        );
+                    }
+                    if ingame_2 == 1 {
+                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
+                        e[ingame] = !e[ingame];
+                        assert_eq!(
+                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
+                            Ok(StatusDecrypt::PackageDamaged)
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    //============================================================================================================TEST OF MODULE====================
+    //============================================================================================================TEST OF MODULE====================
+    //============================================================================================================TEST OF MODULE====================
+    //============================================================================================================TEST OF MODULE====================
 
     #[test]
     fn test_prealoc() {
@@ -818,7 +1151,7 @@ mod tests {
 
         assert_eq!(
             pre_alloc(&result, !0_usize, (!0_usize) - 1),
-            Err(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))
+            Err(WTypeErr::LenSizeErr("owerflow payloadlen + minimal_len()"))
         );
 
         let mut t = pre_alloc(&result, 100000, 43).unwrap();
@@ -831,7 +1164,79 @@ mod tests {
 
         println!("{:?}   /n{} /n {}", t.0, count, count0);
     }
+    /*
+        IN FUTURE
 
+    #[test]
+    fn test_wkey_mode() {
+        // Тестируем преобразование в биты
+        assert_eq!(WKeyMode::Defauld.bit_as(), 0);
+        assert_eq!(WKeyMode::Gener.bit_as(), 1);
+
+        // Тестируем создание из битов (валидные и невалидные случаи)
+        let test_cases = [
+            (0, WKeyMode::Defauld),
+            (1, WKeyMode::Gener),
+            (2, WKeyMode::Gener),   // Невалидный случай
+            (255, WKeyMode::Gener), // Невалидный случай
+        ];
+
+        for (input, expected) in test_cases {
+            assert_eq!(WKeyMode::new(input), expected);
+        }
+
+        // Тестируем сравнение
+        assert_eq!(WKeyMode::Defauld, WKeyMode::Defauld);
+        assert_eq!(WKeyMode::Gener, WKeyMode::Gener);
+        assert_ne!(WKeyMode::Defauld, WKeyMode::Gener);
+    }
+
+    #[test]
+    fn test_wpackage_type() {
+        assert_eq!(WPackageType::Data.bit_as(), 0);
+        assert_eq!(WPackageType::Fback.bit_as(), 1);
+        assert_eq!(WPackageType::new(0), WPackageType::Data);
+        assert_eq!(WPackageType::new(1), WPackageType::Fback);
+        assert_eq!(WPackageType::new(2), WPackageType::Fback);
+
+        assert_eq!(WPackageType::Data, WPackageType::Data);
+        assert_ne!(WPackageType::Data, WPackageType::Fback);
+    }
+
+        #[test]
+        fn test_wpascage_mode_conversions() {
+            let test_cases = [
+                (0, WPascageMode::NotEPV),
+                (1, WPascageMode::WaitTime),
+                (2, WPascageMode::FastEPVQeuqe),
+                (3, WPascageMode::KillConnect),
+            ];
+
+            for (bits, mode) in test_cases {
+                assert_eq!(mode.bits_as(), bits);
+                assert_eq!(WPascageMode::new(bits), Ok(mode.clone()));
+                assert_eq!(WPascageMode::new(mode.bits_as()).unwrap(), mode);
+            }
+
+            assert!(WPascageMode::new(4).is_err());
+            assert!(WPascageMode::new(255).is_err());
+        }
+
+        #[test]
+        fn test_wpascage_mode_equality() {
+            let modes = [
+                WPascageMode::NotEPV,
+                WPascageMode::WaitTime,
+                WPascageMode::FastEPVQeuqe,
+                WPascageMode::KillConnect,
+            ];
+            for (i, mode1) in modes.iter().enumerate() {
+                for (j, mode2) in modes.iter().enumerate() {
+                    assert_eq!(mode1 == mode2, i == j);
+                }
+            }
+        }
+    */
     #[test]
     fn test_gen_head_crc() {
         let fields = vec![
@@ -1027,7 +1432,169 @@ mod tests {
             Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
         );
     }
+    /*
+    IN FUTURE
+        #[test]
+        fn test_head_byte() {
+            let fields = vec![
+                //t2page::PakFields::HeadByte,
+                t1pology::PakFields::Counter(7),
+                t1pology::PakFields::IdConnect(6),
+                t1pology::PakFields::UserField(10),
+                t1pology::PakFields::HeadCRC(4),
+                t1pology::PakFields::TTL(4),
+            ];
 
+            let result = PackTopology::new(5, &fields, true, false).unwrap();
+
+            let mut bb = vec![0_u8; result.total_minimal_len()];
+
+            for x in bb.iter_mut().enumerate() {
+                *x.1 = x.0 as u8;
+            }
+
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((WPascageMode::NotEPV, WKeyMode::Defauld, WPackageType::Data))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::WaitTime,
+                    WKeyMode::Defauld,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::WaitTime,
+                    WKeyMode::Defauld,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ),
+                Ok(())
+            );
+            assert_eq!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Defauld,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_ne!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::FastEPVQeuqe,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ))
+            );
+
+            assert_eq!(
+                set_head_byte(
+                    &mut bb,
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+            assert_ne!(
+                get_head_byte(&bb, &result),
+                Ok((
+                    WPascageMode::KillConnect,
+                    WKeyMode::Gener,
+                    WPackageType::Fback
+                ))
+            );
+
+            assert_ne!(
+                set_head_byte(
+                    &mut bb[..2],
+                    &result,
+                    WPascageMode::NotEPV,
+                    WKeyMode::Gener,
+                    WPackageType::Data
+                ),
+                Ok(())
+            );
+        }
+    */
     #[test]
     fn test_crypt() {
         let fields = vec![
@@ -1052,22 +1619,14 @@ mod tests {
 
         assert_eq!(set_len(&mut bb, &result, 100), Ok(()));
 
-        let mut noncex = NonceStruct::new().unwrap();
-
+        let opt_non: Option<fn(&mut [u8]) -> Result<(), &'static str>> = Some(none_gen);
         let ctr_n = Some(1000);
 
         let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 5, 6]).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
-            crypt(
-                &mut bb,
-                &result,
-                Cryptlag::Encrypt,
-                &mut cs,
-                ctr_n,
-                Some(&mut noncex)
-            ),
+            crypt(&mut bb, &result, Cryptlag::Encrypt, &mut cs, ctr_n, opt_non),
             Ok(())
         ); //enc
         assert_ne!(
@@ -1088,7 +1647,7 @@ mod tests {
                 Cryptlag::Decrypt,
                 &mut cs,
                 ctr_n,
-                Some(&mut noncex)
+                opt_non
             ),
             Ok(())
         ); //decr
@@ -1101,7 +1660,7 @@ mod tests {
                 Cryptlag::Decrypt,
                 &mut cs,
                 ctr_n,
-                Some(&mut noncex)
+                opt_non
             ),
             Ok(())
         ); //decr
@@ -1114,7 +1673,7 @@ mod tests {
                 Cryptlag::Decrypt,
                 &mut cs,
                 ctr_n,
-                Some(&mut noncex)
+                opt_non
             ),
             Ok(())
         ); //decr
@@ -1142,7 +1701,7 @@ mod tests {
                             Cryptlag::Decrypt,
                             &mut cs,
                             ctr_n,
-                            Some(&mut noncex)
+                            opt_non
                         ),
                         Ok(())
                     );
@@ -1158,7 +1717,7 @@ mod tests {
                             Cryptlag::Decrypt,
                             &mut cs,
                             ctr_n,
-                            Some(&mut noncex)
+                            opt_non
                         ),
                         Ok(())
                     );
@@ -1172,7 +1731,7 @@ mod tests {
                     Cryptlag::Decrypt,
                     &mut cs,
                     ctr_n,
-                    Some(&mut noncex)
+                    opt_non
                 ),
                 Err(WTypeErr::PackageDamaged(
                     "error return during decryption associated with packet corruption"
@@ -1644,9 +2203,7 @@ mod tests {
             let llen = pack.len();
 
             pack[topology.content_start_pos()..llen - topology.tag_len()].fill(0x71);
-            let mut noncex = NonceStruct::new().unwrap();
 
-            let none_nonse: Option<&mut DumpNonser> = None;
             assert_ne!(
                 crypt(
                     &mut ttt[..],
@@ -1654,7 +2211,7 @@ mod tests {
                     Cryptlag::Encrypt,
                     &mut cs,
                     None,
-                    none_nonse
+                    None
                 ),
                 Ok(())
             );
@@ -1665,11 +2222,11 @@ mod tests {
                     Cryptlag::Encrypt,
                     &mut cs,
                     None,
-                    Some(&mut noncex)
+                    Some(none_gen)
                 ),
                 Ok(())
             );
-            let none_nonse: Option<&mut DumpNonser> = None;
+
             assert_ne!(
                 crypt(
                     &mut ttt[..],
@@ -1677,7 +2234,7 @@ mod tests {
                     Cryptlag::Encrypt,
                     &mut cs,
                     Some(ctr_m),
-                    none_nonse
+                    None
                 ),
                 Ok(())
             );
@@ -1694,7 +2251,7 @@ mod tests {
                     Cryptlag::Encrypt,
                     &mut cs,
                     Some(ctr_m),
-                    Some(&mut noncex)
+                    Some(none_gen)
                 ),
                 Ok(())
             );
@@ -1708,7 +2265,6 @@ mod tests {
         let crsrsr = topology
             .head_crc_slice()
             .unwrap_or((9999999999, 9999999999, 0));
-        let mut noncex = NonceStruct::new().unwrap();
         for x in 0..topology.encrypt_start_pos() {
             let mut t = vec![0; pack.len()];
             for x in t.iter_mut().zip(pack.iter()) {
@@ -1724,7 +2280,7 @@ mod tests {
                         Cryptlag::Decrypt,
                         &mut cs,
                         Some(ctr_m),
-                        Some(&mut noncex)
+                        Some(none_gen)
                     ),
                     Ok(()),
                     "pos: {}",
@@ -1738,7 +2294,7 @@ mod tests {
                         Cryptlag::Decrypt,
                         &mut cs,
                         Some(ctr_m),
-                        Some(&mut noncex)
+                        Some(none_gen)
                     ),
                     Ok(()),
                     "pos: {}",
@@ -1748,7 +2304,6 @@ mod tests {
         }
 
         //let ctr_m = 0x1122334415;
-
         for x in topology.encrypt_start_pos()..pack.len() {
             let mut t = vec![0; pack.len()];
             for x in t.iter_mut().zip(pack.iter()) {
@@ -1762,7 +2317,7 @@ mod tests {
                     Cryptlag::Decrypt,
                     &mut cs,
                     Some(ctr_m),
-                    Some(&mut noncex)
+                    Some(none_gen)
                 ),
                 Ok(())
             );
@@ -1822,7 +2377,7 @@ mod tests {
                 Cryptlag::Decrypt,
                 &mut cs,
                 Some(ctr_m),
-                Some(&mut noncex)
+                Some(none_gen)
             ),
             Ok(())
         );
@@ -1866,213 +2421,5 @@ mod tests {
             (id_s, id_r)
         );
         assert_eq!(get_len(&mut pack, &topology).unwrap(), pack.len());
-    }
-
-    //============================================================================================================helper functions for testing====================
-    //============================================================================================================helper functions for testing====================
-    //============================================================================================================helper functions for testing====================
-    //============================================================================================================helper functions for testing====================
-
-    fn dummy_usf(field: &mut [u8], counter: u64, full_len: usize) -> Result<(), &'static str> {
-        field.fill(123);
-        for (i, x) in field.iter_mut().enumerate() {
-            *x = x.wrapping_add(((i as u64 * counter).rotate_left(3)) as u8);
-            *x = x.rotate_right(5);
-            *x ^= ((!i).wrapping_add(full_len) as u64).rotate_left(3) as u8;
-        }
-        Ok(())
-    }
-
-    fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-        if crc.len() == 0 {
-            return Err("CRC  crc.len() == 0");
-        }
-        crc.fill(0);
-
-        let mut first_byte_value: u64 = 124252211;
-        let mut nvalue: u64 = 763232243643;
-
-        for (i, &byte) in inp.iter().enumerate() {
-            first_byte_value += {
-                let first_byte = crc.first_mut().unwrap();
-                (*first_byte ^ (((byte as usize + 17) + i) as u8) ^ crc.last().unwrap()) as u64
-            };
-            nvalue += (i as u64) * (byte as u64);
-            nvalue = nvalue.rotate_left(3);
-
-            first_byte_value ^=
-                first_byte_value.wrapping_add(first_byte_value.rotate_left(i as u32 % 61));
-
-            nvalue ^= nvalue.wrapping_mul(first_byte_value);
-            first_byte_value = first_byte_value.wrapping_add(nvalue.rotate_left((i & 11111) as u32))
-        }
-
-        first_byte_value ^= nvalue;
-
-        for y in crc.iter_mut().enumerate() {
-            *y.1 = first_byte_value
-                .rotate_left(y.0 as u32 % 61)
-                .wrapping_add(first_byte_value.rotate_right(y.0 as u32 * 17 / 63))
-                as u8;
-        }
-
-        Ok(())
-    }
-
-    struct CyptStruct {
-        key: Vec<u8>,
-    }
-
-    impl EncWis for CyptStruct {
-        fn new(key: &[u8]) -> Result<Self, &'static str> {
-            Ok(Self {
-                key: Vec::from(key),
-            })
-        }
-
-        fn encrypt(
-            &self,
-            non_enc_head: &[u8],
-            enc_payload: &mut [u8],
-            auth_tag: &mut [u8],
-            _nonce_countr: u64,
-            nonce: Option<&[u8]>,
-        ) -> Result<(), &'static str> {
-            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
-            //enc
-            let mut keee = self.key.iter().cycle();
-            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x = (*x).wrapping_add(i as u8);
-                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
-            }
-            let mut tag = 0_u32;
-            let mut tag_index = 0_usize;
-            //tag
-            for x in non_enc_head.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tag
-            for x in enc_payload.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tagin
-            for x in auth_tag.iter_mut() {
-                *x = tag as u8;
-                tag = tag.rotate_left(1);
-            }
-
-            Ok(())
-        }
-
-        fn decrypt(
-            &self,
-            non_enc_head: &[u8],
-            enc_payload: &mut [u8],
-            auth_tag: &mut [u8],
-            _nonce_countr: u64,
-            nonce: Option<&[u8]>,
-        ) -> Result<StatusDecrypt, &'static str> {
-            let mut tag = 0_u32;
-            let mut tag_index = 0_usize;
-            //tag
-            for x in non_enc_head.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tag
-            for x in enc_payload.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tagin
-            for x in auth_tag.iter_mut() {
-                if *x != tag as u8 {
-                    return Ok(StatusDecrypt::PackageDamaged);
-                }
-                *x = tag as u8;
-                tag = tag.rotate_left(1);
-            }
-
-            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
-            let mut keee = self.key.iter().cycle();
-            //enc
-            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
-
-                *x = (*x).wrapping_sub(i as u8);
-            }
-
-            Ok(StatusDecrypt::DecodedCorrectly)
-        }
-    }
-
-    struct NonceStruct {}
-
-    impl Noncer for NonceStruct {
-        fn new() -> Result<Self, &'static str> {
-            Ok(Self {})
-        }
-
-        fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str> {
-            nonce_gener.fill(21);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn test_dumm() {
-        for ingame_2 in 0..2 {
-            for ingame in 0..32 {
-                let mut h = [0_u8; 32]; //
-                let mut e = [0_u8; 32]; //
-                let mut nonce = [0_u8; 32];
-                let mut tag = [0_u8; 32];
-
-                for (i, he) in h.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 213) as u8);
-                }
-
-                for (i, he) in e.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 43) as u8);
-                }
-
-                for (i, he) in nonce.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 254) as u8);
-                }
-
-                let cs = CyptStruct::new(&vec![1, 2, 3, 5]).unwrap();
-
-                if ingame == 0 {
-                    assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                    assert_eq!(
-                        cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                        Ok(StatusDecrypt::DecodedCorrectly)
-                    );
-                } else {
-                    if ingame_2 == 0 {
-                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                        h[ingame] = !h[ingame];
-                        assert_eq!(
-                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Ok(StatusDecrypt::PackageDamaged)
-                        );
-                    }
-                    if ingame_2 == 1 {
-                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                        e[ingame] = !e[ingame];
-                        assert_eq!(
-                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Ok(StatusDecrypt::PackageDamaged)
-                        );
-                    }
-                }
-            }
-        }
     }
 }
