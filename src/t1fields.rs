@@ -68,14 +68,14 @@ impl PartialEq for WTypeErr {
 where &[u8] is the head, the data that is not encrypted,
 the first &mut [u8] is the body, the data that is encrypted
 the second &mut [u8] is the place where the authentication tag from head + body should be placed
-Option<&[u8]> is a Nonce if is a init in pack_topology: &t2page::PackTopology,
+Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
 
 type 2 fn(&mut[u8],usize,usize, u64, Option<&[u8]>) -> Result<(), &'static str>
 &mut[u8] is the full mutable packet
 the first usize is the index of the start of the body, so [0..(first usize)] is the head
 the second usize is the index of the start of tag, so [(first usize)..(second usize)] is the body
 the tag field, it is [(second usize)..] is the place for the tag
-Option<&[u8]> is a Nonce if is a init in pack_topology: &t2page::PackTopology,
+Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
 
 this enum is needed for maximum compatibility with the encryption libraries that are on the rust
 they both return -> Result<(), &'static str>
@@ -255,12 +255,12 @@ pub fn set_get_head_crc(
 /// used in multi-hop networks to limit packet lifetime; often paired with crc checks for integrity
 pub fn set_ttl(
     pack: &mut [u8],
-    pack_topology: &PackTopology,
+    topology: &PackTopology,
     ttl_i_edit: i64,
     ttl_max: u64,
     is_start_ttl: bool,
 ) -> Result<(), WTypeErr> {
-    if let Some((start, end, len)) = pack_topology.ttl_slice() {
+    if let Some((start, end, len)) = topology.ttl_slice() {
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
@@ -296,8 +296,8 @@ pub fn set_ttl(
 /// reads from the slice defined in topology; parsing uses bytes_to_u64
 /// should be called on unmodified packet data before any ttl updates for accurate inspection
 /// both functions require ttl_slice to be properly defined in PackTopology during construction
-pub fn get_ttl(pack: &[u8], pack_topology: &PackTopology) -> Result<u64, WTypeErr> {
-    if let Some((start, end, _)) = pack_topology.ttl_slice() {
+pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
+    if let Some((start, end, _)) = topology.ttl_slice() {
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
@@ -314,10 +314,10 @@ pub fn get_ttl(pack: &[u8], pack_topology: &PackTopology) -> Result<u64, WTypeEr
 /// ensures the length value fits within the allocated field (1–8 bytes); if too large, returns error
 /// encodes the length using u64_to_1_8bytes to match the field’s byte size and writes it into place
 /// used in stream-based protocols (e.g., TCP-like) where length is needed for framing and parsing
-pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
-    let sls = pack_topology
+pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
+    let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))?;
 
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -347,10 +347,10 @@ pub fn set_len(pack: &mut [u8], pack_topology: &PackTopology, mtu: usize) -> Res
 /// decodes bytes via bytes_to_u64 and converts to usize; returns error on parsing failure
 /// useful for determining packet boundaries during parsing or validation
 /// both functions assume the length field is unencrypted and located in the packet header
-pub fn get_len(pack: &[u8], pack_topology: &PackTopology) -> Result<usize, WTypeErr> {
-    let sls = pack_topology
+pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> {
+    let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))?;
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
@@ -1250,7 +1250,7 @@ mod tests {
         );
         assert_eq!(
             set_len(&mut bb, &result_non_len, 435,),
-            Err(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))
+            Err(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))
         );
 
         assert_eq!(
@@ -1259,7 +1259,7 @@ mod tests {
         );
         assert_eq!(
             get_len(&bb, &result_non_len),
-            Err(WTypeErr::NoneFieldErr(" pack_topology.len_slice() is none"))
+            Err(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))
         );
     }
 
