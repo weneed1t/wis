@@ -1,3 +1,5 @@
+use std::f32::consts::E;
+
 use crate::t1pology::PackTopology;
 use crate::{t1pology, wutils};
 
@@ -242,37 +244,45 @@ pub fn set_get_head_crc(
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
-/// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed ttl, and is_start_ttl flag
-/// returns Ok(()) on success, Err(&'static str) on failure
-/// if ttl field is not present in topology, returns error
-/// if is_start_ttl is true, initializes ttl to ttl_i_edit (treated as absolute starting value, must be positive)
-/// otherwise, increments existing ttl value by ttl_i_edit (can be negative to decrease)
-/// reads current ttl from packet using bytes_to_u64; if parsing fails, returns error
-/// result is computed via safe add_u64_i64 to prevent overflow/underflow
-/// validates that resulting ttl is less than ttl_max and fits within the field's byte length (1–8 bytes)
-/// if ttl exceeds capacity of its slice (based on len), returns error to avoid truncation
-/// writes updated value back into packet using u64_to_1_8bytes
-/// used in multi-hop networks to limit packet lifetime; often paired with crc checks for integrity
+/// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed ttl, and is_start_ttl flag<br>
+/// returns Ok(()) on success, Err(&'static str) on failure<br>
+/// if ttl field is not present in topology, returns error<br>
+/// if is_start_ttl is true, initializes ttl to ttl_i_edit (treated as absolute starting value, must be positive)<br>
+/// otherwise, increments existing ttl value by ttl_i_edit (can be negative to decrease)<br>
+/// reads current ttl from packet using bytes_to_u64; if parsing fails, returns error<br>
+/// result is computed via safe add_u64_i64 to prevent overflow/underflow<br>
+/// validates that resulting ttl is less than ttl_max and fits within the field's byte length (1–8 bytes)<br>
+/// if ttl exceeds capacity of its slice (based on len), returns error to avoid truncation<br>
+/// writes updated value back into packet using u64_to_1_8bytes<br>
+/// used in multi-hop networks to limit packet lifetime; often paired with crc checks for integrity<br><br>
+/// Result<u64, WTypeErr> , Ok(u64) return value ttl after subtracting ttl_i_edit
 pub fn set_ttl(
     pack: &mut [u8],
     topology: &PackTopology,
     ttl_i_edit: i64,
     ttl_max: u64,
     is_start_ttl: bool,
-) -> Result<(), WTypeErr> {
+) -> Result<u64, WTypeErr> {
     if let Some((start, end, len)) = topology.ttl_slice() {
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        // println!("{:?}   {:?}",wutils::bytes_to_u64(&data[start..end])?, &data[start..end]);
+
         let temp = wutils::add_u64_i64(
             if is_start_ttl {
+                if ttl_i_edit < 0 {
+                    return Err(WTypeErr::WorkTimeErr("is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."));
+                }
                 0
             } else {
-                wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?
+             let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
+             if ttl_before >ttl_max{
+                return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
+             }
+             ttl_before
             },
             ttl_i_edit,
-        )
+        true)
         .map_err(|x| WTypeErr::PackageDamaged(x))?;
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
@@ -285,7 +295,7 @@ pub fn set_ttl(
         wutils::u64_to_1_8bytes(temp, &mut pack[start..end])
             .map_err(|x| WTypeErr::WorkTimeErr(x))?;
 
-        return Ok(());
+        return Ok(temp);
     }
     Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
 }
@@ -983,27 +993,28 @@ mod tests {
         }
 
         //println!("{:?}",&bb[result.head_crc_slice().unwrap().0..result.head_crc_slice().unwrap().1]);
-        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, true).is_ok(), true);
+        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, true), Ok(435));
 
         assert_eq!(set_ttl(&mut bb, &result, 6546, 1000, false).is_ok(), false);
 
-        assert_eq!(get_ttl(&bb, &result).is_ok(), true);
+        assert_eq!(get_ttl(&bb, &result), Ok(435));
 
-        assert_eq!(get_ttl(&bb, &result).unwrap(), 435);
-
-        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, false).is_ok(), true);
+        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, false), Ok(435 * 2));
 
         assert_eq!(get_ttl(&bb, &result).unwrap(), 435 * 2);
 
-        assert_eq!(set_ttl(&mut bb, &result, -300, 1000, false).is_ok(), true);
+        assert_eq!(
+            set_ttl(&mut bb, &result, -300, 1000, false),
+            Ok((435 * 2) - 300)
+        );
 
-        assert_eq!(get_ttl(&bb, &result).unwrap(), 435 * 2 - 300);
+        assert_eq!(get_ttl(&bb, &result).unwrap(), (435 * 2) - 300);
 
-        assert_eq!(set_ttl(&mut bb, &result, -900, 1000, false).is_ok(), false);
+        assert_eq!(set_ttl(&mut bb, &result, -900, 1000, false), Ok(0));
 
-        assert_eq!(set_ttl(&mut bb, &result, 9, 1000, false).is_ok(), true);
+        assert_eq!(set_ttl(&mut bb, &result, 9, 1000, true), Ok(9));
 
-        assert_eq!(get_ttl(&bb, &result).unwrap(), 435 * 2 - 300 + 9);
+        assert_eq!(get_ttl(&bb, &result), Ok(9));
 
         assert_eq!(
             set_ttl(&mut bb, &result, 1000, 9, false),
@@ -1025,6 +1036,17 @@ mod tests {
         assert_eq!(
             get_ttl(&bb, &result_no_ttl),
             Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
+        );
+
+        assert_eq!(
+            set_ttl(&mut bb, &result, -435, 1000, true),
+              Err(WTypeErr::WorkTimeErr("is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."))
+        );
+
+        assert_eq!(set_ttl(&mut bb, &result, 999, 1000, true), Ok(999));
+        assert_eq!(
+            set_ttl(&mut bb, &result, -500, 800, false),
+            Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "))
         );
     }
 

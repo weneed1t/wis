@@ -2,10 +2,10 @@
 pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 pub mod t1pology;
 
-pub mod t10algo_param;
 pub mod t2proc_fields;
 pub mod t3poc_files;
 pub mod t4_connect_data;
+pub mod t4algo_param;
 pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;
@@ -20,6 +20,6 @@ pub mod private_core {
 }
 /* delete this in prod
 git add . &&
-git commit -m "DEATH TRUNK" &&
+git commit -m "dev" &&
 git push origin
 */

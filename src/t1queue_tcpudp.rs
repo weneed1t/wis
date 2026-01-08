@@ -59,10 +59,10 @@ pub mod recv_queue {
         }
     }
     #[derive(Clone)]
-    pub struct WSTcpLike {
+    pub struct WSTcpLike<'a> {
         elems_in_buf: usize,
         u_buf: Box<[u8]>,
-        pack_topology: PackTopology,
+        pack_topology: &'a PackTopology,
         mtu: usize,
         crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     }
@@ -82,10 +82,10 @@ pub mod recv_queue {
     ///  then WSTcpLike will return two separate packets 1 (100 bytes long) 2(150 bytes long),
     ///  after which it will wait to receive the remaining part of packet number 3 (10 bytes),
     ///  and then return packet number 3 (50 bytes long).
-    impl WSTcpLike {
+    impl<'a> WSTcpLike<'a> {
         pub fn new(
             mtu: usize,
-            pack_topology: PackTopology,
+            pack_topology: &'a PackTopology,
             crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
         ) -> Result<Self, WSQueueErr> {
             if pack_topology.len_slice().is_none() {
@@ -169,7 +169,7 @@ pub mod recv_queue {
                             "err in pos_in_data + copy_elems_to_buf",
                         ))?;
 
-                let mut ptr_to_start = 0;
+                let mut ptr_to_start: usize = 0;
                 let mut old_ret_pos: usize = 0;
                 while ptr_to_start < self.elems_in_buf {
                     let elem_in_buf_quque = self
@@ -1270,7 +1270,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp = WSTcpLike::new(41, datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp = WSTcpLike::new(41, &datas_x.4, Some(dummy_crc_gen)).unwrap();
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
                 let data = if s + index < datas_x.1.len() {
@@ -1298,7 +1298,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp = WSTcpLike::new(39, datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp = WSTcpLike::new(39, &datas_x.4, Some(dummy_crc_gen)).unwrap();
 
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
@@ -1334,7 +1334,7 @@ pub mod recv_queue {
 
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
-            let mut w_tcp = WSTcpLike::new(39, datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp = WSTcpLike::new(39, &datas_x.4, Some(dummy_crc_gen)).unwrap();
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
                 let mut data = if s + index < datas_x.1.len() {

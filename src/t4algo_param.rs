@@ -1,19 +1,12 @@
+use std::f32::consts::E;
 use std::usize;
 //Gaoo~~~ :3
 use crate::t1fields::{DumpNonser, EncWis, Noncer};
 use crate::t1pology::PackTopology;
-
-pub struct WsPackagesParam<Tenc: EncWis> {
-    ///maximum packet size in bytes on the network
-    mtu: usize,
-    pack_topology: PackTopology,
-    crypt_class: Tenc,
-    crc_fnc: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
-    nonce_gener_fnc: Option<Option<fn(&mut [u8]) -> Result<(), &'static str>>>,
-    user_trash_fnc: Option<fn(&mut [u8], u64, usize) -> Result<(), &'static str>>,
-}
+use crate::wutils;
 
 pub struct WsConnectParam {
+    pack_topology: PackTopology,
     ///maximum packet size in bytes on the network</br>
     mtu: usize,
     //
@@ -87,8 +80,8 @@ pub struct WsConnectParam {
     //
     //
     ///ttl is a standard field for TTL (Through The Line) Internet protocol algorithms.</br>
-    ///  The first usize is the maximum number that the counter can accept; if it is greater</br>
-    ///  , the packet is considered incorrect. The second usize is the starting ttl,</br>
+    ///  The first u64 is the maximum number that the counter can accept; if it is greater</br>
+    ///  , the packet is considered incorrect. The second u64 is the starting ttl,</br>
     ///  which is set for the packet by its sender and must always be less than the first usize.</br>
     ///  The third i64 is the price of passing the packet through the node. In normal networks,</br>
     ///  when a packet passes through a node, its TTL is reduced by -1.</br>
@@ -98,7 +91,9 @@ pub struct WsConnectParam {
     ///  I don't know in what situations you need to increase it,</br>
     ///  but it may be necessary.</br>
     ///  Carefully study the basics of Internet networks so you don't do anything stupid ;)</br>
-    ttl_max_start_cost: Option<(usize, usize, i64)>,
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
+    ///  (ttl).</h4>
+    ttl_max_start_cost: Option<(u64, u64, i64)>,
     //
     //
     ///The maximum_length_udp_queue_packages value is used in the WSUdpLike class.</br>
@@ -109,6 +104,8 @@ pub struct WsConnectParam {
     ///  This is because if maximum_length_queue_unconfirmed_package is larger,</br>
     ///  a situation may arise where the WSUdpLike queue overflows and valid packets are rejected.</br>
     ///  This will lead to an increase in network load.</br>
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
+    ///  (field counter).</h4>
     maximum_length_udp_queue_packages: usize,
     //
     //
@@ -121,6 +118,8 @@ pub struct WsConnectParam {
     ///  the fback packet must fit entirely within the network MTU.</br>
     ///  If the calculated size in bytes of the fback packet does not fit within the MTU,</br>
     ///  maximum_length_fback_queue_packages will be forcibly reduced when the instance is created.  </br>
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
+    ///  (field counter +  length field, if such a field exists; if it does not exist, then the packet length is limited only by the MTU).</h4>
     maximum_length_fback_queue_packages: usize,
     //
     //
@@ -135,7 +134,9 @@ pub struct WsConnectParam {
     ///  Logically, packets can be divided into:</br>
     ///#### 1 those that are still in transit from the sender to the recipient.
     ///#### 2 those that have been received and are stored in fback.
-    ///#### 3 those that have been sent to fback from the recipient to the sender to confirm receipt.
+    ///#### 3 those that have been sent to fback from the recipient to the sender to confirm receipt.</br></br>
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
+    ///  (field counter).</h4>
     maximum_length_queue_unconfirmed_packages: usize,
     //
     //
@@ -161,4 +162,115 @@ pub struct WsConnectParam {
     percent_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
 }
 
-//struct WsAllParam {}
+impl WsConnectParam {
+    ///<h2>Each variable is described in detail at the beginning of this file. Open the beginning of the file and read what is written there to avoid mistakes.
+    fn new(
+        pack_topology: PackTopology,
+        mtu: usize,
+        max_ms_latency: f32,
+        min_ms_latency: f32,
+        start_ms_latency: f32,
+        latency_increase_coefficient: f32,
+        max_num_attempts_resend_package: usize,
+        packages_measurement_window_size_determining_latency: usize,
+        overhead_network_latency_relative_window: f32,
+        maximum_packet_delay_coefficient_fback: f32,
+        maximum_length_udp_queue_packages: usize,
+        maximum_length_fback_queue_packages: usize,
+        maximum_length_queue_unconfirmed_packages: usize,
+        percent_fake_data_packets: Option<f32>,
+        percent_fake_fback_packets: Option<f32>,
+        ttl_max_start_cost: Option<(u64, u64, i64)>,
+        percent_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
+        percent_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
+    ) -> Result<Self, &'static str> {
+        //latency cheak
+        {
+            if (min_ms_latency < 0.0)
+                || (max_ms_latency < 0.0)
+                || (start_ms_latency < 0.0)
+                || (latency_increase_coefficient < 0.0)
+            {
+                return Err("min_ms_latency , max_ms_latency, start_ms_latency, latency_increase_coefficient all these variables must be greater than zero");
+            }
+
+            if min_ms_latency > max_ms_latency {
+                return Err("min_ms_latency > max_ms_latency The minimum start_ms_latency < min_ms_latency must be less than or equal to the maximum latency.");
+            }
+
+            if start_ms_latency > max_ms_latency {
+                return Err("start_ms_latency > max_ms_latency The start latency must be less than or equal to the maximum.");
+            }
+
+            if start_ms_latency < min_ms_latency {
+                return Err("start_ms_latency < min_ms_latency The start latency  must be greater than or equal to the minimum.");
+            }
+            if latency_increase_coefficient <= 1.0 {
+                return Err("latency_increase_coefficient must be greater than or equal to 1.0. For more information, please refer to the description of this variable.");
+            }
+
+            if latency_increase_coefficient > 10.0 {
+                return Err("latency_increase_coefficient should be less than or equal to 10, as it is not advisable to use a higher value. For more information, please refer to the description of this variable.");
+            }
+        }
+
+        if max_num_attempts_resend_package < 1 {
+            return Err("max_num_attempts_resend_package must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if packages_measurement_window_size_determining_latency < 1 {
+            return Err("packages_measurement_window_size_determining_latency must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if overhead_network_latency_relative_window < 1.0 {
+            return Err("overhead_network_latency_relative_window must be greater than 1.0. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if maximum_packet_delay_coefficient_fback < 0.0 {
+            return Err("maximum_packet_delay_coefficient_fback must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+        if maximum_packet_delay_coefficient_fback > 2.0 {
+            return Err("maximum_packet_delay_coefficient_fback should be less than or equal to 2.0. For more information, see the description of this variable at the beginning of the file.");
+        }
+        if let Some(ttl_me) = ttl_max_start_cost {
+            if let Some(ttl_in_topology) = pack_topology.ttl_slice() {
+                let max_cap = wutils::len_byte_maximal_capacity_cheak(ttl_in_topology.2);
+            } else {
+                return Err("The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None.");
+            }
+        }
+
+        Ok(Self {
+            pack_topology,                                        //
+            mtu,                                                  //
+            max_ms_latency,                                       //
+            min_ms_latency,                                       //
+            start_ms_latency,                                     //
+            latency_increase_coefficient,                         //
+            max_num_attempts_resend_package,                      //
+            packages_measurement_window_size_determining_latency, //
+            overhead_network_latency_relative_window,             //
+            maximum_packet_delay_coefficient_fback,               //
+            ttl_max_start_cost,
+            maximum_length_udp_queue_packages,
+            maximum_length_fback_queue_packages,
+            maximum_length_queue_unconfirmed_packages,
+            percent_fake_data_packets,
+            percent_fake_fback_packets,
+            percent_scatter_random_long_trash_padding_in_data_packs,
+            percent_scatter_random_long_trash_padding_in_fback_packs,
+        })
+
+        //Err("")
+    }
+}
+
+pub struct WsPackagesParam<Tenc: EncWis> {
+    ///maximum packet size in bytes on the network
+    mtu: usize,
+    // pack_topology: PackTopology,
+    crypt_class: Tenc,
+    crc_fnc: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
+    nonce_gener_fnc: Option<Option<fn(&mut [u8]) -> Result<(), &'static str>>>,
+    user_trash_fnc: Option<fn(&mut [u8], u64, usize) -> Result<(), &'static str>>,
+}

@@ -37,13 +37,24 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     return Ok(());
 }
 
-pub fn add_u64_i64(a: u64, b: i64) -> Result<u64, &'static str> {
+pub fn add_u64_i64(
+    a: u64,
+    b: i64,
+    zero_if_in_sub_a_less_than_b: bool,
+) -> Result<u64, &'static str> {
     if b >= 0 {
         a.checked_add(b as u64)
             .ok_or("overflow occurred adding positive")
     } else {
-        a.checked_sub(b.wrapping_abs() as u64)
-            .ok_or("anderflow occurred  subtracting absolute")
+        a.checked_sub(b.wrapping_abs() as u64).map_or(
+            if zero_if_in_sub_a_less_than_b {
+                Ok(0)
+            } else {
+                Err("underflow occurred subtracting absolute")
+            },
+            Ok,
+        )
+        //.ok_or("anderflow occurred  subtracting absolute")
     }
 }
 
