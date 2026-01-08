@@ -111,7 +111,7 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     Ok(())
 }
 
-pub fn len_byte_maximal_capacity_cheak(len: usize) -> (u64, usize) {
+pub fn len_byte_maximal_capacity_check(len: usize) -> (u64, usize) {
     if len > 7 {
         return (!0_u64, 64);
     }

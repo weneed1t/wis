@@ -808,7 +808,7 @@ pub mod recv_queue {
 
             if self.max.checked_sub(self.min).expect(
                 "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?",
-            ) > wutils::len_byte_maximal_capacity_cheak(self.ctr_slice_len).0
+            ) > wutils::len_byte_maximal_capacity_check(self.ctr_slice_len).0
             {
                 return Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold.");
             }

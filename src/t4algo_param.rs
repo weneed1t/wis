@@ -1,5 +1,3 @@
-use std::f32::consts::E;
-use std::usize;
 //Gaoo~~~ :3
 use crate::t1fields::{DumpNonser, EncWis, Noncer};
 use crate::t1pology::PackTopology;
@@ -13,7 +11,7 @@ pub struct WsConnectParam {
     //
     ///After sending the packet, the sender waits for a certain amount of time X.</br>
     ///  If no confirmation is received within the specified time X,</br>
-    ///  the waiting time X is increased by the latency_increase_coefficient coefficient.</br>
+    ///  the waiting time X is increased by the latency_increase_coefficient coefficient. X = X+X*latency_increase_coefficient</br>
     ///  The value of X changes dynamically during the operation of the algorithm,</br>
     ///  and the values of max_ms_latency and min_ms_latency</br>
     ///  limit its limits so that the sender does not wait forever or wait 0.0 ms.</br>
@@ -57,7 +55,7 @@ pub struct WsConnectParam {
     ///  packet is sent and the sender waits for confirmation within: average latency</br>
     ///  of the last
     /// (packages_measurement_window_size_determining_latency) network packets *
-    ///  overhead_network_latency_relative_window (overhead_network_latency_relative_window>= 1.0).</br>
+    ///  overhead_network_latency_relative_window (overhead_network_latency_relative_window>= 0.0).</br>
     ///  This value is necessary so that packets are not resent in case of minor network instability.</br>
     overhead_network_latency_relative_window: f32,
     //
@@ -79,7 +77,7 @@ pub struct WsConnectParam {
     maximum_packet_delay_coefficient_fback: f32,
     //
     //
-    ///ttl is a standard field for TTL (Through The Line) Internet protocol algorithms.</br>
+    ///ttl is a standard field for TTL (Time To Live) Internet protocol algorithms.</br>
     ///  The first u64 is the maximum number that the counter can accept; if it is greater</br>
     ///  , the packet is considered incorrect. The second u64 is the starting ttl,</br>
     ///  which is set for the packet by its sender and must always be less than the first usize.</br>
@@ -151,20 +149,20 @@ pub struct WsConnectParam {
     percent_fake_fback_packets: Option<f32>,
     //
     //
-    ///percent_scatter_random_long_trash_padding_in_data_packs also serves to add junk data to the end of a data packet.
+    ///bytes_scatter_random_long_trash_padding_in_data_packs also serves to add junk data to the end of a data packet.
     ///  This is necessary to hide the actual size of the packet, especially fback packets,
     ///  since such packets are often much shorter than data packets.
     ///  usize is responsible for the maximum number of junk bytes added. As a result,
     ///  a random number of bytes from 0 to usize will be added to the end of the packet.
-    percent_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
-    ///see description percent_scatter_random_long_trash_padding_in_data_packs^^^
+    bytes_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
+    ///see description bytes_scatter_random_long_trash_padding_in_data_packs^^^
     /// similar behavior for fback-type packets
-    percent_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
+    bytes_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
 }
 
 impl WsConnectParam {
     ///<h2>Each variable is described in detail at the beginning of this file. Open the beginning of the file and read what is written there to avoid mistakes.
-    fn new(
+    pub fn new(
         pack_topology: PackTopology,
         mtu: usize,
         max_ms_latency: f32,
@@ -181,11 +179,21 @@ impl WsConnectParam {
         percent_fake_data_packets: Option<f32>,
         percent_fake_fback_packets: Option<f32>,
         ttl_max_start_cost: Option<(u64, u64, i64)>,
-        percent_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
-        percent_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
+        bytes_scatter_random_long_trash_padding_in_data_packs: Option<usize>,
+        bytes_scatter_random_long_trash_padding_in_fback_packs: Option<usize>,
     ) -> Result<Self, &'static str> {
-        //latency cheak
+        if pack_topology.total_minimal_len() > mtu {
+            return Err("pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data.");
+        }
+        //latency check
         {
+            if !min_ms_latency.is_nan()
+                || !max_ms_latency.is_nan()
+                || !start_ms_latency.is_nan()
+                || !latency_increase_coefficient.is_nan()
+            {
+                return Err("min_ms_latency , max_ms_latency, start_ms_latency, latency_increase_coefficient all these variables must be is_normal()");
+            }
             if (min_ms_latency < 0.0)
                 || (max_ms_latency < 0.0)
                 || (start_ms_latency < 0.0)
@@ -205,8 +213,8 @@ impl WsConnectParam {
             if start_ms_latency < min_ms_latency {
                 return Err("start_ms_latency < min_ms_latency The start latency  must be greater than or equal to the minimum.");
             }
-            if latency_increase_coefficient <= 1.0 {
-                return Err("latency_increase_coefficient must be greater than or equal to 1.0. For more information, please refer to the description of this variable.");
+            if latency_increase_coefficient < 0.0 {
+                return Err("latency_increase_coefficient must be greater than or equal to 0.0. For more information, please refer to the description of this variable.");
             }
 
             if latency_increase_coefficient > 10.0 {
@@ -214,16 +222,35 @@ impl WsConnectParam {
             }
         }
 
+        let ctr_max_capacity = wutils::len_byte_maximal_capacity_check(
+            pack_topology
+                .counter_slice()
+                .ok_or(
+                    "The counter_slice() field in pack_topology is None, but it must be specified!",
+                )?
+                .2,
+        );
+
+        let ctr_max_capacity_real = (ctr_max_capacity.0 >> 1).checked_sub(1).expect("(ctr_max_capacity.0 >> 1) - 1 < 0 error, impossible behavior, since the minimum length of counter_slice() is 1, 1 byte is 255 maximum value, 255 >>1 - 127, 127 is greater than 1.");
+
+        if ctr_max_capacity_real > usize::MAX as u64 {
+            return Err("ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's usize limit");
+        }
+
         if max_num_attempts_resend_package < 1 {
             return Err("max_num_attempts_resend_package must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if max_num_attempts_resend_package > ctr_max_capacity_real as usize {
+            return Err("max_num_attempts_resend_package > ctr_max_capacity_real as usize.  max_num_attempts_resend_package must be less than the maximum possible capacity in pack_topology.counter_slice().");
         }
 
         if packages_measurement_window_size_determining_latency < 1 {
             return Err("packages_measurement_window_size_determining_latency must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
         }
 
-        if overhead_network_latency_relative_window < 1.0 {
-            return Err("overhead_network_latency_relative_window must be greater than 1.0. For more information, see the description of this variable at the beginning of the file.");
+        if overhead_network_latency_relative_window < 0.0 {
+            return Err("overhead_network_latency_relative_window must be < or ==  0.0. For more information, see the description of this variable at the beginning of the file.");
         }
 
         if maximum_packet_delay_coefficient_fback < 0.0 {
@@ -232,17 +259,83 @@ impl WsConnectParam {
         if maximum_packet_delay_coefficient_fback > 2.0 {
             return Err("maximum_packet_delay_coefficient_fback should be less than or equal to 2.0. For more information, see the description of this variable at the beginning of the file.");
         }
+        //ttl
         if let Some(ttl_me) = ttl_max_start_cost {
             if let Some(ttl_in_topology) = pack_topology.ttl_slice() {
-                let max_cap = wutils::len_byte_maximal_capacity_cheak(ttl_in_topology.2);
+                let max_cap = wutils::len_byte_maximal_capacity_check(ttl_in_topology.2);
+
+                if ttl_me.0 < ttl_me.1 {
+                    return Err("ttl_max_start_cost.0 < ttl_max_start_cost.1, start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.");
+                }
+                if ttl_me.0 == 0 {
+                    return Err("ttl_max_start_cost.0 must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+                }
+
+                if ttl_me.1 == 0 {
+                    return Err("ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+                }
+
+                if ttl_me.1 > max_cap.0 {
+                    return Err("ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field.");
+                }
             } else {
                 return Err("The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None.");
             }
         }
+        //queue
+        if maximum_length_udp_queue_packages < 1 {
+            return Err("maximum_length_udp_queue_package must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if maximum_length_udp_queue_packages > ctr_max_capacity_real as usize {
+            return Err(" maximum_length_udp_queue_packages must be less than the maximum capacity of the pack_topology.counter_slice() field. ");
+        }
+
+        if maximum_length_fback_queue_packages < 1 {
+            return Err("maximum_length_fback_queue_packages must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if maximum_length_fback_queue_packages > ctr_max_capacity_real as usize {
+            return Err("maximum_length_fback_queue_packages must not exceed the maximum capacity of the pack_topology.counter_slice() counter. ");
+        }
+
+        if maximum_length_queue_unconfirmed_packages < 1 {
+            return Err(" maximum_length_queue_unconfirmed_packages must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+        }
+
+        if maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages {
+            return Err(" maximum_length_fback_queue_packages must be less than maximum_length_queue_unconfirmed_packages.For more information, see the description of this variable at the beginning of the file.");
+        }
+        //percent
+
+        if let Some(x) = percent_fake_data_packets {
+            if !x.is_nan() || x > 1.0 || x <= 0.0 {
+                return Err("percent_fake_data_packets must be in the range from (0.0 to 1.0]");
+            }
+        }
+
+        if let Some(x) = percent_fake_fback_packets {
+            if !x.is_nan() || x > 1.0 || x <= 0.0 {
+                return Err("percent_fake_fback_packets must be in the range from (0.0 to 1.0]");
+            }
+        }
+
+        if let Some(x) = bytes_scatter_random_long_trash_padding_in_data_packs {
+            if x < 1 {
+                return Err("bytes_scatter_random_long_trash_padding_in_data_packs must be greater than zero or  must be None. For more information, see the description of this variable at the beginning of the file.");
+            }
+        }
+        if let Some(x) = bytes_scatter_random_long_trash_padding_in_fback_packs {
+            if x < 1 {
+                return Err("bytes_scatter_random_long_trash_padding_in_fback_packs must be greater than zero or  must be None. For more information, see the description of this variable at the beginning of the file.");
+            }
+        }
 
         Ok(Self {
-            pack_topology,                                        //
-            mtu,                                                  //
+            pack_topology, //
+            /**/
+            mtu,
+            /**/                                                  //
             max_ms_latency,                                       //
             min_ms_latency,                                       //
             start_ms_latency,                                     //
@@ -250,18 +343,20 @@ impl WsConnectParam {
             max_num_attempts_resend_package,                      //
             packages_measurement_window_size_determining_latency, //
             overhead_network_latency_relative_window,             //
-            maximum_packet_delay_coefficient_fback,               //
-            ttl_max_start_cost,
-            maximum_length_udp_queue_packages,
-            maximum_length_fback_queue_packages,
-            maximum_length_queue_unconfirmed_packages,
-            percent_fake_data_packets,
-            percent_fake_fback_packets,
-            percent_scatter_random_long_trash_padding_in_data_packs,
-            percent_scatter_random_long_trash_padding_in_fback_packs,
+            /**/
+            maximum_packet_delay_coefficient_fback, //
+            /**/
+            ttl_max_start_cost, //
+            /**/
+            maximum_length_udp_queue_packages,         //
+            maximum_length_fback_queue_packages,       //
+            maximum_length_queue_unconfirmed_packages, //
+            /**/
+            percent_fake_data_packets,                              //
+            percent_fake_fback_packets,                             //
+            bytes_scatter_random_long_trash_padding_in_data_packs,  //
+            bytes_scatter_random_long_trash_padding_in_fback_packs, //
         })
-
-        //Err("")
     }
 }
 
