@@ -60,9 +60,9 @@ impl PartialEq for PakFields {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-
+#[derive(Debug, Clone, PartialEq)]
 pub struct PackTopology {
+    all_fields: Box<[PakFields]>,
     tag_len: usize,
     encrypt_start_pos: usize,
     content_start_pos: usize,
@@ -278,31 +278,8 @@ impl PackTopology {
             .checked_add(1)
             .ok_or("total packet size exceeds addressable memory")?; //len is 1 byte of HeadByte
 
-        #[cfg(any(test))]
-        {
-            let xxxx = PackTopology {
-                tag_len,
-                encrypt_start_pos: shift,
-                content_start_pos: content_start_pos,
-                counter_slice,
-                id_of_sender_slice,
-                id_of_receiver_slice,
-                len_slice,
-                trash_content_slice,
-                crc_slice,
-                nonce_slice,
-                ttl_slice,
-                idconn_slice,
-                total_minimal_len: content_start_pos
-                    .checked_add(tag_len)
-                    .ok_or("total packet size exceeds addressable memory")?,
-                is_tcp_like: tcp_mode,
-                data_save,
-            };
-            xxxx.display_layout_with_separators();
-        }
-
-        Ok(PackTopology {
+        let topology = Self {
+            all_fields: fields.to_vec().into_boxed_slice(),
             tag_len,
             encrypt_start_pos: shift,
             content_start_pos: content_start_pos,
@@ -320,7 +297,14 @@ impl PackTopology {
                 .ok_or("total packet size exceeds addressable memory")?,
             is_tcp_like: tcp_mode,
             data_save,
-        })
+        };
+
+        #[cfg(any(test))]
+        {
+            topology.display_layout_with_separators();
+        }
+
+        Ok(topology)
     }
 }
 
@@ -398,12 +382,40 @@ impl PackTopology {
 
 #[cfg(any(test))]
 impl PackTopology {
+    ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
+    ///<h1> !IS TEST ONLY TEST ONLY!
+    pub fn __warning_test_only_force_edit_ctr(&mut self, ctr: Option<(usize, usize, usize)>) {
+        self.counter_slice = ctr;
+    }
+
+    ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
+    ///<h1> !IS TEST ONLY TEST ONLY!
+    pub fn __warning_test_only_force_total_minimum_len_edit(&mut self, lenn: usize) {
+        self.total_minimal_len = lenn;
+    }
+
+    ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
+    ///<h1> !IS TEST ONLY TEST ONLY!
+    pub fn __warning_test_only_force_edit_ttl(&mut self, ttl: Option<(usize, usize, usize)>) {
+        self.ttl_slice = ttl;
+    }
+
     pub fn display_layout_with_separators(&self) {
         let total_len = self.total_minimal_len;
-        let mut layout = vec![' '; total_len + 30];
+
+        let st_data: &[u8] = "PAYLOAD_ENC".as_bytes();
+        let mut layout: Vec<char> = vec!['-'; total_len + st_data.len()];
+
+        for i in
+            (self.content_start_pos()..self.content_start_pos() + st_data.len()).zip(st_data.iter())
+        {
+            layout[i.0] = *i.1 as char;
+        }
 
         // Helper function to fill the layout with field representation
         let mut sf = 0;
+
+        let mut vector_legend = vec![];
 
         fn fill_field(
             layout: &mut Vec<char>,
@@ -412,15 +424,7 @@ impl PackTopology {
             label: char,
             sf: &mut usize,
         ) {
-            for i in layout[*sf + start..*sf + end].iter_mut().enumerate() {
-                if 999999999999 == i.0 {
-                    //*i.1='[';
-                } else {
-                    *i.1 = label;
-                }
-            }
-            //layout[*sf+end+1]=']';
-            //*sf += 2;
+            layout[*sf + start..*sf + end].fill(label);
         }
         {
             // Fill HeadByte
@@ -431,72 +435,84 @@ impl PackTopology {
             }
 
             // Fill Tag (assuming it starts after content_start_pos)
-            let tag_start = self.encrypt_start_pos;
-            let tag_end = tag_start + self.tag_len;
-            fill_field(&mut layout, tag_start, tag_end, '-', &mut sf);
+            //let tag_start = self.encrypt_start_pos + st_data.len();
+            //let tag_end = tag_start + self.total_minimal_len();
+            //fill_field(&mut layout, tag_start, tag_end, '-', &mut sf);
 
             // Fill Counter
-            if let Some((start, end, _)) = self.counter_slice {
+            if let Some((start, end, lenme)) = self.counter_slice {
                 fill_field(&mut layout, start, end, 'C', &mut sf);
+                vector_legend.push(format!("  [C - {} bytes] - Counter", lenme));
             }
 
-            if let Some((start, end, _)) = self.idconn_slice {
+            // Fill IDCONN
+            if let Some((start, end, lenme)) = self.idconn_slice {
                 fill_field(&mut layout, start, end, 'I', &mut sf);
+                vector_legend.push(format!("  [I - {} bytes] - IDCONN", lenme));
             }
 
             // Fill IdOfSender
-            if let Some((start, end, _)) = self.id_of_sender_slice {
+            if let Some((start, end, lenme)) = self.id_of_sender_slice {
                 fill_field(&mut layout, start, end, 'S', &mut sf);
+                vector_legend.push(format!("  [S - {} bytes] - IdOfSender", lenme));
             }
 
             // Fill IdOfReceiver
-            if let Some((start, end, _)) = self.id_of_receiver_slice {
+            if let Some((start, end, lenme)) = self.id_of_receiver_slice {
                 fill_field(&mut layout, start, end, 'R', &mut sf);
+                vector_legend.push(format!("  [R - {} bytes] - IdOfReceiver", lenme));
             }
 
             // Fill Len
-            if let Some((start, end, _)) = self.len_slice {
+            if let Some((start, end, lenme)) = self.len_slice {
                 fill_field(&mut layout, start, end, 'L', &mut sf);
+                vector_legend.push(format!("  [L - {} bytes] - Len", lenme));
             }
 
             // Fill TrashContent
-            if let Some((start, end, _)) = self.trash_content_slice {
+            if let Some((start, end, lenme)) = self.trash_content_slice {
                 fill_field(&mut layout, start, end, 'U', &mut sf);
+                vector_legend.push(format!(
+                    "  [U - {} bytes] - UserField (TrashContent)",
+                    lenme
+                ));
             }
 
             // Fill CRC
-            if let Some((start, end, _)) = self.crc_slice {
-                fill_field(&mut layout, start, end, 'K', &mut sf);
+            if let Some((start, end, lenme)) = self.crc_slice {
+                fill_field(&mut layout, start, end, '*', &mut sf);
+                vector_legend.push(format!("  [* - {} bytes] - CRC", lenme));
             }
 
             // Fill Nonce
-            if let Some((start, end, _)) = self.nonce_slice {
+            if let Some((start, end, lenme)) = self.nonce_slice {
                 fill_field(&mut layout, start, end, 'N', &mut sf);
+                vector_legend.push(format!("  [N - {} bytes] - Nonce", lenme));
             }
 
-            // Fill Nonce
-            if let Some((start, end, _)) = self.ttl_slice {
+            // Fill TTL
+            if let Some((start, end, lenme)) = self.ttl_slice {
                 fill_field(&mut layout, start, end, 'T', &mut sf);
+                vector_legend.push(format!("  [T - {} bytes] - TTL", lenme));
             }
+
+            layout[self.head_byte_pos()] = '@';
 
             // Convert the layout to a string and print it
+            println!("|.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-|");
             let layout_str: String = layout.iter().collect();
             println!("Memory Layout:");
             println!("{}", layout_str);
 
             // Print legend
             println!("Legend:");
-            println!("  [T...] - TTL");
-            println!("  [C...] - Counter");
-            println!("  [S...] - IdOfSender");
-            println!("  [R...] - IdOfReceiver");
-            println!("  [L...] - Len");
-            println!("  [U...] - UserField (TrashContent)");
-            println!("  [K...] - CRC");
-            println!("  [N...] - Nonce");
-            println!("  [I...] - IDCONN");
-            println!("  [-...] - TAG");
-            println!("  . - Unused space");
+            for x in vector_legend {
+                println!("{x}");
+            }
+
+            println!("  [- {} bytes] - tag", self.tag_len());
+            println!("  [@ ...] - Head Byte");
+            println!("|.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-|");
         }
     }
 }
