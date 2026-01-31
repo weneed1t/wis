@@ -6,11 +6,8 @@ pub enum WNotification {
 impl PartialEq for WNotification {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (
-                WNotification::CriticalErrorKillConnect(_),
-                WNotification::CriticalErrorKillConnect(_),
-            ) => true,
-            (WNotification::WarningNonCirtical(_), WNotification::WarningNonCirtical(_)) => true,
+            (Self::CriticalErrorKillConnect(_), Self::CriticalErrorKillConnect(_)) => true,
+            (Self::WarningNonCirtical(_), Self::WarningNonCirtical(_)) => true,
             _ => false,
         }
     }

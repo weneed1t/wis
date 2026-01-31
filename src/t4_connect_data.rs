@@ -1,6 +1,6 @@
-use crate::t1fields;
 use crate::t1queue_tcpudp::recv_queue;
 use crate::t3poc_files::WSFileSplitter;
+use crate::w_types;
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
@@ -12,7 +12,7 @@ pub struct Identified {
     id_conn: Option<u64>,
 }
 
-pub struct WsConnectData<Tudp, Twait, Tencrypt: t1fields::EncWis> {
+pub struct WsConnectData<Tudp, Twait, Tencrypt: w_types::EncWis> {
     file_proc: WSFileSplitter,
     udp_queue: recv_queue::WSUdpLike<Tudp>,
     wait_queue: recv_queue::WSWaitQueue<Twait, f32>,

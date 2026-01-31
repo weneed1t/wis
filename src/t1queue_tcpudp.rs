@@ -24,15 +24,15 @@ pub mod recv_queue {
     impl WSQueueErr {
         pub fn is_critical(&self) -> bool {
             match self {
-                WSQueueErr::Critical(_) => true,
-                WSQueueErr::NonCritical(_) => false,
+                Self::Critical(_) => true,
+                Self::NonCritical(_) => false,
             }
         }
 
         pub fn is_non_critical(&self) -> bool {
             match self {
-                WSQueueErr::Critical(_) => false,
-                WSQueueErr::NonCritical(_) => true,
+                Self::Critical(_) => false,
+                Self::NonCritical(_) => true,
             }
         }
     }
@@ -40,14 +40,14 @@ pub mod recv_queue {
     impl PartialEq for WSQueueErr {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
-                (WSQueueErr::NonCritical(x), WSQueueErr::NonCritical(y)) => {
+                (Self::NonCritical(x), Self::NonCritical(y)) => {
                     if x == y {
                         true
                     } else {
                         false
                     }
                 }
-                (WSQueueErr::Critical(x), WSQueueErr::Critical(y)) => {
+                (Self::Critical(x), Self::Critical(y)) => {
                     if x == y {
                         true
                     } else {
@@ -262,10 +262,10 @@ pub mod recv_queue {
     impl PartialEq for WSQueueState {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
-                (WSQueueState::ElemIdIsBig, WSQueueState::ElemIdIsBig) => true,
-                (WSQueueState::ElemIdIsSmall, WSQueueState::ElemIdIsSmall) => true,
-                (WSQueueState::ElemIsAlreadyIn, WSQueueState::ElemIsAlreadyIn) => true,
-                (WSQueueState::SuccessfulInsertion, WSQueueState::SuccessfulInsertion) => true,
+                (Self::ElemIdIsBig, Self::ElemIdIsBig) => true,
+                (Self::ElemIdIsSmall, Self::ElemIdIsSmall) => true,
+                (Self::ElemIsAlreadyIn, Self::ElemIsAlreadyIn) => true,
+                (Self::SuccessfulInsertion, Self::SuccessfulInsertion) => true,
                 _ => false,
             }
         }
@@ -506,7 +506,7 @@ pub mod recv_queue {
                 return Err(WSQueueErr::Critical("max_elems is 0"));
             }
 
-            Ok(WSWaitQueue {
+            Ok(Self {
                 //data_map: HashMap::with_capacity_and_hasher(max_elems, IdentityBuildHasher),
                 data_map: HashMap::with_hasher(IdentityBuildHasher),
                 max_capacity_elems: max_elems,

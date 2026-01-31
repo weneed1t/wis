@@ -1,187 +1,6 @@
 use crate::t1pology::PackTopology;
+use crate::w_types::*;
 use crate::{t1pology, wutils};
-
-pub const IS_FBACK: u8 = 1;
-pub const DATA_PACK: u8 = 0;
-
-#[derive(Debug, Clone)]
-pub enum WTypeErr {
-    LenSizeErr(&'static str),
-    NoneFieldErr(&'static str),
-    PackageDamaged(&'static str),
-    WorkTimeErr(&'static str),
-}
-
-impl WTypeErr {
-    pub fn is_len_small_err(&self) -> bool {
-        match self {
-            WTypeErr::LenSizeErr(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_none_field(&self) -> bool {
-        match self {
-            WTypeErr::NoneFieldErr(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_pascage_damaget(&self) -> bool {
-        match self {
-            WTypeErr::PackageDamaged(_) => true,
-            _ => false,
-        }
-    }
-    pub fn is_work_time_err(&self) -> bool {
-        match self {
-            WTypeErr::WorkTimeErr(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn err_to_str(&self) -> &'static str {
-        match self {
-            WTypeErr::LenSizeErr(x) => x,
-            WTypeErr::NoneFieldErr(x) => x,
-            WTypeErr::PackageDamaged(x) => x,
-            WTypeErr::WorkTimeErr(x) => x,
-        }
-    }
-}
-
-impl PartialEq for WTypeErr {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (WTypeErr::LenSizeErr(x), WTypeErr::LenSizeErr(y)) => x == y,
-            (WTypeErr::NoneFieldErr(x), WTypeErr::NoneFieldErr(y)) => x == y,
-            (WTypeErr::PackageDamaged(x), WTypeErr::PackageDamaged(y)) => x == y,
-            (WTypeErr::WorkTimeErr(x), WTypeErr::WorkTimeErr(y)) => x == y,
-            _ => false,
-        }
-    }
-}
-
-///======================================================================================================
-
-/*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), &'static str>
-where &[u8] is the head, the data that is not encrypted,
-the first &mut [u8] is the body, the data that is encrypted
-the second &mut [u8] is the place where the authentication tag from head + body should be placed
-Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
-
-type 2 fn(&mut[u8],usize,usize, u64, Option<&[u8]>) -> Result<(), &'static str>
-&mut[u8] is the full mutable packet
-the first usize is the index of the start of the body, so [0..(first usize)] is the head
-the second usize is the index of the start of tag, so [(first usize)..(second usize)] is the body
-the tag field, it is [(second usize)..] is the place for the tag
-Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
-
-this enum is needed for maximum compatibility with the encryption libraries that are on the rust
-they both return -> Result<(), &'static str>
-ok() means that the data was encrypted successfully
-and there were no errors, &'static str reports some error,
- when it is called, the preparation of the packet for sending
- will be interrupted and it will not be sent
-*/
-#[derive(Debug, Clone)]
-pub enum TypeGetMode {
-    /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
-    Type1SplitMutSlices(
-        fn(&[u8], &mut [u8], &mut [u8], u64, Option<&[u8]>) -> Result<(), &'static str>,
-    ),
-    /// (FULLDATA),  (HEAD non enc)[0..usize1],(PAYLOAD enc)[usize1..usize2],(TAG)[usize2..],(countr(nonce)), (NONCE)[start..end]
-    Type2FullArrAndIndexes(
-        fn(&mut [u8], usize, usize, u64, Option<(usize, usize)>) -> Result<(), &'static str>,
-    ),
-}
-#[derive(Debug, Clone)]
-pub enum Cryptlag {
-    Encrypt,
-    Decrypt,
-}
-#[derive(Debug, Clone)]
-pub enum StatusDecrypt {
-    PackageDamaged,
-    DecodedCorrectly,
-}
-
-impl StatusDecrypt {
-    pub fn is_correctly(&self) -> bool {
-        match self {
-            Self::DecodedCorrectly => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_damaged(&self) -> bool {
-        match self {
-            Self::PackageDamaged => true,
-            _ => false,
-        }
-    }
-}
-
-impl PartialEq for StatusDecrypt {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (StatusDecrypt::DecodedCorrectly, StatusDecrypt::DecodedCorrectly) => true,
-            (StatusDecrypt::PackageDamaged, StatusDecrypt::PackageDamaged) => true,
-
-            _ => false,
-        }
-    }
-}
-
-pub trait EncWis: Sized {
-    fn new(key: &[u8]) -> Result<Self, &'static str>;
-
-    /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
-    fn encrypt(
-        &self,
-        non_enc_head: &[u8],
-        enc_payload: &mut [u8],
-        auth_tag: &mut [u8],
-        nonce_countr: u64,
-        nonce: Option<&[u8]>,
-    ) -> Result<(), &'static str>;
-    /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
-    fn decrypt(
-        &self,
-        non_enc_head: &[u8],
-        enc_payload: &mut [u8],
-        auth_tag: &mut [u8],
-        nonce_countr: u64,
-        nonce: Option<&[u8]>,
-    ) -> Result<StatusDecrypt, &'static str>;
-}
-
-pub trait Noncer: Sized {
-    fn new() -> Result<Self, &'static str>;
-
-    fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
-}
-
-pub struct DumpNonser {}
-
-impl Noncer for DumpNonser {
-    fn new() -> Result<Self, &'static str> {
-        panic!(
-            "This panic is called from DumpNonser because it is a stub class,
-         none of its methods should be called in normal code and this class only
-          serves to indicate it as None in variable:Option<DumpNonser> = None;"
-        );
-        //Ok(Self {})
-    }
-    fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), &'static str> {
-        panic!(
-            "This panic is called from DumpNonser because it is a stub class,
-         none of its methods should be called in normal code and this class only
-          serves to indicate it as None in variable:Option<DumpNonser> = None;"
-        );
-        //Ok(())
-    }
-}
 
 /// computes and validates the header crc checksum using a user-provided crc function
 /// takes mutable packet data, packet topology, and a crc function: (&[u8], &mut [u8]) -> Result<(), &'static str>
@@ -366,10 +185,10 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
-/// takes mutable packet data, topology, a 64-bit connection id, and a send_bit indicating sender role
-/// send_bit = true means the packet is sent by the session initiator (client)
-/// send_bit = false means the packet is sent by the responder (non-initiator)
-/// the id_conn value is shifted left by 1 bit, and send_bit is stored in the least significant bit
+/// takes mutable packet data, topology, a 64-bit connection id, and a role indicating sender role
+/// role = true means the packet is sent by the session initiator (client)
+/// role = false means the packet is sent by the responder (non-initiator)
+/// the id_conn value is shifted left by 1 bit, and role is stored in the least significant bit
 /// ensures id_conn fits within the available bits: field size (1–8 bytes) minus 1 bit for send_flag
 /// returns error if id_conn exceeds capacity or idconn_slice is not defined in topology
 /// uses u64_to_1_8bytes to encode the value into the correct number of bytes
@@ -378,7 +197,7 @@ pub fn set_id_conn(
     pack: &mut [u8],
     topology: &PackTopology,
     id_conn: u64,
-    send_bit: bool,
+    role: MyRole,
 ) -> Result<(), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
         if pack.len() < x.1 {
@@ -389,8 +208,11 @@ pub fn set_id_conn(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1",
             ));
         }
-        wutils::u64_to_1_8bytes((id_conn << 1) | send_bit as u64, &mut pack[x.0..x.1])
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        wutils::u64_to_1_8bytes(
+            (id_conn << 1) | role.sate_to_bit() as u64,
+            &mut pack[x.0..x.1],
+        )
+        .map_err(|x| WTypeErr::WorkTimeErr(x))?;
         return Ok(());
     }
 
@@ -398,19 +220,19 @@ pub fn set_id_conn(
 }
 
 /// get_id_conn extracts the connection id and sender role from the packet header
-/// returns Ok((u64, bool)) where the first value is the connection id (shifted right by 1)
-/// and the second is the send_bit: true if the sender is the initiator, false otherwise
-/// reads bytes from idconn_slice, converts to u64, then strips off the saved send_bit (least significant bit)
+/// returns Ok((u64, MyRole)) where the first value is the connection id (shifted right by 1)
+/// and the second is the role: true if the sender is the initiator, false otherwise
+/// reads bytes from idconn_slice, converts to u64, then strips off the saved role (least significant bit)
 /// returns an error if idconn_slice is not present in the topology or parsing fails
 /// used to determine the session the packet belongs to and its sender role
 /// both functions assume that the idconn field is unencrypted and is in the packet header
-pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, bool), WTypeErr> {
+pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
-        return Ok((reta >> 1, (reta & 1) == 1));
+        return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
     Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
 }
@@ -494,17 +316,15 @@ pub fn set_counter(
     pack: &mut [u8],
     topology: &PackTopology,
     countr: u64,
-    last_bit_in_countr: u8,
+    my_type: PackType,
 ) -> Result<(u64, u64), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let max_cap = wutils::len_byte_maximal_capacity_check(x.2).0 >> 1;
-        if last_bit_in_countr > 1 {
-            return Err(WTypeErr::WorkTimeErr("last_bit_in_countr must be 0 or 1"));
-        }
-        let pack_ctr = ((max_cap & countr) << 1) | last_bit_in_countr as u64;
+
+        let pack_ctr = ((max_cap & countr) << 1) | my_type.sate_to_bit() as u64;
 
         wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1])
             .map_err(|x| WTypeErr::WorkTimeErr(x))?;
@@ -538,9 +358,9 @@ pub fn set_counter(
 pub fn get_counter(
     pack: &[u8],
     topology: &PackTopology,
-    countr1: u64,
-    countr2: u64,
-) -> Result<(u64, u8), WTypeErr> {
+    countr1_fback: u64,
+    countr2_data: u64,
+) -> Result<(u64, PackType), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -550,9 +370,13 @@ pub fn get_counter(
         let (max_cap, _) = wutils::len_byte_maximal_capacity_check(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
-        let bt = (ctr_in_pack & 1) as u8;
+        let my_type = PackType::bit_to_state((ctr_in_pack & 1) as u8);
 
-        let countr = if bt == 1 { countr1 } else { countr2 };
+        let countr = if my_type.is_fback() {
+            countr1_fback
+        } else {
+            countr2_data
+        };
 
         //When working with the algorithm,
         //keep in mind that the counter in the packet has a smaller field than the real counter,
@@ -576,7 +400,7 @@ pub fn get_counter(
             } else {
                 real_countr
             },
-            (ctr_in_pack & 1) as u8,
+            my_type,
         ));
     }
     Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
@@ -758,31 +582,6 @@ where
     Ok(())
 }
 
-///(array(head fields len + headbyte len + paload len+ tag len),(payload start pos,  pauload endpos) )
-pub fn pre_alloc(
-    topology: &PackTopology,
-    mtu: usize,
-    payloadlen: usize,
-) -> Result<(Box<[u8]>, (usize, usize)), WTypeErr> {
-    let len_pack = topology
-        .total_minimal_len()
-        .checked_add(payloadlen)
-        .ok_or(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))?;
-
-    return Ok((
-        vec![
-            0;
-            if len_pack > mtu {
-                return Err(WTypeErr::LenSizeErr("len_pack > mtu"));
-            } else {
-                len_pack
-            }
-        ]
-        .into_boxed_slice(),
-        (topology.content_start_pos(), len_pack - topology.tag_len()),
-    ));
-}
-
 //##=============================================================TESTS====================================TESTS===================////=============
 //##=============================================================TESTS====================================TESTS====================////=============
 //##=============================================================TESTS====================================TESTS====================////=============
@@ -791,56 +590,6 @@ pub fn pre_alloc(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_prealoc() {
-        let mkd = [13, 7, 6, 8];
-        let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t1pology::PakFields::UserField(mkd[0]),
-            t1pology::PakFields::Counter(mkd[1]),
-            t1pology::PakFields::IdConnect(mkd[2]),
-            t1pology::PakFields::HeadCRC(mkd[3]),
-        ];
-
-        let result = PackTopology::new(19, &fields, true, false).unwrap();
-
-        //let mut temp = pre_alloc(&result, 1000, 500).unwrap();
-        let total: usize = mkd.iter().sum();
-
-        assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 50),
-            Err(WTypeErr::LenSizeErr("len_pack > mtu"))
-        );
-        assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 49),
-            Ok((
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                ]
-                .into_boxed_slice(),
-                (35usize, 84usize)
-            ))
-        );
-
-        assert_eq!(
-            pre_alloc(&result, !0_usize, (!0_usize) - 1),
-            Err(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))
-        );
-
-        let mut t = pre_alloc(&result, 100000, 43).unwrap();
-        t.0[t.1 .0..t.1 .1].fill(1);
-        let count = t.0.iter().filter(|&&element| element == 1).count();
-        let count0 = t.0.iter().take_while(|&&x| x == 0).count();
-
-        assert_eq!(count, 43);
-        assert_eq!(count0, result.total_head_slice().2 + 1);
-
-        println!("{:?}   /n{} /n {}", t.0, count, count0);
-    }
 
     #[test]
     fn test_gen_head_crc() {
@@ -1379,12 +1128,16 @@ mod tests {
                 for y in 0..120 {
                     let ccc = if tt { i1 } else { i2 };
 
-                    assert_eq!(set_counter(&mut bb, &result, ccc, tt as u8).is_ok(), true);
+                    assert_eq!(
+                        set_counter(&mut bb, &result, ccc, PackType::bit_to_state(tt as u8))
+                            .is_ok(),
+                        true
+                    );
                     assert_eq!(get_counter(&mut bb, &result, i1, i2).is_ok(), true);
 
                     assert_eq!(
                         get_counter(&mut bb, &result, i1, i2).unwrap(),
-                        (if tt { i1 } else { i2 }, tt as u8),
+                        (if tt { i1 } else { i2 }, PackType::bit_to_state(tt as u8)),
                         "from get_counter {:?}  real {:?}  i:{i}  tt:{tt}  y:{y}",
                         get_counter(&mut bb, &result, i1 - y, i2 - y).unwrap(),
                         (if tt { i1 } else { i2 }, tt)
@@ -1394,7 +1147,7 @@ mod tests {
         }
 
         assert_eq!(
-            set_counter(&mut bb[..2], &result, 21, IS_FBACK),
+            set_counter(&mut bb[..2], &result, 21, PackType::FBack),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
@@ -1422,27 +1175,48 @@ mod tests {
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
 
-        assert_eq!(set_id_conn(&mut bb, &result1, 213214, true).is_ok(), true);
-
-        assert_eq!(set_id_conn(&mut bb, &result2, 213214, true).is_ok(), false);
-
-        assert_eq!(set_id_conn(&mut bb, &result1, 213214, true).is_ok(), true);
+        assert_eq!(
+            set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok(),
+            true
+        );
 
         assert_eq!(
-            set_id_conn(&mut bb, &result1, (!0_u64) >> 8, true).is_ok(),
+            set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator).is_ok(),
             false
         );
 
-        assert_eq!(set_id_conn(&mut bb, &result1, 100000, true).is_ok(), true);
+        assert_eq!(
+            set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok(),
+            true
+        );
+
+        assert_eq!(
+            set_id_conn(&mut bb, &result1, (!0_u64) >> 8, MyRole::Initiator).is_ok(),
+            false
+        );
+
+        assert_eq!(
+            set_id_conn(&mut bb, &result1, 100000, MyRole::Initiator).is_ok(),
+            true
+        );
 
         assert_eq!(get_id_conn(&bb, &result2).is_ok(), false);
 
         assert_eq!(get_id_conn(&bb, &result1).is_ok(), true);
 
-        assert_eq!(get_id_conn(&bb, &result1).unwrap(), (100000, true));
+        assert_eq!(
+            get_id_conn(&bb, &result1).unwrap(),
+            (100000, MyRole::Initiator)
+        );
 
-        assert_eq!(set_id_conn(&mut bb, &result1, 13321, false).is_ok(), true);
-        assert_eq!(get_id_conn(&bb, &result1).unwrap(), (13321, false));
+        assert_eq!(
+            set_id_conn(&mut bb, &result1, 13321, MyRole::Passive).is_ok(),
+            true
+        );
+        assert_eq!(
+            get_id_conn(&bb, &result1).unwrap(),
+            (13321, MyRole::Passive)
+        );
 
         assert_eq!(
             get_id_conn(&bb, &result2),
@@ -1454,17 +1228,17 @@ mod tests {
         );
 
         assert_eq!(
-            set_id_conn(&mut bb, &result1, 2312123213213221221, true),
+            set_id_conn(&mut bb, &result1, 2312123213213221221, MyRole::Initiator),
             Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1"
             ))
         );
         assert_eq!(
-            set_id_conn(&mut bb[0..2], &result1, 2, true),
+            set_id_conn(&mut bb[0..2], &result1, 2, MyRole::Initiator),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            set_id_conn(&mut bb, &result2, 213214, true),
+            set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator),
             Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
         );
     }
@@ -1597,7 +1371,7 @@ mod tests {
 
         //COUNTER
         assert_eq!(
-            set_counter(&mut pack, &topology, ctr_m, IS_FBACK).is_ok(),
+            set_counter(&mut pack, &topology, ctr_m, PackType::FBack).is_ok(),
             true
         );
         assert_eq!(
@@ -1606,15 +1380,15 @@ mod tests {
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 17, ctr_m - 30),
-            Ok((ctr_m, 1))
+            Ok((ctr_m, PackType::FBack))
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 100, ctr_m - 31,),
-            Ok((ctr_m, 1))
+            Ok((ctr_m, PackType::FBack))
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 123, ctr_m - 23,),
-            Ok((ctr_m, 1))
+            Ok((ctr_m, PackType::FBack))
         );
 
         //TTL
@@ -1628,14 +1402,23 @@ mod tests {
 
         //IDC
         assert_eq!(
-            set_id_conn(&mut pack, &topology, (!0_u32) as u64, true).is_ok(),
+            set_id_conn(&mut pack, &topology, (!0_u32) as u64, MyRole::Initiator).is_ok(),
             false
         );
         assert_eq!(
-            set_id_conn(&mut pack, &topology, id_c, id_c_b).is_ok(),
+            set_id_conn(
+                &mut pack,
+                &topology,
+                id_c,
+                MyRole::bit_to_state(id_c_b as u8)
+            )
+            .is_ok(),
             true
         );
-        assert_eq!(get_id_conn(&pack, &topology).unwrap(), (id_c, id_c_b));
+        assert_eq!(
+            get_id_conn(&pack, &topology).unwrap(),
+            (id_c, MyRole::bit_to_state(id_c_b as u8))
+        );
 
         //us reash
         assert_eq!(
@@ -1872,7 +1655,10 @@ mod tests {
             ))
         );
         */
-        assert_eq!(get_id_conn(&pack, &topology).unwrap(), (id_c, id_c_b));
+        assert_eq!(
+            get_id_conn(&pack, &topology).unwrap(),
+            (id_c, MyRole::bit_to_state(id_c_b as u8))
+        );
 
         assert_eq!(
             set_get_head_crc(true, &mut pack, &topology, dummy_crc_gen),
@@ -1880,7 +1666,7 @@ mod tests {
         );
         assert_eq!(
             get_counter(&mut pack, &topology, ctr_m - 10, ctr_m - 11),
-            Ok((ctr_m, IS_FBACK))
+            Ok((ctr_m, PackType::FBack))
         );
         assert_eq!(get_ttl(&pack, &topology).unwrap(), ttl as u64);
         assert_eq!(

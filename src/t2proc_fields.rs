@@ -1,12 +1,11 @@
-use core::task;
-use std::f32::consts::E;
-use std::thread::panicking;
+use std::u64;
 
 use crate::t1pology::PackTopology;
 
 use crate::t4_connect_data;
 
 use crate::t1fields;
+use crate::w_types;
 
 /*
 
@@ -34,7 +33,7 @@ pub enum WsErr {
     AnyErr(&'static str),
 }
 
-pub trait WsConnectStorager<Tudp, Twait, Tencrypt: t1fields::EncWis> {
+pub trait WsConnectStorager<Tudp, Twait, Tencrypt: w_types::EncWis> {
     fn checking_if_is_my_pack(
         fn_if_is_my_pack: fn(
             &mut t4_connect_data::WsConnectData<Tudp, Twait, Tencrypt>,
@@ -53,6 +52,27 @@ pub struct IdConn {
     pub pack_from_why: bool,
 }
 
+pub enum MyRole {
+    Initiator,
+    Passive,
+}
+
+impl MyRole {
+    pub fn is_initiator(&self) -> bool {
+        match self {
+            Self::Initiator => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_passive(&self) -> bool {
+        match self {
+            Self::Passive => true,
+            _ => false,
+        }
+    }
+}
+
 ///The UserField and Nonce fields are deliberately omitted here so as not to tempt users to enter sensitive data in these fields,
 ///  since Nonce is an entropy field that is only needed for encryption.
 ///The UserField field can only contain gibberish and 0% useful information.
@@ -65,10 +85,10 @@ pub struct WsPubFields {
     pub is_fback: bool,
 }
 
-pub fn get_public_fields<
+pub fn recv_pack<
     Tudp,
     Twait,
-    Tencrypt: t1fields::EncWis,
+    Tencrypt: w_types::EncWis,
     T: WsConnectStorager<Tudp, Twait, Tencrypt>,
 >(
     metal_id: u64,
@@ -77,9 +97,10 @@ pub fn get_public_fields<
     pack: &mut [u8],
     crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     allowed_trash_at_end_package: bool,
-) -> Result<WsOk, t1fields::WTypeErr> {
+    my_role: MyRole,
+) -> Result<WsOk, w_types::WTypeErr> {
     if pack.len() < topology.total_minimal_len() {
-        return Err(t1fields::WTypeErr::LenSizeErr(
+        return Err(w_types::WTypeErr::LenSizeErr(
             "pack.len() < topology.total_minimal_len()",
         ));
     }
@@ -91,9 +112,7 @@ pub fn get_public_fields<
             topology,
             crcfn.expect("topology: &PackTopology has a field but crcfn == None"),
         )? {
-            return Err(t1fields::WTypeErr::PackageDamaged(
-                "crc summ does not match",
-            ));
+            return Err(w_types::WTypeErr::NoneFieldErr("crc summ does not match"));
         };
     }
 
@@ -101,10 +120,10 @@ pub fn get_public_fields<
         let size_pack = t1fields::get_len(pack, topology)?;
 
         if (!allowed_trash_at_end_package) && (size_pack != pack.len()) {
-            return Err(t1fields::WTypeErr::LenSizeErr("allowed_trash_at_end_package is set to false, but the value in the length field does not match the true length pack: &mut [u8]"));
+            return Err(w_types::WTypeErr::LenSizeErr("allowed_trash_at_end_package is set to false, but the value in the length field does not match the true length pack: &mut [u8]"));
         }
         if size_pack > pack.len() {
-            return Err(t1fields::WTypeErr::LenSizeErr("value in the length field is GREATER than the actual length of the pack: &mut [u8], packet is corrupted"));
+            return Err(w_types::WTypeErr::LenSizeErr("value in the length field is GREATER than the actual length of the pack: &mut [u8], packet is corrupted"));
         }
 
         &mut pack[..size_pack] //new truncated packet
@@ -112,8 +131,37 @@ pub fn get_public_fields<
         pack
     };
 
-    let (sender, receiver) = t1fields::get_id_sender_and_recv(pack, topology)?;
+    let (sender, receiver) = if let (Some(r), Some(s)) = (
+        topology.id_of_receiver_slice(),
+        topology.id_of_sender_slice(),
+    ) {
+        let (se, re) = t1fields::get_id_sender_and_recv(pack, topology)?;
+        (Some(se), Some(re))
+    } else {
+        (None, None)
+    };
+
+    let (sender, receiver) = if let (Some(r), Some(s)) = (
+        topology.id_of_receiver_slice(),
+        topology.id_of_sender_slice(),
+    ) {
+        let (se, re) = t1fields::get_id_sender_and_recv(pack, topology)?;
+        (Some(se), Some(re))
+    } else {
+        (None, None)
+    };
+
     let (id_conn, id_conn_from_why) = t1fields::get_id_conn(pack, topology)?;
+
+    // let id_conn: Some((u64, t1fields::MyRole)) = if let (Some(r), Some(s)) = (
+    //      topology.id_of_receiver_slice(),
+    //      topology.id_of_sender_slice(),
+    //  ) {
+    //      let (se, re) = t1fields::get_id_sender_and_recv(pack, topology)?;
+    //      (Some(se), Some(re))
+    // } else {
+    //    (None, None)
+    // };
 
     //EEEDET
     Ok(WsOk::IsMyPackage)

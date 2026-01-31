@@ -157,27 +157,28 @@ pub struct WsConnectParam {
     ///see description percent_fake_data_packets^^^
     /// similar behavior for fback-type packets
     percent_fake_fback_packets: Option<f64>,
-    //
-    //
-    ///bytes_scatter_random_long_trash_padding_in_data_packs also serves to add junk data to the end of a data packet.
-    ///  This is necessary to hide the actual size of the packet, especially fback packets,
-    ///  since such packets are often much shorter than data packets.
-    ///  usize is responsible for the maximum number of junk bytes added. As a result,
-    ///  a random number of bytes from 0 to usize will be added to the end of the packet.
-    /// The garbage consists only of ZERO BYTES
-    ///garbage is added to the end of ENCRYPTED data,
-    ///  which makes it impossible to determine the actual length of the packet based on the packet length field (if any)
-    ///  until the packet is decrypted. Garbage can only be added to the end of a complete file,
-    ///  which is a continuous segment of useful data of any length, often longer than the data packet.
-    ///  Garbage can only be inserted into the last packet of the file.
-    ///  To randomize the length of packets in the middle of the file, use “percent_len_random_coefficient”.
-    percent_add_rand_nums_bytes_data_packs: Option<f64>,
-    ///see description percent_add_rand_nums_bytes_data_packs^^^
-    /// similar behavior for fback-type packets
-    /// The fback packet must always be and is a packet that transmits complete data,
-    ///  i.e., junk data can be added to any fback packet.
-    percent_add_rand_nums_bytes_fback_packs: Option<f64>,
-
+    /*
+        //The old APIs have been simplified.
+        //
+        ///bytes_scatter_random_long_trash_padding_in_data_packs also serves to add junk data to the end of a data packet.
+        ///  This is necessary to hide the actual size of the packet, especially fback packets,
+        ///  since such packets are often much shorter than data packets.
+        ///  usize is responsible for the maximum number of junk bytes added. As a result,
+        ///  a random number of bytes from 0 to usize will be added to the end of the packet.
+        /// The garbage consists only of ZERO BYTES
+        ///garbage is added to the end of ENCRYPTED data,
+        ///  which makes it impossible to determine the actual length of the packet based on the packet length field (if any)
+        ///  until the packet is decrypted. Garbage can only be added to the end of a complete file,
+        ///  which is a continuous segment of useful data of any length, often longer than the data packet.
+        ///  Garbage can only be inserted into the last packet of the file.
+        ///  To randomize the length of packets in the middle of the file, use “percent_len_random_coefficient”.
+        percent_add_rand_nums_bytes_data_packs: Option<f64>,
+        ///see description percent_add_rand_nums_bytes_data_packs^^^
+        /// similar behavior for fback-type packets
+        /// The fback packet must always be and is a packet that transmits complete data,
+        ///  i.e., junk data can be added to any fback packet.
+        percent_add_rand_nums_bytes_fback_packs: Option<f64>,
+    */
     ///percent_len_random_coefficient is needed to randomize the length to which packets will be cut,<br><br>
     ///  for example, file length = 1000 bytes, your network's MTU = 100 bytes,<br>
     ///  the packet's working fields occupy 20 bytes, then to transfer the file,<br>
@@ -225,8 +226,6 @@ impl WsConnectParam {
         ttl_max_start_cost: Option<(u64, u64, i64)>,
         percent_fake_data_packets: Option<f64>,
         percent_fake_fback_packets: Option<f64>,
-        percent_add_rand_nums_bytes_data_packs: Option<f64>,
-        percent_add_rand_nums_bytes_fback_packs: Option<f64>,
         percent_len_random_coefficient: Option<f64>,
     ) -> Result<Self, &'static str> {
         if pack_topology.total_minimal_len() >= mtu {
@@ -371,17 +370,6 @@ impl WsConnectParam {
             }
         }
 
-        if let Some(x) = percent_add_rand_nums_bytes_data_packs {
-            if !x.is_normal() || x > 1.0 || x <= 0.0 {
-                return Err("percent_add_rand_nums_bytes_data_packs must be in the range from (0.0 to 1.0] For more information, see the description of this variable at the beginning of the file.");
-            }
-        }
-        if let Some(x) = percent_add_rand_nums_bytes_fback_packs {
-            if !x.is_normal() || x > 1.0 || x <= 0.0 {
-                return Err("percent_add_rand_nums_bytes_fback_packs must be in the range from (0.0 to 1.0] For more information, see the description of this variable at the beginning of the file.");
-            }
-        }
-
         Ok(Self {
             pack_topology: pack_topology.clone(), //
             /**/
@@ -404,10 +392,9 @@ impl WsConnectParam {
             maximum_length_fback_queue_packages,       //
             maximum_length_queue_unconfirmed_packages, //
             /**/
-            percent_fake_data_packets,               //
-            percent_fake_fback_packets,              //
-            percent_add_rand_nums_bytes_data_packs,  //
-            percent_add_rand_nums_bytes_fback_packs, //
+            percent_fake_data_packets,  //
+            percent_fake_fback_packets, //
+
             instant_feedback_on_packet_loss,
             percent_len_random_coefficient,
         })
@@ -484,14 +471,6 @@ impl WsConnectParam {
         self.percent_fake_fback_packets
     }
 
-    pub fn percent_add_rand_nums_bytes_data_packs(&self) -> Option<f64> {
-        self.percent_add_rand_nums_bytes_data_packs
-    }
-
-    pub fn percent_add_rand_nums_bytes_fback_packs(&self) -> Option<f64> {
-        self.percent_add_rand_nums_bytes_fback_packs
-    }
-
     pub fn percent_len_random_coefficient(&self) -> Option<f64> {
         self.percent_len_random_coefficient
     }
@@ -512,7 +491,9 @@ pub struct WsPackagesParam<Tenc: EncWis> {
     user_trash_fnc: Option<fn(&mut [u8], u64, usize) -> Result<(), &'static str>>,
 }
 */
-pub fn get_struct_time_long_support(
+#[cfg(test)]
+///This function is needed so that when the new method is changed, all the fucking tests don't have to be rewritten.
+fn get_struct_time_long_support(
     pack_topology: &PackTopology,
     mtu: usize,
     instant_feedback_on_packet_loss: bool,
@@ -531,8 +512,8 @@ pub fn get_struct_time_long_support(
     ttl_max_start_cost: Option<(u64, u64, i64)>,
     percent_fake_data_packets: Option<f64>,
     percent_fake_fback_packets: Option<f64>,
-    percent_add_rand_nums_bytes_data_packs: Option<f64>,
-    percent_add_rand_nums_bytes_fback_packs: Option<f64>,
+    __old_api1: Option<f64>,
+    __old_api2: Option<f64>,
     percent_len_random_coefficient: Option<f64>,
 ) -> Result<WsConnectParam, &'static str> {
     WsConnectParam::new(
@@ -554,8 +535,6 @@ pub fn get_struct_time_long_support(
         ttl_max_start_cost,
         percent_fake_data_packets,
         percent_fake_fback_packets,
-        percent_add_rand_nums_bytes_data_packs,
-        percent_add_rand_nums_bytes_fback_packs,
         percent_len_random_coefficient,
     )
 }
@@ -1305,8 +1284,7 @@ mod tests_percent {
         let param = result.unwrap();
         assert_eq!(param.percent_fake_data_packets(), None);
         assert_eq!(param.percent_fake_fback_packets(), None);
-        assert_eq!(param.percent_add_rand_nums_bytes_data_packs(), None);
-        assert_eq!(param.percent_add_rand_nums_bytes_fback_packs(), None);
+
         assert_eq!(param.percent_len_random_coefficient(), None);
     }
 
@@ -1749,169 +1727,8 @@ mod tests_percent {
         );
     }
 
-    #[test]
-    fn test_percent_add_rand_nums_bytes_data_packs_valid() {
-        let topo = get_topol(Some(1), 50, None);
-        let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12) =
-            create_valid_base_params(&topo);
 
-        // percent_add_rand_nums_bytes_data_packs with valid value 0.4
-        let result = get_struct_time_long_support(
-            &topo,
-            mtu,
-            p0,
-            p1,
-            p2,
-            p3,
-            p4,
-            p5,
-            p6,
-            p7,
-            p8,
-            p9,
-            p10,
-            p11,
-            p12,
-            None,
-            None,
-            None,
-            Some(0.4), // valid
-            None,
-            None,
-        );
 
-        assert!(
-            result.is_ok(),
-            "percent_add_rand_nums_bytes_data_packs = 0.4 should be valid"
-        );
-        assert_eq!(
-            result.unwrap().percent_add_rand_nums_bytes_data_packs(),
-            Some(0.4)
-        );
-    }
-
-    #[test]
-    fn test_percent_add_rand_nums_bytes_data_packs_zero_error() {
-        let topo = get_topol(Some(1), 50, None);
-        let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12) =
-            create_valid_base_params(&topo);
-
-        // percent_add_rand_nums_bytes_data_packs = 0.0 -> error
-        let result = get_struct_time_long_support(
-            &topo,
-            mtu,
-            p0,
-            p1,
-            p2,
-            p3,
-            p4,
-            p5,
-            p6,
-            p7,
-            p8,
-            p9,
-            p10,
-            p11,
-            p12,
-            None,
-            None,
-            None,
-            Some(0.0), // invalid
-            None,
-            None,
-        );
-
-        assert!(
-            result.is_err(),
-            "percent_add_rand_nums_bytes_data_packs = 0.0 should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "percent_add_rand_nums_bytes_data_packs must be in the range from (0.0 to 1.0] For more information, see the description of this variable at the beginning of the file."
-        );
-    }
-
-    #[test]
-    fn test_percent_add_rand_nums_bytes_fback_packs_valid() {
-        let topo = get_topol(Some(1), 50, None);
-        let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12) =
-            create_valid_base_params(&topo);
-
-        // percent_add_rand_nums_bytes_fback_packs with valid value 0.2
-        let result = get_struct_time_long_support(
-            &topo,
-            mtu,
-            p0,
-            p1,
-            p2,
-            p3,
-            p4,
-            p5,
-            p6,
-            p7,
-            p8,
-            p9,
-            p10,
-            p11,
-            p12,
-            None,
-            None,
-            None,
-            None,
-            Some(0.2), // valid
-            None,
-        );
-
-        assert!(
-            result.is_ok(),
-            "percent_add_rand_nums_bytes_fback_packs = 0.2 should be valid"
-        );
-        assert_eq!(
-            result.unwrap().percent_add_rand_nums_bytes_fback_packs(),
-            Some(0.2)
-        );
-    }
-
-    #[test]
-    fn test_percent_add_rand_nums_bytes_fback_packs_zero_error() {
-        let topo = get_topol(Some(1), 50, None);
-        let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12) =
-            create_valid_base_params(&topo);
-
-        // percent_add_rand_nums_bytes_fback_packs = 0.0 -> error
-        let result = get_struct_time_long_support(
-            &topo,
-            mtu,
-            p0,
-            p1,
-            p2,
-            p3,
-            p4,
-            p5,
-            p6,
-            p7,
-            p8,
-            p9,
-            p10,
-            p11,
-            p12,
-            None,
-            None,
-            None,
-            None,
-            Some(0.0), // invalid
-            None,
-        );
-
-        assert!(
-            result.is_err(),
-            "percent_add_rand_nums_bytes_fback_packs = 0.0 should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "percent_add_rand_nums_bytes_fback_packs must be in the range from (0.0 to 1.0] For more information, see the description of this variable at the beginning of the file."
-        );
-    }
 
     #[test]
     fn test_all_traffic_masking_valid_values() {
@@ -1951,8 +1768,6 @@ mod tests_percent {
         let param = result.unwrap();
         assert_eq!(param.percent_fake_data_packets(), Some(0.1));
         assert_eq!(param.percent_fake_fback_packets(), Some(0.05));
-        assert_eq!(param.percent_add_rand_nums_bytes_data_packs(), Some(0.3));
-        assert_eq!(param.percent_add_rand_nums_bytes_fback_packs(), Some(0.2));
         assert_eq!(param.percent_len_random_coefficient(), Some(0.4));
     }
 
@@ -2030,47 +1845,6 @@ mod tests_percent {
             "percent_len_random_coefficient = 1.0 should be valid"
         );
         assert_eq!(result.unwrap().percent_len_random_coefficient(), Some(1.0));
-    }
-
-    #[test]
-    fn test_percent_add_rand_nums_bytes_data_packs_one() {
-        let topo = get_topol(Some(1), 50, None);
-        let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12) =
-            create_valid_base_params(&topo);
-
-        // percent_add_rand_nums_bytes_data_packs = 1.0 (boundary value)
-        let result = get_struct_time_long_support(
-            &topo,
-            mtu,
-            p0,
-            p1,
-            p2,
-            p3,
-            p4,
-            p5,
-            p6,
-            p7,
-            p8,
-            p9,
-            p10,
-            p11,
-            p12,
-            None,
-            None,
-            None,
-            Some(1.0), // boundary
-            None,
-            None,
-        );
-
-        assert!(
-            result.is_ok(),
-            "percent_add_rand_nums_bytes_data_packs = 1.0 should be valid"
-        );
-        assert_eq!(
-            result.unwrap().percent_add_rand_nums_bytes_data_packs(),
-            Some(1.0)
-        );
     }
 
     #[test]

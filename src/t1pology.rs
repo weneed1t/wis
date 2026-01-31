@@ -45,16 +45,16 @@ pub enum PakFields {
 impl PartialEq for PakFields {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (PakFields::IdOfSender(_), PakFields::IdOfSender(_)) => true,
-            (PakFields::IdReceiver(_), PakFields::IdReceiver(_)) => true,
-            (PakFields::Len(_), PakFields::Len(_)) => true,
-            (PakFields::Counter(_), PakFields::Counter(_)) => true,
-            (PakFields::UserField(_), PakFields::UserField(_)) => true,
-            (PakFields::HeadCRC(_), PakFields::HeadCRC(_)) => true,
-            (PakFields::Nonce(_), PakFields::Nonce(_)) => true,
+            (Self::IdOfSender(_), Self::IdOfSender(_)) => true,
+            (Self::IdReceiver(_), Self::IdReceiver(_)) => true,
+            (Self::Len(_), Self::Len(_)) => true,
+            (Self::Counter(_), Self::Counter(_)) => true,
+            (Self::UserField(_), Self::UserField(_)) => true,
+            (Self::HeadCRC(_), Self::HeadCRC(_)) => true,
+            (Self::Nonce(_), Self::Nonce(_)) => true,
             //(PakFields::HeadByte, PakFields::HeadByte) => true,
-            (PakFields::TTL(_), PakFields::TTL(_)) => true,
-            (PakFields::IdConnect(_), PakFields::IdConnect(_)) => true,
+            (Self::TTL(_), Self::TTL(_)) => true,
+            (Self::IdConnect(_), Self::IdConnect(_)) => true,
             _ => false,
         }
     }
