@@ -24,5 +24,5 @@ delete this in prod
 
 git add . &&
 git commit -m "dev" &&
-git push origin
+git push main
 */
