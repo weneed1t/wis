@@ -280,7 +280,7 @@ pub fn pre_alloc(
         .checked_add(payloadlen)
         .ok_or(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))?;
 
-    return Ok((
+    Ok((
         vec![
             0;
             if len_pack > mtu {
@@ -291,7 +291,7 @@ pub fn pre_alloc(
         ]
         .into_boxed_slice(),
         (topology.content_start_pos(), len_pack - topology.tag_len()),
-    ));
+    ))
 }
 
 #[cfg(test)]

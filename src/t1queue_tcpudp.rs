@@ -41,18 +41,10 @@ pub mod recv_queue {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
                 (Self::NonCritical(x), Self::NonCritical(y)) => {
-                    if x == y {
-                        true
-                    } else {
-                        false
-                    }
+                    x == y
                 }
                 (Self::Critical(x), Self::Critical(y)) => {
-                    if x == y {
-                        true
-                    } else {
-                        false
-                    }
+                    x == y
                 }
                 _ => false,
             }
@@ -182,22 +174,21 @@ pub mod recv_queue {
                     if elem_in_buf_quque >= min_len {
                         //if the package has a crc signature of the head data,
                         // then it must be checked. if the data is intact, add it to ret_paks
-                        if self.pack_topology.head_crc_slice().is_some() {
-                            if !t1fields::set_get_head_crc(
+                        if self.pack_topology.head_crc_slice().is_some()
+                            && !t1fields::set_get_head_crc(
                                 false,
                                 &mut self.u_buf[ptr_to_start..],
-                                &self.pack_topology,
+                                self.pack_topology,
                                 self.crcfn.ok_or(WSQueueErr::Critical("crcfn is none"))?,
                             )
                             .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
                             {
                                 return Err(WSQueueErr::Critical("package is damaged"));
                             }
-                        }
 
                         //getting the length of the packet from the length field in the packet.
                         let len_of_curent_pack =
-                            t1fields::get_len(&self.u_buf[ptr_to_start..], &self.pack_topology)
+                            t1fields::get_len(&self.u_buf[ptr_to_start..], self.pack_topology)
                                 .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
                         //if the length value in the length field is greater than MTU,
                         // then the packet is corrupted, an error is caused.
@@ -431,12 +422,7 @@ pub mod recv_queue {
 
             if let Some(lctr) = self.largest_ctr {
                 let ad = self.last_give_ctr.is_some() as u64 & 1;
-                let ex = ((self.in_queue as u64)
-                    .checked_add(ad)
-                    .expect("err ad + self.in_queue"))
-                    < (lctr.checked_sub(lgctr).expect("err (lctr - lgctr)"))
-                        .checked_add(1)
-                        .expect("(lctr - lgctr) + 1");
+                
 
                 //println!(
                 //    "last {} large {} sub {}  inq {}  gap {}",
@@ -446,7 +432,12 @@ pub mod recv_queue {
                 //    self.in_queue,
                 //    ex
                 //);
-                ex
+                ((self.in_queue as u64)
+                    .checked_add(ad)
+                    .expect("err ad + self.in_queue"))
+                    < (lctr.checked_sub(lgctr).expect("err (lctr - lgctr)"))
+                        .checked_add(1)
+                        .expect("(lctr - lgctr) + 1")
             } else {
                 false
             }
@@ -631,7 +622,7 @@ pub mod recv_queue {
                 if last_elem_id.0 == id {
                     if let Some(cb_id) = removed_elem.cb.as_ref() {
                         self.of_max_p =
-                            Some((*cb_id, self.data_map.get(&cb_id).expect("Critical error: incorrect logic, link to previous element exists, but it is missing from the table.").p_order.clone()));
+                            Some((*cb_id, self.data_map.get(cb_id).expect("Critical error: incorrect logic, link to previous element exists, but it is missing from the table.").p_order.clone()));
                     } else {
                         self.of_max_p = None;
                     }
@@ -647,7 +638,7 @@ pub mod recv_queue {
                 if first_elem_id.0 == id {
                     if let Some(cl_id) = removed_elem.cl.as_ref() {
                         self.of_min_p =
-                            Some((*cl_id, self.data_map.get(&cl_id).expect("Critical error: incorrect logic, link does not exist, but it is missing from the table.").p_order.clone()));
+                            Some((*cl_id, self.data_map.get(cl_id).expect("Critical error: incorrect logic, link does not exist, but it is missing from the table.").p_order.clone()));
                     } else {
                         self.of_min_p = None;
                     }
@@ -748,7 +739,7 @@ pub mod recv_queue {
                 return Err("The MTU is too small to accommodate even one counter.");
             }
 
-            return Ok(ctrs);
+            Ok(ctrs)
         }
         ///payload_mtu indicates the maximum payload length in your network in bytes
         ///len_ctr_slise is a variable that takes the length of the counter field in bytes.

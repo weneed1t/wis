@@ -43,11 +43,11 @@ pub fn set_get_head_crc(
 
         {
             let head_sl: &mut [u8] = &mut head[start..end];
-            temp_old[..len].copy_from_slice(&head_sl); //temp = crc head
+            temp_old[..len].copy_from_slice(head_sl); //temp = crc head
             head_sl.fill(0); // crc in head = 0
         }
 
-        crcfn(&head, &mut temp_new[..len]).map_err(|x| WTypeErr::PackageDamaged(x))?; //
+        crcfn(head, &mut temp_new[..len]).map_err(WTypeErr::PackageDamaged)?; //
 
         head[start..end].copy_from_slice(if create_new_crc_summ {
             &temp_new[..len] //crc
@@ -92,7 +92,7 @@ pub fn set_ttl(
                 }
                 0
             } else {
-            let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
+            let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
             if ttl_before >ttl_max{
                 return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
             }
@@ -100,7 +100,7 @@ pub fn set_ttl(
             },
             ttl_i_edit,
         true)
-        .map_err(|x| WTypeErr::PackageDamaged(x))?;
+        .map_err(WTypeErr::PackageDamaged)?;
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
         }
@@ -109,8 +109,7 @@ pub fn set_ttl(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
         }
-        wutils::u64_to_1_8bytes(temp, &mut pack[start..end])
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        wutils::u64_to_1_8bytes(temp, &mut pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok(temp);
     }
@@ -128,7 +127,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        return wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x));
+        return wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
     }
     Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
 }
@@ -163,7 +162,7 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
     }
 
     wutils::u64_to_1_8bytes(pack.len() as u64, &mut pack[sls.0..sls.1])
-        .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        .map_err(WTypeErr::WorkTimeErr)?;
 
     Ok(())
 }
@@ -181,7 +180,7 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
-    Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(|x| WTypeErr::WorkTimeErr(x))? as usize)
+    Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(WTypeErr::WorkTimeErr)? as usize)
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
@@ -212,7 +211,7 @@ pub fn set_id_conn(
             (id_conn << 1) | role.sate_to_bit() as u64,
             &mut pack[x.0..x.1],
         )
-        .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        .map_err(WTypeErr::WorkTimeErr)?;
         return Ok(());
     }
 
@@ -231,7 +230,7 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
         return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
     Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
@@ -264,10 +263,9 @@ pub fn set_id_sender_and_recv(
             ));
         }
 
-        wutils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1])
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        wutils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?;
         wutils::u64_to_1_8bytes(id_sender, &mut pack[x_s.0..x_s.1])
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+            .map_err(WTypeErr::WorkTimeErr)?;
         return Ok(());
     }
 
@@ -294,8 +292,8 @@ pub fn get_id_sender_and_recv(
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return Ok((
-            wutils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?,
-            wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?,
+            wutils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(WTypeErr::WorkTimeErr)?,
+            wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
         ));
     }
     Err(WTypeErr::NoneFieldErr(
@@ -326,8 +324,7 @@ pub fn set_counter(
 
         let pack_ctr = ((max_cap & countr) << 1) | my_type.sate_to_bit() as u64;
 
-        wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1])
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok((pack_ctr, max_cap));
     }
@@ -365,8 +362,7 @@ pub fn get_counter(
         if pack.len() < x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let ctr_in_pack =
-            wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
+        let ctr_in_pack = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
         let (max_cap, _) = wutils::len_byte_maximal_capacity_check(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
@@ -429,8 +425,7 @@ pub fn set_user_field(
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        field_gen(&mut pack[start..end], counter, full_len)
-            .map_err(|x| WTypeErr::PackageDamaged(x))?; //
+        field_gen(&mut pack[start..end], counter, full_len).map_err(WTypeErr::PackageDamaged)?; //
         return Ok(());
     }
 
@@ -507,12 +502,12 @@ where
                 nonce_gener
                     .ok_or(WTypeErr::NoneFieldErr("nonce_gener required"))?
                     .set_nonce(&mut pack[x.0..x.1])
-                    .map_err(|x| WTypeErr::WorkTimeErr(x))?;
+                    .map_err(WTypeErr::WorkTimeErr)?;
                 1
             } else {
                 0
             },
-            if let Some(_) = topology.counter_slice() {
+            if topology.counter_slice().is_some() {
                 if countr.is_none() {
                     return Err(WTypeErr::NoneFieldErr("counter_field required"));
                 }
@@ -551,26 +546,20 @@ where
     let (free_data, mac_only) = pack.split_at_mut(enc_end);
     let (head, to_enc_only) = free_data.split_at_mut(enc_start);
 
-    let nonce = if let Some(x) = topology.nonce_slice() {
-        Some(&head[x.0..x.1])
-    } else {
-        None
-    };
+    let nonce = topology.nonce_slice().map(|x| &head[x.0..x.1]);
 
     if is_encrypt {
         enc_struct
-            .encrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?;
-    } else {
-        if enc_struct
-            .decrypt(&head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
-            .map_err(|x| WTypeErr::WorkTimeErr(x))?
-            .is_damaged()
-        {
-            return Err(WTypeErr::PackageDamaged(
-                "error return during decryption associated with packet corruption",
-            ));
-        }
+            .encrypt(head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+            .map_err(WTypeErr::WorkTimeErr)?;
+    } else if enc_struct
+        .decrypt(head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+        .map_err(WTypeErr::WorkTimeErr)?
+        .is_damaged()
+    {
+        return Err(WTypeErr::PackageDamaged(
+            "error return during decryption associated with packet corruption",
+        ));
     }
 
     if let Some((s, e, len)) = topology.ttl_slice() {

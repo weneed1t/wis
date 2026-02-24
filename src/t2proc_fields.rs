@@ -71,13 +71,13 @@ pub fn recv_pack<
     Tencrypt: wt1_types::EncWis,
     T: WsConnectStorager<Tudp, Twait, Tencrypt>,
 >(
-    metal_id: u64,
-    storager: &mut T,
+    _metal_id: u64,
+    _storager: &mut T,
     topology: &PackTopology,
     pack: &mut [u8],
     crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     allowed_trash_at_end_package: bool,
-    my_role: MyRole,
+    _my_role: MyRole,
 ) -> Result<WsOk, wt1_types::WTypeErr> {
     if pack.len() < topology.total_minimal_len() {
         return Err(wt1_types::WTypeErr::LenSizeErr(
@@ -85,8 +85,8 @@ pub fn recv_pack<
         ));
     }
 
-    if topology.head_crc_slice().is_some() {
-        if !t1fields::set_get_head_crc(
+    if topology.head_crc_slice().is_some()
+        && !t1fields::set_get_head_crc(
             false,
             pack,
             topology,
@@ -94,7 +94,6 @@ pub fn recv_pack<
         )? {
             return Err(wt1_types::WTypeErr::NoneFieldErr("crc summ does not match"));
         };
-    }
 
     let pack = if topology.len_slice().is_some() {
         let size_pack = t1fields::get_len(pack, topology)?;
@@ -115,7 +114,7 @@ pub fn recv_pack<
         pack
     };
 
-    let (sender, receiver) =
+    let (_sender, _receiver) =
         if topology.id_of_receiver_slice().is_some() && topology.id_of_sender_slice().is_some() {
             let (se, re) = t1fields::get_id_sender_and_recv(pack, topology)?;
             (Some(se), Some(re))
@@ -123,7 +122,7 @@ pub fn recv_pack<
             (None, None)
         };
 
-    let id_conn = if topology.idconn_slice().is_some() {
+    let _id_conn = if topology.idconn_slice().is_some() {
         let (idd, myrole) = t1fields::get_id_conn(pack, topology)?;
         Some((idd, myrole))
     } else {

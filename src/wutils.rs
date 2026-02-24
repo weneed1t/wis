@@ -14,7 +14,7 @@ impl PartialEq for WNotification {
 }
 
 pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
-    if bytes.len() > 8 || bytes.len() == 0 {
+    if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() must be between 1 and 8");
     }
 
@@ -25,13 +25,13 @@ pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
 }
 
 pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
-    if bytes.len() > 8 || bytes.len() == 0 {
+    if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() > 8 ||bytes.len() ==0");
     }
 
     let buffer: [u8; 8] = num.to_be_bytes();
-    bytes.copy_from_slice(&buffer[&buffer.len() - bytes.len()..]);
-    return Ok(());
+    bytes.copy_from_slice(&buffer[buffer.len() - bytes.len()..]);
+    Ok(())
 }
 
 pub fn add_u64_i64(

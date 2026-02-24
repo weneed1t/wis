@@ -30,14 +30,13 @@ impl WSFileSplitter {
     ///  limited resources from allocating memory for very large files.
     ///  If the limitation is not needed, leave the value as None.
     pub fn new(max_len_of_file: Option<usize>) -> Result<Self, &'static str> {
-        if let Some(x) = max_len_of_file {
-            if x == 0 {
+        if let Some(x) = max_len_of_file
+            && x == 0 {
                 return Err("max_len_of_recv must be greater than zero");
             }
-        }
 
         Ok(Self {
-            max_len_of_file: max_len_of_file,
+            max_len_of_file,
             send_file: None,
             recv_data: None,
         })
@@ -49,12 +48,11 @@ impl WSFileSplitter {
         if self.send_file.is_some() {
             return Err("WSFileSplitter already has an unprocessed file ");
         }
-        if let Some(x) = self.max_len_of_file {
-            if rc_file.len() > x {
+        if let Some(x) = self.max_len_of_file
+            && rc_file.len() > x {
                 return Err("rc_file length greater than max_len_of_recv");
             }
-        }
-        if rc_file.len() == 0 {
+        if rc_file.is_empty() {
             return Err("rc_file must be greater than zero");
         }
         if rc_file.len() > u64::MAX as usize {
@@ -194,10 +192,10 @@ impl WSFileSplitter {
                 return Ok(None);
             }
         } else {
-            &slice
+            slice
         };
         //just in case
-        if 0 == slice.len() {
+        if slice.is_empty() {
             return Ok(None);
         }
         //
@@ -278,13 +276,12 @@ impl WSFileSplitter {
                             "An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted",
                         );
                     }
-                    if let Some(m_len) = self.max_len_of_file {
-                        if len_vec as usize > m_len {
+                    if let Some(m_len) = self.max_len_of_file
+                        && len_vec as usize > m_len {
                             return Err(
                                 "The size of the received file exceeds the maximum max_len_of_file.",
                             );
                         }
-                    }
 
                     recv_me.1 = Some(vec![0; len_vec as usize]);
                 }
@@ -318,7 +315,7 @@ impl WSFileSplitter {
 
                 //The file's payload is added to the array that needs to be returned.
                 reta.push(
-                    std::mem::replace(&mut self.recv_data, None)
+                    self.recv_data.take()
                         .expect("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")
                     .1
                     .expect("Panic is an impossible state because this code only executes when self.recv_data is Some() and it has Some() vector and it's only called when the file is completely received, at this point the file should be longer than 0")
@@ -328,7 +325,7 @@ impl WSFileSplitter {
                 self.recv_data = None
             }
 
-            if 0 == slice.len() {
+            if slice.is_empty() {
                 break;
             }
             //Since a loop is used here, according to the standard,
@@ -349,22 +346,14 @@ impl WSFileSplitter {
     /// if the file header is not fully transmitted, returns None
     pub fn len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
-            if let Some(ref dataa) = hea.1 {
-                Some(dataa.len())
-            } else {
-                None
-            }
+            hea.1.as_ref().map(|dataa| dataa.len())
         } else {
             None
         }
     }
     //full len of sending file
     pub fn len_of_send_file(&self) -> Option<usize> {
-        if let Some(ref rfile) = self.send_file {
-            Some(rfile.1.len())
-        } else {
-            None
-        }
+        self.send_file.as_ref().map(|rfile| rfile.1.len())
     }
     ///returns True if there is a started file in the structure
     pub fn i_have_some_recv(&self) -> bool {
@@ -374,16 +363,12 @@ impl WSFileSplitter {
     ///
     ///the remaining length in bytes will be returned.
     pub fn remaining_len_of_send_file(&self) -> Option<usize> {
-        if let Some(ref rfile) = self.send_file {
-            Some( rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
+        self.send_file.as_ref().map(|rfile| rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
             expect("panic an impossible state The pointer len_of_head must always be less than or equal to ptr_in_head.").
             checked_add( rfile.1.len().
             checked_sub(rfile.0.ptr_in_body).
             expect("panic an impossible state The pointer rfile.1.len() must always be less than or equal to rfile.0.ptr_in_body.")).
             expect("usize type is overflow"))
-        } else {
-            None
-        }
     }
     ///Returns the remaining length of the file received by the structure.
     ///
@@ -393,13 +378,9 @@ impl WSFileSplitter {
     /// then the remaining length will be returned.
     pub fn remaining_len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
-            if let Some(ref dataa) = hea.1 {
-                Some(dataa.len().checked_sub(hea.0.ptr_in_body).expect(
+            hea.1.as_ref().map(|dataa| dataa.len().checked_sub(hea.0.ptr_in_body).expect(
                     "impossible condition, hea.0.ptr_in_bod must always be less than dataa.len()",
                 ))
-            } else {
-                None
-            }
         } else {
             None
         }

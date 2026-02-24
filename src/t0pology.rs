@@ -269,11 +269,10 @@ impl PackTopology {
             _ => (),
         }
 
-        if let (Some(re), Some(se)) = (id_of_receiver_slice, id_of_sender_slice) {
-            if re.2 != se.2 {
+        if let (Some(re), Some(se)) = (id_of_receiver_slice, id_of_sender_slice)
+            && re.2 != se.2 {
                 return Err("id_of_receiver_slice and id_of_sender_slice must be the same length");
             }
-        }
 
         let content_start_pos = shift
             .checked_add(1)
@@ -283,7 +282,7 @@ impl PackTopology {
             all_fields: fields.to_vec().into_boxed_slice(),
             tag_len,
             encrypt_start_pos: shift,
-            content_start_pos: content_start_pos,
+            content_start_pos,
             counter_slice,
             id_of_sender_slice,
             id_of_receiver_slice,
