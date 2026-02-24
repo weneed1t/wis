@@ -1,4 +1,4 @@
-use crate::t1pology::PackTopology;
+use crate::t0pology::PackTopology;
 #[derive(Debug, Clone)]
 pub enum WTypeErr {
     LenSizeErr(&'static str),
@@ -419,7 +419,7 @@ mod tests_my_type {
 #[cfg(test)]
 mod tests_prealocc {
     use super::*;
-    use crate::t1pology::PakFields;
+    use crate::t0pology::PakFields;
     #[test]
     fn test_prealoc() {
         let mkd = [13, 7, 6, 8];
@@ -460,7 +460,7 @@ mod tests_prealocc {
         );
 
         let mut t = pre_alloc(&result, 100000, 43).unwrap();
-        t.0[t.1 .0..t.1 .1].fill(1);
+        t.0[t.1.0..t.1.1].fill(1);
         let count = t.0.iter().filter(|&&element| element == 1).count();
         let count0 = t.0.iter().take_while(|&&x| x == 0).count();
 

@@ -1,6 +1,6 @@
-use crate::t1pology::PackTopology;
-use crate::w_types::*;
-use crate::{t1pology, wutils};
+use crate::t0pology::PackTopology;
+use crate::wt1_types::*;
+use crate::{t0pology, wutils};
 
 /// computes and validates the header crc checksum using a user-provided crc function
 /// takes mutable packet data, packet topology, and a crc function: (&[u8], &mut [u8]) -> Result<(), &'static str>
@@ -29,7 +29,7 @@ pub fn set_get_head_crc(
     crcfn: fn(&[u8], &mut [u8]) -> Result<(), &'static str>,
 ) -> Result<bool, WTypeErr> {
     if let Some((start, end, len)) = topology.head_crc_slice() {
-        if len > t1pology::MAXIMAL_CRC_LEN {
+        if len > t0pology::MAXIMAL_CRC_LEN {
             return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
@@ -38,8 +38,8 @@ pub fn set_get_head_crc(
         }
         let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
 
-        let mut temp_old = [0_u8; t1pology::MAXIMAL_CRC_LEN];
-        let mut temp_new = [0_u8; t1pology::MAXIMAL_CRC_LEN];
+        let mut temp_old = [0_u8; t0pology::MAXIMAL_CRC_LEN];
+        let mut temp_new = [0_u8; t0pology::MAXIMAL_CRC_LEN];
 
         {
             let head_sl: &mut [u8] = &mut head[start..end];
@@ -92,11 +92,11 @@ pub fn set_ttl(
                 }
                 0
             } else {
-             let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
-             if ttl_before >ttl_max{
+            let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(|x| WTypeErr::WorkTimeErr(x))?;
+            if ttl_before >ttl_max{
                 return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
-             }
-             ttl_before
+            }
+            ttl_before
             },
             ttl_i_edit,
         true)
@@ -522,15 +522,17 @@ where
             },
         );
         if 0 == n + c {
-            return Err(WTypeErr::NoneFieldErr("Incorrect combination, the packet must have either a counter field, a nonce field, or a nonce field + a counter field. This topology has neither a counter field nor a nonce field."));
+            return Err(WTypeErr::NoneFieldErr(
+                "Incorrect combination, the packet must have either a counter field, a nonce field, or a nonce field + a counter field. This topology has neither a counter field nor a nonce field.",
+            ));
         }
     }
 
     //since TTL and HEADCRC can be changed during packet transmission, these two fields are filled with zeros because
     // the whole packet falls into tag, and head data too, while TTL and HEADCRC do not affect data integrity and
     //can be changed.
-    let mut ttl_vec_temp_mem = [0_u8; t1pology::MAXIMAL_TTL_LEN];
-    let mut crc_vec_temp_mem = [0_u8; t1pology::MAXIMAL_CRC_LEN];
+    let mut ttl_vec_temp_mem = [0_u8; t0pology::MAXIMAL_TTL_LEN];
+    let mut crc_vec_temp_mem = [0_u8; t0pology::MAXIMAL_CRC_LEN];
     if let Some((s, e, len)) = topology.ttl_slice() {
         ttl_vec_temp_mem[..len].copy_from_slice(&pack[s..e]);
         pack[s..e].fill(0);
@@ -595,19 +597,19 @@ mod tests {
     fn test_gen_head_crc() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::UserField(3333),
-            t1pology::PakFields::Counter(7),
-            t1pology::PakFields::IdConnect(6),
-            t1pology::PakFields::HeadCRC(8),
+            t0pology::PakFields::UserField(3333),
+            t0pology::PakFields::Counter(7),
+            t0pology::PakFields::IdConnect(6),
+            t0pology::PakFields::HeadCRC(8),
         ];
 
         let result = PackTopology::new(59, &fields, true, false).unwrap();
 
         let fields2 = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::UserField(3333),
-            t1pology::PakFields::Counter(7),
-            t1pology::PakFields::IdConnect(6),
+            t0pology::PakFields::UserField(3333),
+            t0pology::PakFields::Counter(7),
+            t0pology::PakFields::IdConnect(6),
         ];
 
         let result_non_crc = PackTopology::new(59, &fields2, true, false).unwrap();
@@ -716,21 +718,21 @@ mod tests {
     fn test_ttl() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
-            t1pology::PakFields::IdConnect(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::TTL(4),
+            t0pology::PakFields::Counter(7),
+            t0pology::PakFields::IdConnect(6),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::TTL(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, false).unwrap();
 
         let fields2 = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
-            t1pology::PakFields::IdConnect(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Counter(7),
+            t0pology::PakFields::IdConnect(6),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
         ];
 
         let result_no_ttl = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -789,7 +791,9 @@ mod tests {
 
         assert_eq!(
             set_ttl(&mut bb, &result, -435, 1000, true),
-              Err(WTypeErr::WorkTimeErr("is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."))
+            Err(WTypeErr::WorkTimeErr(
+                "is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."
+            ))
         );
 
         assert_eq!(set_ttl(&mut bb, &result, 999, 1000, true), Ok(999));
@@ -803,13 +807,13 @@ mod tests {
     fn test_crypt() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::UserField(1),
-            t1pology::PakFields::Counter(1),
-            t1pology::PakFields::IdConnect(2),
-            t1pology::PakFields::HeadCRC(2),
-            t1pology::PakFields::Nonce(6),
-            t1pology::PakFields::TTL(2),
-            t1pology::PakFields::Len(3),
+            t0pology::PakFields::UserField(1),
+            t0pology::PakFields::Counter(1),
+            t0pology::PakFields::IdConnect(2),
+            t0pology::PakFields::HeadCRC(2),
+            t0pology::PakFields::Nonce(6),
+            t0pology::PakFields::TTL(2),
+            t0pology::PakFields::Len(3),
         ];
 
         let result = PackTopology::new(16, &fields, true, true).unwrap();
@@ -956,21 +960,21 @@ mod tests {
     fn test_len() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
 
         let fields2 = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
         ];
 
         let result_non_len = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -983,10 +987,10 @@ mod tests {
 
         let fields2 = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
         ];
 
         let result1 = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -997,11 +1001,11 @@ mod tests {
 
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(1),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(1),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
@@ -1038,21 +1042,21 @@ mod tests {
     fn test_trash() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::UserField(334),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
+            t0pology::PakFields::UserField(334),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
 
         let fields1 = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::Counter(7),
+            t0pology::PakFields::Counter(7),
             //t2page::PakFields::IdReceiver(6),
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, true).unwrap();
@@ -1112,7 +1116,7 @@ mod tests {
 
     #[test]
     fn test_ctr() {
-        let fields = vec![t1pology::PakFields::TTL(2), t1pology::PakFields::Counter(1)];
+        let fields = vec![t0pology::PakFields::TTL(2), t0pology::PakFields::Counter(1)];
 
         let result = PackTopology::new(16, &fields, true, false).unwrap();
 
@@ -1159,15 +1163,15 @@ mod tests {
     #[test]
     fn test_id_conn() {
         let fields1 = vec![
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
-            t1pology::PakFields::Counter(2),
-            t1pology::PakFields::IdConnect(7),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
+            t0pology::PakFields::Counter(2),
+            t0pology::PakFields::IdConnect(7),
         ];
         let fields2 = vec![
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
-            t1pology::PakFields::Counter(4),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
+            t0pology::PakFields::Counter(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
@@ -1246,16 +1250,16 @@ mod tests {
     #[test]
     fn test_id_sender_recv() {
         let fields1 = vec![
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
-            t1pology::PakFields::Counter(2),
-            t1pology::PakFields::IdOfSender(4),
-            t1pology::PakFields::IdReceiver(4),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
+            t0pology::PakFields::Counter(2),
+            t0pology::PakFields::IdOfSender(4),
+            t0pology::PakFields::IdReceiver(4),
         ];
         let fields2 = vec![
-            t1pology::PakFields::HeadCRC(4),
-            t1pology::PakFields::Len(4),
-            t1pology::PakFields::Counter(4),
+            t0pology::PakFields::HeadCRC(4),
+            t0pology::PakFields::Len(4),
+            t0pology::PakFields::Counter(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
@@ -1311,15 +1315,15 @@ mod tests {
     fn full_module_test() {
         let fields = vec![
             //t2page::PakFields::HeadByte,
-            t1pology::PakFields::IdOfSender(7),
-            t1pology::PakFields::IdReceiver(7),
-            t1pology::PakFields::Len(1),
-            t1pology::PakFields::Counter(4),
-            t1pology::PakFields::TTL(2),
-            t1pology::PakFields::IdConnect(4),
-            t1pology::PakFields::HeadCRC(t1pology::MAXIMAL_CRC_LEN),
-            t1pology::PakFields::UserField(10),
-            t1pology::PakFields::Nonce(16),
+            t0pology::PakFields::IdOfSender(7),
+            t0pology::PakFields::IdReceiver(7),
+            t0pology::PakFields::Len(1),
+            t0pology::PakFields::Counter(4),
+            t0pology::PakFields::TTL(2),
+            t0pology::PakFields::IdConnect(4),
+            t0pology::PakFields::HeadCRC(t0pology::MAXIMAL_CRC_LEN),
+            t0pology::PakFields::UserField(10),
+            t0pology::PakFields::Nonce(16),
         ];
 
         let id_s = 0x2299FFAABBCC10;

@@ -3,7 +3,7 @@
 const U64_LEN_IN_BYTES: usize = 8;
 
 pub mod recv_queue {
-    use crate::t1pology::PackTopology;
+    use crate::t0pology::PackTopology;
     use crate::wutils;
     use crate::{t1fields, t1queue_tcpudp::U64_LEN_IN_BYTES};
 
@@ -368,9 +368,9 @@ pub mod recv_queue {
                 None => {
                     panic!(
                         r#"fatal error in pub fn get_queue().
-                       function pub fn get_queue wants to
-                       return more elements than it has,
-                       can't be handled via Result<>, Sorry~~"#
+                        function pub fn get_queue wants to
+                    return more elements than it has,
+                    can't be handled via Result<>, Sorry~~"#
                     );
                 }
             };
@@ -418,7 +418,9 @@ pub mod recv_queue {
 
         pub fn gap_in_queue(&self) -> bool {
             if self.in_queue > u64::MAX as usize {
-                panic!("self.in_queue > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :(");
+                panic!(
+                    "self.in_queue > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+                );
             }
 
             let lgctr = self.last_give_ctr.unwrap_or(0);
@@ -571,7 +573,9 @@ pub mod recv_queue {
 
             if self.of_min_p.is_none() {
                 if self.elems_in_me == 0 {
-                    panic!("Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!");
+                    panic!(
+                        "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!"
+                    );
                 }
                 self.of_min_p = Some((id, p_order.clone()));
             }
@@ -633,7 +637,9 @@ pub mod recv_queue {
                     }
                 }
             } else {
-                panic!("Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!");
+                panic!(
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!"
+                );
             }
             //If the deleted element was the element with the smallest P,
             //then the global pointer to the smallest element is updated to the one that was next after the deleted element.
@@ -647,7 +653,9 @@ pub mod recv_queue {
                     }
                 }
             } else {
-                panic!("Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!");
+                panic!(
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!"
+                );
             }
 
             Some((removed_elem.data, removed_elem.p_order.clone()))
@@ -662,7 +670,9 @@ pub mod recv_queue {
             let first = if let Some(ret) = self.of_min_p.as_ref() {
                 ret.0
             } else {
-                panic!("Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!");
+                panic!(
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!"
+                );
             };
             //self.elems_in_me / 3 is the optimal value,
             //as it is assumed that the queue will wait for packets, and the packets can be in three places:
@@ -763,7 +773,9 @@ pub mod recv_queue {
             payload_mtu: usize,
         ) -> Result<Self, &'static str> {
             if max_len > Self::max_len_from_mtu(len_ctr_slise, payload_mtu)? {
-                return Err("The byte representation of the maximum length must be less than or equal to mtu.");
+                return Err(
+                    "The byte representation of the maximum length must be less than or equal to mtu.",
+                );
             }
 
             Ok(Self {
@@ -810,7 +822,9 @@ pub mod recv_queue {
                 "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?",
             ) > wutils::len_byte_maximal_capacity_check(self.ctr_slice_len).0
             {
-                return Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold.");
+                return Err(
+                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold.",
+                );
             }
 
             self.data[self.ptr] = ctr_elem;
@@ -1109,7 +1123,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| (x.0.clone()))
+                        .map(|x| x.0.clone())
                         .collect::<Vec<u64>>(),
                     (0..max_x).collect::<Vec<u64>>()
                 );
@@ -1119,7 +1133,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| (x.0.clone()))
+                        .map(|x| x.0.clone())
                         .collect::<Vec<u64>>(),
                     vec![0, 1, 2, 3, 5, 6, 7, 8, 9]
                 );
@@ -1130,7 +1144,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| (x.0.clone()))
+                        .map(|x| x.0.clone())
                         .collect::<Vec<u64>>(),
                     vec![0, 2, 3, 6, 8, 9]
                 );
@@ -1171,7 +1185,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| (x.0.clone()))
+                        .map(|x| x.0.clone())
                         .collect::<Vec<u64>>(),
                     vec![3, 30, 31, 50, 51, 52]
                 );
@@ -1179,7 +1193,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| (x.1.clone()))
+                        .map(|x| x.1.clone())
                         .collect::<Vec<u32>>(),
                     vec![3, 1000, 1001, 1001, 1001, 1001]
                 );
@@ -1217,8 +1231,8 @@ pub mod recv_queue {
     mod tests_wtcp {
 
         use super::*;
+        use crate::t0pology::{PackTopology, PakFields};
         use crate::t1fields;
-        use crate::t1pology::{PackTopology, PakFields};
 
         fn datas() -> (Vec<Vec<u8>>, Vec<u8>, Vec<usize>, Box<[u8]>, PackTopology) {
             let packet_specs = (0..100_000u64)
@@ -1660,9 +1674,9 @@ pub mod recv_queue {
     #[cfg(test)]
     mod test_recv_queue_ctrs {
 
-        use crate::t1pology::{PackTopology, PakFields};
-        use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
+        use crate::t0pology::{PackTopology, PakFields};
         use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+        use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
 
         use ::std::collections::HashMap;
         #[test]
@@ -1731,7 +1745,12 @@ pub mod recv_queue {
                 }
                 assert_eq!(hm.len(), 256);
 
-                assert_eq!(test_me.push(iterata_ma + 256), Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold."));
+                assert_eq!(
+                    test_me.push(iterata_ma + 256),
+                    Err(
+                        "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                    )
+                );
 
                 let test_me_old = test_me.clone();
 
@@ -1885,18 +1904,28 @@ pub mod recv_queue {
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1100).unwrap();
 
             test_me1.push(1 << (8 * 2) + 1).unwrap();
-            assert_eq!(test_me1.push(1), Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold."));
+            assert_eq!(
+                test_me1.push(1),
+                Err(
+                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                )
+            );
 
             let mut test_me1 =
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1100).unwrap();
 
             test_me1.push(1).unwrap();
-            assert_eq!(test_me1.push(1 << (8 * 2) + 1), Err("The difference between the maximum and minimum counters is greater than the counter_slice field can hold."));
+            assert_eq!(
+                test_me1.push(1 << (8 * 2) + 1),
+                Err(
+                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                )
+            );
         }
     }
 
     #[cfg(test)]
-    use crate::t1pology::PakFields;
+    use crate::t0pology::PakFields;
 
     #[test]
     fn test_full_colab_test() {

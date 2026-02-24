@@ -1,6 +1,6 @@
 //Gaoo~~~ :3
 
-use crate::t1pology::PackTopology;
+use crate::t0pology::PackTopology;
 use crate::wutils;
 
 #[derive(Debug, PartialEq)]
@@ -229,7 +229,9 @@ impl WsConnectParam {
         percent_len_random_coefficient: Option<f64>,
     ) -> Result<Self, &'static str> {
         if pack_topology.total_minimal_len() >= mtu {
-            return Err("pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data.");
+            return Err(
+                "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data.",
+            );
         }
         if !min_ms_latency.is_normal()
             || !max_ms_latency.is_normal()
@@ -265,21 +267,29 @@ impl WsConnectParam {
             || (overhead_network_latency_relative_window_coefficient > 1.0)
             || (maximum_packet_delay_fback_coefficient > 1.0)
         {
-            return Err("latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero");
+            return Err(
+                "latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero",
+            );
         }
 
         //latency check
         {
             if min_ms_latency > max_ms_latency {
-                return Err("min_ms_latency > max_ms_latency The minimum start_ms_latency < min_ms_latency must be less than or equal to the maximum latency.");
+                return Err(
+                    "min_ms_latency > max_ms_latency The minimum start_ms_latency < min_ms_latency must be less than or equal to the maximum latency.",
+                );
             }
 
             if start_ms_latency > max_ms_latency {
-                return Err("start_ms_latency > max_ms_latency The start latency must be less than or equal to the maximum.");
+                return Err(
+                    "start_ms_latency > max_ms_latency The start latency must be less than or equal to the maximum.",
+                );
             }
 
             if start_ms_latency < min_ms_latency {
-                return Err("start_ms_latency < min_ms_latency The start latency  must be greater than or equal to the minimum.");
+                return Err(
+                    "start_ms_latency < min_ms_latency The start latency  must be greater than or equal to the minimum.",
+                );
             }
         }
 
@@ -299,27 +309,39 @@ impl WsConnectParam {
             //https://github.com/ilostmyg1thubkey You dumbass,
             //this shit will only work if ctr_max_capacity_real is not greater than 32 bits, even on 32-bit systems, bitch.
             if ctr_max_capacity_real > usize::MAX as u64 {
-                return Err("ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's usize limit");
+                return Err(
+                    "ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's usize limit",
+                );
             }
 
             if maximum_length_udp_queue_packages > ctr_max_capacity_real as usize {
-                return Err(" maximum_length_udp_queue_packages must be less than the maximum capacity of the pack_topology.counter_slice() field. ");
+                return Err(
+                    " maximum_length_udp_queue_packages must be less than the maximum capacity of the pack_topology.counter_slice() field. ",
+                );
             }
             if maximum_length_udp_queue_packages < maximum_length_queue_unconfirmed_packages {
-                return Err(" maximum_length_udp_queue_packages must be greater than maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For more information, see the description of this variable at the beginning of the file.");
+                return Err(
+                    " maximum_length_udp_queue_packages must be greater than maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For more information, see the description of this variable at the beginning of the file.",
+                );
             }
 
             if maximum_length_fback_queue_packages > ctr_max_capacity_real as usize {
-                return Err("maximum_length_fback_queue_packages must not exceed the maximum capacity of the pack_topology.counter_slice() counter. ");
+                return Err(
+                    "maximum_length_fback_queue_packages must not exceed the maximum capacity of the pack_topology.counter_slice() counter. ",
+                );
             }
 
             if max_num_attempts_resend_package > ctr_max_capacity_real as usize {
-                return Err("max_num_attempts_resend_package > ctr_max_capacity_real as usize.  max_num_attempts_resend_package must be less than the maximum possible capacity in pack_topology.counter_slice().");
+                return Err(
+                    "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  max_num_attempts_resend_package must be less than the maximum possible capacity in pack_topology.counter_slice().",
+                );
             }
         }
 
         if maximum_packet_delay_absolute_fback > max_ms_latency {
-            return Err("The variable maximum_packet_delay_absolute_fback must be no greater than max_ms_latency For more information, see the description of this variable at the beginning of the file.");
+            return Err(
+                "The variable maximum_packet_delay_absolute_fback must be no greater than max_ms_latency For more information, see the description of this variable at the beginning of the file.",
+            );
         }
         //ttl
         if let Some(ttl_me) = ttl_max_start_cost {
@@ -327,26 +349,38 @@ impl WsConnectParam {
                 let max_cap = wutils::len_byte_maximal_capacity_check(ttl_in_topology.2);
 
                 if ttl_me.0 < ttl_me.1 {
-                    return Err("ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.");
+                    return Err(
+                        "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.",
+                    );
                 }
                 if ttl_me.0 == 0 {
-                    return Err("ttl_max_start_cost.0 must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+                    return Err(
+                        "ttl_max_start_cost.0 must be greater than zero. For more information, see the description of this variable at the beginning of the file.",
+                    );
                 }
 
                 if ttl_me.1 == 0 {
-                    return Err("ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file.");
+                    return Err(
+                        "ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file.",
+                    );
                 }
 
                 if ttl_me.1 > max_cap.0 {
-                    return Err("ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field.");
+                    return Err(
+                        "ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field.",
+                    );
                 }
             } else {
-                return Err("The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None.");
+                return Err(
+                    "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None.",
+                );
             }
         }
 
         if maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages {
-            return Err(" maximum_length_fback_queue_packages must be less than maximum_length_queue_unconfirmed_packages.For more information, see the description of this variable at the beginning of the file.");
+            return Err(
+                " maximum_length_fback_queue_packages must be less than maximum_length_queue_unconfirmed_packages.For more information, see the description of this variable at the beginning of the file.",
+            );
         }
         //percent
 
@@ -545,17 +579,17 @@ fn get_topol(
     total_min_len: usize,
     ttl_byte_len: Option<usize>,
 ) -> PackTopology {
-    use crate::t1pology;
+    use crate::t0pology;
 
     let fields = vec![
         //t2page::PakFields::HeadByte,
-        t1pology::PakFields::UserField(1),
-        t1pology::PakFields::Counter(5),
-        t1pology::PakFields::IdConnect(2),
-        t1pology::PakFields::HeadCRC(2),
-        t1pology::PakFields::Nonce(6),
+        t0pology::PakFields::UserField(1),
+        t0pology::PakFields::Counter(5),
+        t0pology::PakFields::IdConnect(2),
+        t0pology::PakFields::HeadCRC(2),
+        t0pology::PakFields::Nonce(6),
         //PakFields::TTL(2),
-        t1pology::PakFields::Len(3),
+        t0pology::PakFields::Len(3),
     ];
 
     let mut returna = PackTopology::new(16, &fields, true, true).unwrap();
@@ -852,7 +886,10 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         );
 
         assert!(result.is_err(), "ttl start > max should error");
-        assert_eq!(result.err().unwrap(), "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.");
+        assert_eq!(
+            result.err().unwrap(),
+            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file."
+        );
     }
 
     #[test]
@@ -922,7 +959,10 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         );
 
         assert!(result.is_err(), "ttl max = 0 should error");
-        assert_eq!(result.err().unwrap(), "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.");
+        assert_eq!(
+            result.err().unwrap(),
+            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file."
+        );
     }
 
     #[test]
@@ -1727,9 +1767,6 @@ mod tests_percent {
         );
     }
 
-
-
-
     #[test]
     fn test_all_traffic_masking_valid_values() {
         let topo = get_topol(Some(1), 50, None);
@@ -2128,7 +2165,10 @@ mod tests_delay {
             None, None, None, None, None, None,
         );
 
-        assert!(result.is_ok(), "absolute_fback = 0.1 should be valid (documentation says between 0 and max_ms_latency)");
+        assert!(
+            result.is_ok(),
+            "absolute_fback = 0.1 should be valid (documentation says between 0 and max_ms_latency)"
+        );
     }
 
     #[test]
@@ -3197,7 +3237,10 @@ mod tests_adaptation_coefficients {
             p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, None, None, None, None, None, None,
         );
 
-        assert!(result.is_ok(), "packages_measurement_window_size_determining_latency within 1-byte counter capacity should be valid");
+        assert!(
+            result.is_ok(),
+            "packages_measurement_window_size_determining_latency within 1-byte counter capacity should be valid"
+        );
     }
 
     #[test]
@@ -3269,7 +3312,10 @@ mod tests_adaptation_coefficients {
             p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, None, None, None, None, None, None,
         );
 
-        assert!(result.is_ok(), "packages_measurement_window_size_determining_latency with large counter should be valid");
+        assert!(
+            result.is_ok(),
+            "packages_measurement_window_size_determining_latency with large counter should be valid"
+        );
     }
 
     #[test]
@@ -3558,7 +3604,7 @@ mod tests_from_group {
         // This error comes from the general usize check, not specifically from group 1
         assert_eq!(
             result.err().unwrap(),
-             "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data."
+            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data."
         );
     }
 

@@ -5,11 +5,7 @@ pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
 pub const MAXIMAL_TTL_LEN: usize = 8; //8 bytes is u64 max size
 pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
 const fn maxval(a: usize, b: usize) -> usize {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, MAXIMAL_NONCE_LEN));
@@ -240,7 +236,9 @@ impl PackTopology {
         }
 
         if !data_save && tcp_mode {
-            return Err("channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)");
+            return Err(
+                "channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)",
+            );
         }
 
         if tag_len == 0 {
@@ -252,7 +250,9 @@ impl PackTopology {
         }
 
         if !data_save && (crc_slice.is_none()) {
-            return Err("If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)");
+            return Err(
+                "If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)",
+            );
         }
 
         if tcp_mode && (len_slice.is_none()) {
@@ -263,7 +263,7 @@ impl PackTopology {
 
         match (id_of_sender_slice, id_of_receiver_slice) {
             (Some(_), None) | (None, Some(_)) => {
-                return Err("sender and receiver IDs must both exist or both be absent")
+                return Err("sender and receiver IDs must both exist or both be absent");
             }
             _ => (),
         }
@@ -658,14 +658,18 @@ mod tests {
         let fields_missing_headcrc = vec![PakFields::Len(4), PakFields::Counter(8)];
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, false).err(),
-            Some("If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)"),
+            Some(
+                "If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)"
+            ),
             "expected 'missing HeadCRC' error"
         );
         let fields_missing_headcrc = vec![PakFields::Counter(8)];
         // Missing Len when length preservation is not guaranteed
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, true).err(),
-            Some("channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)"),
+            Some(
+                "channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)"
+            ),
             "expected 'missing Len' error"
         );
     }

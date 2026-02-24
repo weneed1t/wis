@@ -58,17 +58,23 @@ impl WSFileSplitter {
             return Err("rc_file must be greater than zero");
         }
         if rc_file.len() > u64::MAX as usize {
-            panic!("rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :(");
+            panic!(
+                "rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+            );
         }
         //Calculates how many bytes the file size will fit into
         let cap_head_of_rc = wutils::len_u64_as_bytes(rc_file.len() as u64);
 
         if cap_head_of_rc > u8::MAX as usize {
-            panic!("panic because the values from cap_head_of_rc.1 must be in a range smaller than u8::MAX");
+            panic!(
+                "panic because the values from cap_head_of_rc.1 must be in a range smaller than u8::MAX"
+            );
         }
 
         if cap_head_of_rc + 1 > FILE_HEAD_LEN {
-            panic!("Panic because the file header (u64 as bytes len + 1 byte length) is larger than FILE_HEAD_LEN");
+            panic!(
+                "Panic because the file header (u64 as bytes len + 1 byte length) is larger than FILE_HEAD_LEN"
+            );
         }
 
         let mut new_file = DataDrain {
@@ -178,7 +184,9 @@ impl WSFileSplitter {
             //if it is a new file, we look for the first non-zero byte; if the file is open, we return the slice unchanged
             if let Some(index) = slice.iter().position(|&x| x > 0) {
                 if slice[index] > 8 {
-                    return Err("error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  ");
+                    return Err(
+                        "error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  ",
+                    );
                 }
                 //trimming the slice so that it starts with useful data (head)
                 &slice[index..]
@@ -245,7 +253,7 @@ impl WSFileSplitter {
                     recv_me.0.ptr_in_head += min_len;
                     //slice trimming
                     slice = &slice[min_len..]; //new slice
-                                               //
+                    //
                     recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head //bool
                 } else {
                     false
@@ -260,15 +268,21 @@ impl WSFileSplitter {
                         wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect("impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.");
 
                     if len_vec > usize::MAX as u64 {
-                        panic!("len_vec > usize::MAX as u64  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :(");
+                        panic!(
+                            "len_vec > usize::MAX as u64  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+                        );
                     }
 
                     if 0 == len_vec {
-                        return Err("An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted");
+                        return Err(
+                            "An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted",
+                        );
                     }
                     if let Some(m_len) = self.max_len_of_file {
                         if len_vec as usize > m_len {
-                            return   Err("The size of the received file exceeds the maximum max_len_of_file.");
+                            return Err(
+                                "The size of the received file exceeds the maximum max_len_of_file.",
+                            );
                         }
                     }
 
@@ -286,9 +300,11 @@ impl WSFileSplitter {
                     recv_me.0.ptr_in_body += min_len;
                     //slice trimming
                     slice = &slice[min_len..]; //new slice
-                                               //
+                    //
                     if recv_me.0.ptr_in_body > file_recv.len() {
-                        panic!("impossible condition, according to the logic of the program, the pointer should not be longer than the length of the massva file");
+                        panic!(
+                            "impossible condition, according to the logic of the program, the pointer should not be longer than the length of the massva file"
+                        );
                     }
                     //if the file is full and completely filled
                     recv_me.0.ptr_in_body == file_recv.len() //bool
@@ -319,7 +335,9 @@ impl WSFileSplitter {
             //it is necessary to verify that
             //the loop will not repeat indefinitely and will exit the loop 100% of the time.
             if old_slice_len == slice.len() {
-                panic!("Error in algorithm development: in each iteration of the loop, the value of slice.len() should decrease!");
+                panic!(
+                    "Error in algorithm development: in each iteration of the loop, the value of slice.len() should decrease!"
+                );
             }
             old_slice_len = slice.len()
         }
@@ -406,9 +424,19 @@ mod tests_wudp {
     fn test_simple_err() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        assert_eq!(tw_s.slices_to_file(&vec![9, 1, 1, 1, 1, ]), Err("error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  "));
+        assert_eq!(
+            tw_s.slices_to_file(&vec![9, 1, 1, 1, 1,]),
+            Err(
+                "error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  "
+            )
+        );
 
-        assert_eq!(tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]), Err("An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted"));
+        assert_eq!(
+            tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]),
+            Err(
+                "An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted"
+            )
+        );
     }
     #[test]
     fn test_file_splitt() {
@@ -501,14 +529,18 @@ mod tests_wudp {
 
         assert_eq!(
             reta1,
-            [1, 50, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
+            [
+                1, 50, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
+            ]
         );
         assert_eq!(reta2, []);
         assert_eq!(reta3, [18, 19, 20, 21, 22, 23, 24]);
         assert_eq!(reta4, [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]);
         assert_eq!(
             reta5,
-            [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 0, 0, 0, 0, 0]
+            [
+                36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 0, 0, 0, 0, 0
+            ]
         );
     }
 
