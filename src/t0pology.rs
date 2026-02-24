@@ -1,6 +1,7 @@
 use std::usize;
 
 //using in other files
+
 pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
 pub const MAXIMAL_TTL_LEN: usize = 8; //8 bytes is u64 max size
 pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
