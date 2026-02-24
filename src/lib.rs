@@ -21,7 +21,9 @@ pub mod private_core {
 }
 /*
 delete this in prod da
+
+
 git add . &&
-git commit -m "dev" &&
+git commit -S -m "dev" &&
 git push origin main
 */
