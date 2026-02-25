@@ -21,7 +21,8 @@ pub mod private_core {
 }
 /*
 delete this in prod dapgp
-
+rustup component add clippy
+cargo clippy --fix
 
 git add . &&
 git commit -S -m "dev" &&
