@@ -28,5 +28,5 @@ git add . &&
 git commit -S -m "dev" &&
 git push origin main
 
-
+git rm -r --cached t.txt
 */
