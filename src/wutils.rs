@@ -175,7 +175,7 @@ pub fn len_u64_as_bytes(num: u64) -> usize {
 ///
 /// # Examples
 /// ```
-///
+/// 
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
 /// let result = wisleess2::wutils::split_by_lengths(&mut data, &lengths, false).unwrap();
@@ -183,7 +183,6 @@ pub fn len_u64_as_bytes(num: u64) -> usize {
 /// assert_eq!(result[1],[5]);
 /// assert_eq!(result[2],[6,7]);
 /// assert_eq!(result[3],[8,9]);
-///
 /// ```
 pub fn split_by_lengths<'a, T>(
     data: &'a mut [T],

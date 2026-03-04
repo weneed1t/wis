@@ -12,19 +12,22 @@ pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, 
 #[derive(Debug, Clone)]
 
 // public packet fields enumeration contains mandatory and optional fields
-// the only mandatory field is the counter, which must always be present and can be 1 to 8 bytes in size
-// user id and receiver id, if present, must have the same size — from 0 to 8 bytes (0 means absent, 8 means 64-bit)
-// used in mesh networks where intermediate nodes handle traffic routing
-// length field indicates total packet length including headers and data, used in reliable stream protocols for integrity and ordering
-// counter field is mandatory, 1–8 bytes, holds a unique packet number that increments by one for each new packet
-// if counter size is limited, special mechanisms restore the full counter value on client and server
-// user data field is optional and can be of arbitrary size; absence means zero length
-// used to obscure packet structure and prevent traffic filtering or blocking in networks
-// header crc is optional, up to 32 bytes (256 bits), used to verify integrity of header data in unreliable protocols
-// ttl (time to live) field is 1–8 bytes, used in multi-hop networks to limit packet lifetime and prevent infinite loops
-// nonce field is optional, up to 32 bytes, used for cryptographic operations and secure communication
-// idconnect field is used to associate packets with a specific connection or session
-// all size constants are defined to support maximum required lengths for secure and flexible packet handling
+// the only mandatory field is the counter, which must always be present and can be 1 to 8
+// bytes in size user id and receiver id, if present, must have the same size — from 0 to
+// 8 bytes (0 means absent, 8 means 64-bit) used in mesh networks where intermediate nodes
+// handle traffic routing length field indicates total packet length including headers and
+// data, used in reliable stream protocols for integrity and ordering counter field is
+// mandatory, 1–8 bytes, holds a unique packet number that increments by one for each new
+// packet if counter size is limited, special mechanisms restore the full counter value on
+// client and server user data field is optional and can be of arbitrary size; absence
+// means zero length used to obscure packet structure and prevent traffic filtering or
+// blocking in networks header crc is optional, up to 32 bytes (256 bits), used to verify
+// integrity of header data in unreliable protocols ttl (time to live) field is 1–8 bytes,
+// used in multi-hop networks to limit packet lifetime and prevent infinite loops
+// nonce field is optional, up to 32 bytes, used for cryptographic operations and secure
+// communication idconnect field is used to associate packets with a specific connection
+// or session all size constants are defined to support maximum required lengths for
+// secure and flexible packet handling
 pub enum PakFields {
     IdOfSender(usize),
     IdReceiver(usize),
@@ -76,31 +79,38 @@ pub struct PackTopology {
 }
 
 impl PackTopology {
-    /// [packet topology structure defines the layout and metadata of a packet's header fields  ]
-    /// [all fields are optional except counter, which is mandatory and must be present     ]
-    /// [each field slice is represented as (start_index, end_index, length) in bytes   ]
-    /// [tag_len is the length of the authentication tag (e.g., from AEAD encryption), located at the end   ]
-    /// [encrypt_start_pos marks the beginning of encrypted section INCLUDING header byte]
-    /// [content_start_pos marks the start of user payload AFTER header byte]
-    /// [counter_slice must always be set — it holds the packet sequence number (1–8 bytes)     ]
-    /// [id_of_sender_slice and id_of_receiver_slice, if present, must both exist and have equal length (0–8 bytes)   ]
-    /// [len_slice is required in tcp-like mode to delimit packet boundaries in stream protocols    ]
-    /// [trash_content_slice is unencrypted optional data used to obfuscate packet structure from DPI systems       ]
-    /// [crc_slice is used when data integrity is not guaranteed (e.g., UDP), protects only the header (up to 32 bytes)    ]
-    /// [nonce_slice provides cryptographic nonce for encryption (up to 32 bytes), must be unique per packet    ]
+    /// [packet topology structure defines the layout and metadata of a packet's header
+    /// fields  ] [all fields are optional except counter, which is mandatory and must
+    /// be present     ] [each field slice is represented as (start_index, end_index,
+    /// length) in bytes   ] [tag_len is the length of the authentication tag (e.g.,
+    /// from AEAD encryption), located at the end   ] [encrypt_start_pos marks the
+    /// beginning of encrypted section INCLUDING header byte] [content_start_pos marks
+    /// the start of user payload AFTER header byte] [counter_slice must always be set
+    /// — it holds the packet sequence number (1–8 bytes)     ] [id_of_sender_slice
+    /// and id_of_receiver_slice, if present, must both exist and have equal length (0–8
+    /// bytes)   ] [len_slice is required in tcp-like mode to delimit packet
+    /// boundaries in stream protocols    ] [trash_content_slice is unencrypted
+    /// optional data used to obfuscate packet structure from DPI systems       ]
+    /// [crc_slice is used when data integrity is not guaranteed (e.g., UDP), protects
+    /// only the header (up to 32 bytes)    ] [nonce_slice provides cryptographic
+    /// nonce for encryption (up to 32 bytes), must be unique per packet    ]
     /// [ttl_slice limits packet lifetime in multi-hop networks (1–8 bytes, max u64)    ]
     /// [idconn_slice identifies a connection or session (1–8 bytes)    ]
-    /// [total_minimal_len is the minimum size of the packet: content_start_pos + tag_len   ]
-    /// [is_tcp_like indicates stream-oriented, reliable transport (requires Len field)     ]
-    /// [data_save indicates whether the channel preserves data integrity (if false, HeadCRC is required)       ]
-    /// [during construction, fields are processed in order — their position determines layout in the packet    ]
-    /// [duplicate fields are rejected; all length validations are enforced (e.g., max 8 bytes for ids, counters)   ]
-    /// [the final packet layout is: [header fields][head byte][encrypted user data][tag]   ]
-    /// [head byte (1 byte) is fixed and marks transition to encrypted section, not exposed in public fields    ]
-    /// [validation ensures consistent configuration: tcp_mode requires Len, missing data_save requires CRC, etc.   ]
-    /// [all possible fields are defined in enum PakFields and passed via &[PakFields]; order matters   ]
-    /// [UserField (trash_content_slice) is non-encrypted and used for traffic mimicry or DPI evasion   ]
-    /// [the structure supports flexible configuration for use in various network environments (UDP-like or TCP-like)   ]
+    /// [total_minimal_len is the minimum size of the packet: content_start_pos + tag_len
+    /// ] [is_tcp_like indicates stream-oriented, reliable transport (requires Len
+    /// field)     ] [data_save indicates whether the channel preserves data integrity
+    /// (if false, HeadCRC is required)       ] [during construction, fields are
+    /// processed in order — their position determines layout in the packet    ]
+    /// [duplicate fields are rejected; all length validations are enforced (e.g., max 8
+    /// bytes for ids, counters)   ] [the final packet layout is: [header fields][head
+    /// byte][encrypted user data][tag]   ] [head byte (1 byte) is fixed and marks
+    /// transition to encrypted section, not exposed in public fields    ] [validation
+    /// ensures consistent configuration: tcp_mode requires Len, missing data_save
+    /// requires CRC, etc.   ] [all possible fields are defined in enum PakFields and
+    /// passed via &[PakFields]; order matters   ] [UserField (trash_content_slice) is
+    /// non-encrypted and used for traffic mimicry or DPI evasion   ] [the structure
+    /// supports flexible configuration for use in various network environments (UDP-like
+    /// or TCP-like)   ]
     pub fn new(
         tag_len: usize,
         fields: &[PakFields],
@@ -133,7 +143,7 @@ impl PackTopology {
                         }
                         trash_content_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::IdConnect(le) => {
                         if idconn_slice.is_some() {
                             return Err("duplicate idconn");
@@ -143,7 +153,7 @@ impl PackTopology {
                         }
                         idconn_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::Len(le) => {
                         if len_slice.is_some() {
                             return Err("duplicate len");
@@ -154,7 +164,7 @@ impl PackTopology {
 
                         len_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::Counter(le) => {
                         if counter_slice.is_some() {
                             return Err("duplicate counter");
@@ -164,7 +174,7 @@ impl PackTopology {
                         }
                         counter_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::IdOfSender(le) => {
                         if id_of_sender_slice.is_some() {
                             return Err("duplicate idofsender");
@@ -174,7 +184,7 @@ impl PackTopology {
                         }
                         id_of_sender_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::IdReceiver(le) => {
                         if id_of_receiver_slice.is_some() {
                             return Err("duplicate idreceiver");
@@ -184,7 +194,7 @@ impl PackTopology {
                         }
                         id_of_receiver_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::HeadCRC(le) => {
                         if crc_slice.is_some() {
                             return Err("duplicate crc");
@@ -196,7 +206,7 @@ impl PackTopology {
 
                         crc_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PakFields::Nonce(le) => {
                         if le == 0 || le > MAXIMAL_NONCE_LEN {
                             return Err("nonce len is 0");
@@ -208,7 +218,7 @@ impl PackTopology {
 
                         nonce_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     //PakFields::HeadByte => {
                     //    if head_byte_pos.is_some() {
                     //        return Err("duplicate headbyte");
@@ -217,8 +227,9 @@ impl PackTopology {
                     //    shift += 1;
                     //}
                     // it was decided to move the HeadByte to the encrypted part of the data
-                    //HeadByte was moved to the encrypted part because the HeadByte field is mandatory,
-                    // always comes at the end of the head, and its encryption increases reliability and security
+                    //HeadByte was moved to the encrypted part because the HeadByte field is
+                    // mandatory, always comes at the end of the head, and its
+                    // encryption increases reliability and security
                     PakFields::TTL(le) => {
                         if ttl_slice.is_some() {
                             return Err("duplicate ttl");
@@ -229,14 +240,15 @@ impl PackTopology {
 
                         ttl_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                 })
                 .ok_or("header size exceeds addressable memory")?;
         }
 
         if !data_save && tcp_mode {
             return Err(
-                "channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)",
+                "channel cannot be both tcp_mode and have data instability (!data_save == false \
+                 && tcp_mode == true)",
             );
         }
 
@@ -250,7 +262,8 @@ impl PackTopology {
 
         if !data_save && (crc_slice.is_none()) {
             return Err(
-                "If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)",
+                "If you do not guarantee that the packet can be broken during \
+                 transport(!data_save), you should use HeadCRC(usize)",
             );
         }
 
@@ -263,7 +276,7 @@ impl PackTopology {
         match (id_of_sender_slice, id_of_receiver_slice) {
             (Some(_), None) | (None, Some(_)) => {
                 return Err("sender and receiver IDs must both exist or both be absent");
-            }
+            },
             _ => (),
         }
 
@@ -312,9 +325,9 @@ impl PackTopology {
         self.tag_len
     }
 
-    ///- |nnnnnnnnnnn|eeeeeeeeeeeeeeeeeeeeeeeeeeeeee|eee|
-    ///- |head fields|head byte|payload(aka content)|tag|
-    ///- "n" non encpypt , "e" encrypt
+    /// - |nnnnnnnnnnn|eeeeeeeeeeeeeeeeeeeeeeeeeeeeee|eee|
+    /// - |head fields|head byte|payload(aka content)|tag|
+    /// - "n" non encpypt , "e" encrypt
     pub fn encrypt_start_pos(&self) -> usize {
         self.encrypt_start_pos
     }
@@ -517,11 +530,6 @@ impl PackTopology {
 }
 
 //=============================================TESTS=========================================================================================
-//=============================================TESTS=========================================================================================
-//=============================================TESTS=========================================================================================
-//=============================================TESTS=========================================================================================
-//=============================================TESTS=========================================================================================
-//=============================================TESTS=========================================================================================
 
 #[cfg(test)]
 mod tests {
@@ -658,7 +666,8 @@ mod tests {
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, false).err(),
             Some(
-                "If you do not guarantee that the packet can be broken during transport(!data_save), you should use HeadCRC(usize)"
+                "If you do not guarantee that the packet can be broken during \
+                 transport(!data_save), you should use HeadCRC(usize)"
             ),
             "expected 'missing HeadCRC' error"
         );
@@ -667,7 +676,8 @@ mod tests {
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, true).err(),
             Some(
-                "channel cannot be both tcp_mode and have data instability (!data_save == false && tcp_mode == true)"
+                "channel cannot be both tcp_mode and have data instability (!data_save == false \
+                 && tcp_mode == true)"
             ),
             "expected 'missing Len' error"
         );

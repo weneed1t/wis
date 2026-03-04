@@ -4,3 +4,4 @@
 /.trunk
 /.idea
 private.key.asc
+rustfmt.toml

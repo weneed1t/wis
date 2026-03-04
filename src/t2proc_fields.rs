@@ -1,12 +1,8 @@
 use std::u64;
 
 use crate::t0pology::PackTopology;
-
-use crate::t4_connect_data;
-
-use crate::t1fields;
-use crate::wt1_types;
 use crate::wt1_types::MyRole;
+use crate::{t1fields, t4_connect_data, wt1_types};
 
 /*
 
@@ -53,9 +49,10 @@ pub struct IdConn {
     pub pack_from_why: MyRole,
 }
 
-///The UserField and Nonce fields are deliberately omitted here so as not to tempt users to enter sensitive data in these fields,
-///  since Nonce is an entropy field that is only needed for encryption.
-///The UserField field can only contain gibberish and 0% useful information.
+///The UserField and Nonce fields are deliberately omitted here so as not to tempt users
+/// to enter sensitive data in these fields,  since Nonce is an entropy field that is only
+/// needed for encryption. The UserField field can only contain gibberish and 0% useful
+/// information.
 pub struct WsPubFields {
     pub my_len: Option<usize>,
     pub my_rs_id: Option<Ids>,
@@ -101,12 +98,14 @@ pub fn recv_pack<
 
         if (!allowed_trash_at_end_package) && (size_pack != pack.len()) {
             return Err(wt1_types::WTypeErr::LenSizeErr(
-                "allowed_trash_at_end_package is set to false, but the value in the length field does not match the true length pack: &mut [u8]",
+                "allowed_trash_at_end_package is set to false, but the value in the length field \
+                 does not match the true length pack: &mut [u8]",
             ));
         }
         if size_pack > pack.len() {
             return Err(wt1_types::WTypeErr::LenSizeErr(
-                "value in the length field is GREATER than the actual length of the pack: &mut [u8], packet is corrupted",
+                "value in the length field is GREATER than the actual length of the pack: &mut \
+                 [u8], packet is corrupted",
             ));
         }
 

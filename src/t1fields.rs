@@ -3,25 +3,27 @@ use crate::wt1_types::*;
 use crate::{t0pology, wutils};
 
 /// computes and validates the header crc checksum using a user-provided crc function
-/// takes mutable packet data, packet topology, and a crc function: (&[u8], &mut [u8]) -> Result<(), &'static str>
-/// the header is defined as bytes from start of packet to encrypt_start_pos (before encrypted data)
-/// returns Ok(true) if checksum matches, Ok(false) if mismatch, Err if configuration or validation fails
-/// if head_crc_slice is not defined in topology, returns error
-/// ensures crc field length does not exceed MAXIMAL_CRC_LEN (32 bytes), otherwise returns error
-/// before computing crc, the crc field in the header is zeroed to prevent self-inclusion in calculation
-/// uses a temporary buffer (twice MAXIMAL_CRC_LEN) to store:<br>
+/// takes mutable packet data, packet topology, and a crc function: (&[u8], &mut [u8]) ->
+/// Result<(), &'static str> the header is defined as bytes from start of packet to
+/// encrypt_start_pos (before encrypted data) returns Ok(true) if checksum matches,
+/// Ok(false) if mismatch, Err if configuration or validation fails if head_crc_slice is
+/// not defined in topology, returns error ensures crc field length does not exceed
+/// MAXIMAL_CRC_LEN (32 bytes), otherwise returns error before computing crc, the crc
+/// field in the header is zeroed to prevent self-inclusion in calculation
+/// uses a temporary buffer (twice MAXIMAL_CRC_LEN) to store:
 /// - current crc value (from packet) in first half
-/// - recalculated crc value in second half<br>
-/// compares both to determine integrity<br>
-/// warning: calling this function twice on corrupted data may yield false positive on second call<br>
-/// because the first call may overwrite the crc field with correct value — always validate result on first invocation<br>
-/// intended for use in unreliable channels where header integrity must be verified independently of payload<br>
+/// - recalculated crc value in second half
+/// compares both to determine integrity
+/// warning: calling this function twice on corrupted data may yield false positive on
+/// second call because the first call may overwrite the crc field with correct value —
+/// always validate result on first invocation intended for use in unreliable channels
+/// where header integrity must be verified independently of payload
 /// ---------------------------------------------------------------------------------
-/// #addition, to the previous fart, a new behavior has been added to set_get_head_crc,<br>
-/// #repeated generation of crc only if create_new_crc_summ == true,<br>
-/// #if create_new_crc_summ == false, the crc value does not change and<br>
-/// #repeated checking with incorrect chc will give Ok(false).<br>
-/// #this change was accepted during the discussion about dangerous behavior<br>
+/// #addition, to the previous fart, a new behavior has been added to set_get_head_crc,
+/// #repeated generation of crc only if create_new_crc_summ == true,
+/// #if create_new_crc_summ == false, the crc value does not change and
+/// #repeated checking with incorrect chc will give Ok(false).
+/// #this change was accepted during the discussion about dangerous behavior
 pub fn set_get_head_crc(
     create_new_crc_summ: bool,
     pack: &mut [u8],
@@ -61,18 +63,19 @@ pub fn set_get_head_crc(
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
-/// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed ttl, and is_start_ttl flag<br>
-/// returns Ok(()) on success, Err(&'static str) on failure<br>
-/// if ttl field is not present in topology, returns error<br>
-/// if is_start_ttl is true, initializes ttl to ttl_i_edit (treated as absolute starting value, must be positive)<br>
-/// otherwise, increments existing ttl value by ttl_i_edit (can be negative to decrease)<br>
-/// reads current ttl from packet using bytes_to_u64; if parsing fails, returns error<br>
-/// result is computed via safe add_u64_i64 to prevent overflow/underflow<br>
-/// validates that resulting ttl is less than ttl_max and fits within the field's byte length (1–8 bytes)<br>
-/// if ttl exceeds capacity of its slice (based on len), returns error to avoid truncation<br>
-/// writes updated value back into packet using u64_to_1_8bytes<br>
-/// used in multi-hop networks to limit packet lifetime; often paired with crc checks for integrity<br><br>
-/// Result<u64, WTypeErr> , Ok(u64) return value ttl after subtracting ttl_i_edit
+/// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed
+/// ttl, and is_start_ttl flag<br> returns Ok(()) on success, Err(&'static str) on
+/// failure<br> if ttl field is not present in topology, returns error<br>
+/// if is_start_ttl is true, initializes ttl to ttl_i_edit (treated as absolute starting
+/// value, must be positive)<br> otherwise, increments existing ttl value by ttl_i_edit
+/// (can be negative to decrease)<br> reads current ttl from packet using bytes_to_u64; if
+/// parsing fails, returns error<br> result is computed via safe add_u64_i64 to prevent
+/// overflow/underflow<br> validates that resulting ttl is less than ttl_max and fits
+/// within the field's byte length (1–8 bytes)<br> if ttl exceeds capacity of its slice
+/// (based on len), returns error to avoid truncation<br> writes updated value back into
+/// packet using u64_to_1_8bytes<br> used in multi-hop networks to limit packet lifetime;
+/// often paired with crc checks for integrity<br><br> Result<u64, WTypeErr> , Ok(u64)
+/// return value ttl after subtracting ttl_i_edit
 pub fn set_ttl(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -88,18 +91,23 @@ pub fn set_ttl(
         let temp = wutils::add_u64_i64(
             if is_start_ttl {
                 if ttl_i_edit < 0 {
-                    return Err(WTypeErr::WorkTimeErr("is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."));
+                    return Err(WTypeErr::WorkTimeErr(
+                        "is_start_ttl is true, but ttl_i_edit is a negative number, which is an \
+                         error, since the initial TTL must be positive.",
+                    ));
                 }
                 0
             } else {
-            let ttl_before = wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
-            if ttl_before >ttl_max{
-                return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
-            }
-            ttl_before
+                let ttl_before =
+                    wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
+                if ttl_before > ttl_max {
+                    return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
+                }
+                ttl_before
             },
             ttl_i_edit,
-        true)
+            true,
+        )
         .map_err(WTypeErr::PackageDamaged)?;
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
@@ -120,8 +128,9 @@ pub fn set_ttl(
 /// get_ttl reads the current ttl value from the packet header
 /// returns Ok(u64) if ttl field exists and is valid, Err otherwise
 /// reads from the slice defined in topology; parsing uses bytes_to_u64
-/// should be called on unmodified packet data before any ttl updates for accurate inspection
-/// both functions require ttl_slice to be properly defined in PackTopology during construction
+/// should be called on unmodified packet data before any ttl updates for accurate
+/// inspection both functions require ttl_slice to be properly defined in PackTopology
+/// during construction
 pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
     if let Some((start, end, _)) = topology.ttl_slice() {
         if pack.len() < end {
@@ -132,14 +141,15 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
     Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
 }
 
-/// set_len sets the packet length field in the header based on the actual size of the packet
-/// takes mutable packet data, packet topology, and mtu (maximum transmission unit) of the channel
-/// returns Ok(()) if successful, Err(&'static str) if validation or encoding fails
-/// requires len_slice to be defined in topology; otherwise returns error
-/// checks that packet length does not exceed mtu to prevent fragmentation or transmission issues
-/// ensures the length value fits within the allocated field (1–8 bytes); if too large, returns error
-/// encodes the length using u64_to_1_8bytes to match the field’s byte size and writes it into place
-/// used in stream-based protocols (e.g., TCP-like) where length is needed for framing and parsing
+/// set_len sets the packet length field in the header based on the actual size of the
+/// packet takes mutable packet data, packet topology, and mtu (maximum transmission unit)
+/// of the channel returns Ok(()) if successful, Err(&'static str) if validation or
+/// encoding fails requires len_slice to be defined in topology; otherwise returns error
+/// checks that packet length does not exceed mtu to prevent fragmentation or transmission
+/// issues ensures the length value fits within the allocated field (1–8 bytes); if too
+/// large, returns error encodes the length using u64_to_1_8bytes to match the field’s
+/// byte size and writes it into place used in stream-based protocols (e.g., TCP-like)
+/// where length is needed for framing and parsing
 pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
     let sls = topology
         .len_slice()
@@ -184,14 +194,15 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
-/// takes mutable packet data, topology, a 64-bit connection id, and a role indicating sender role
-/// role = true means the packet is sent by the session initiator (client)
+/// takes mutable packet data, topology, a 64-bit connection id, and a role indicating
+/// sender role role = true means the packet is sent by the session initiator (client)
 /// role = false means the packet is sent by the responder (non-initiator)
-/// the id_conn value is shifted left by 1 bit, and role is stored in the least significant bit
-/// ensures id_conn fits within the available bits: field size (1–8 bytes) minus 1 bit for send_flag
-/// returns error if id_conn exceeds capacity or idconn_slice is not defined in topology
-/// uses u64_to_1_8bytes to encode the value into the correct number of bytes
-/// allows routing and session tracking in bidirectional communication over stateless channels
+/// the id_conn value is shifted left by 1 bit, and role is stored in the least
+/// significant bit ensures id_conn fits within the available bits: field size (1–8 bytes)
+/// minus 1 bit for send_flag returns error if id_conn exceeds capacity or idconn_slice is
+/// not defined in topology uses u64_to_1_8bytes to encode the value into the correct
+/// number of bytes allows routing and session tracking in bidirectional communication
+/// over stateless channels
 pub fn set_id_conn(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -219,11 +230,11 @@ pub fn set_id_conn(
 }
 
 /// get_id_conn extracts the connection id and sender role from the packet header
-/// returns Ok((u64, MyRole)) where the first value is the connection id (shifted right by 1)
-/// and the second is the role: true if the sender is the initiator, false otherwise
-/// reads bytes from idconn_slice, converts to u64, then strips off the saved role (least significant bit)
-/// returns an error if idconn_slice is not present in the topology or parsing fails
-/// used to determine the session the packet belongs to and its sender role
+/// returns Ok((u64, MyRole)) where the first value is the connection id (shifted right by
+/// 1) and the second is the role: true if the sender is the initiator, false otherwise
+/// reads bytes from idconn_slice, converts to u64, then strips off the saved role (least
+/// significant bit) returns an error if idconn_slice is not present in the topology or
+/// parsing fails used to determine the session the packet belongs to and its sender role
 /// both functions assume that the idconn field is unencrypted and is in the packet header
 pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
@@ -238,11 +249,12 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
 
 /// set_id_sender_and_recv sets both sender and receiver identifiers in the packet header
 /// takes mutable packet data, topology, sender id (u64), and receiver id (u64)
-/// both id_of_sender_slice and id_of_recver_slice must exist in topology; otherwise returns error
-/// retrieves the maximum value that can be stored in the field based on its byte length (1–8 bytes)
-/// checks that both ids are within this limit; if either exceeds it, returns an error
-/// encodes both ids using u64_to_1_8bytes and writes them into their respective slices
-/// used in mesh or multi-hop networks where routing depends on explicit sender/receiver addressing
+/// both id_of_sender_slice and id_of_recver_slice must exist in topology; otherwise
+/// returns error retrieves the maximum value that can be stored in the field based on its
+/// byte length (1–8 bytes) checks that both ids are within this limit; if either exceeds
+/// it, returns an error encodes both ids using u64_to_1_8bytes and writes them into their
+/// respective slices used in mesh or multi-hop networks where routing depends on explicit
+/// sender/receiver addressing
 pub fn set_id_sender_and_recv(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -279,7 +291,8 @@ pub fn set_id_sender_and_recv(
 /// returns error if either slice is missing in topology or decoding fails
 /// parses values using bytes_to_u64 from the defined slices in the header
 /// allows endpoints to identify source and destination without external context
-/// both functions require that sender and receiver fields are present and of equal length, as per protocol rules
+/// both functions require that sender and receiver fields are present and of equal
+/// length, as per protocol rules
 pub fn get_id_sender_and_recv(
     pack: &[u8],
     topology: &PackTopology,
@@ -302,14 +315,15 @@ pub fn get_id_sender_and_recv(
 }
 
 /// set_counter writes the packet counter value into the header with a control bit
-/// takes mutable packet data, topology, a 64-bit counter (countr), and a last_bit_in_countr flag of type WPackageType
-/// the counter field must exist in topology; otherwise returns error
-/// computes maximum value that fits in the allocated field (1–8 bytes), then shifts right by 1 to reserve one bit
-/// combines the counter (masked to fit) with the flag bit, shifted into the LSB, forming the final value
-/// checks that packet length covers the counter slice; if not, returns length error
-/// encodes the result using u64_to_1_8bytes and writes it into the packet
-/// returns Ok((encoded_counter, max_cap)) on success, where max_cap is the max counter range per field size
-/// used to embed sequence number and packet type (e.g., data/control) in a compact format
+/// takes mutable packet data, topology, a 64-bit counter (countr), and a
+/// last_bit_in_countr flag of type WPackageType the counter field must exist in topology;
+/// otherwise returns error computes maximum value that fits in the allocated field (1–8
+/// bytes), then shifts right by 1 to reserve one bit combines the counter (masked to fit)
+/// with the flag bit, shifted into the LSB, forming the final value checks that packet
+/// length covers the counter slice; if not, returns length error encodes the result using
+/// u64_to_1_8bytes and writes it into the packet returns Ok((encoded_counter, max_cap))
+/// on success, where max_cap is the max counter range per field size used to embed
+/// sequence number and packet type (e.g., data/control) in a compact format
 pub fn set_counter(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -332,26 +346,28 @@ pub fn set_counter(
 }
 
 /// set_counter writes the packet counter value into the header with a control bit
-/// takes mutable packet data, topology, a 64-bit counter (countr), and a last_bit_in_countr flag of type WPackageType
-/// the counter field must exist in topology; otherwise returns error
-/// computes maximum value that fits in the allocated field (1–8 bytes), then shifts right by 1 to reserve one bit
-/// combines the counter (masked to fit) with the flag bit, shifted into the LSB, forming the final value
-/// checks that packet length covers the counter slice; if not, returns length error
-/// encodes the result using u64_to_1_8bytes and writes it into the packet
-/// returns Ok((encoded_counter, max_cap)) on success, where max_cap is the max counter range per field size
-/// used to embed sequence number and packet type (e.g., data/control) in a compact format
+/// takes mutable packet data, topology, a 64-bit counter (countr), and a
+/// last_bit_in_countr flag of type WPackageType the counter field must exist in topology;
+/// otherwise returns error computes maximum value that fits in the allocated field (1–8
+/// bytes), then shifts right by 1 to reserve one bit combines the counter (masked to fit)
+/// with the flag bit, shifted into the LSB, forming the final value checks that packet
+/// length covers the counter slice; if not, returns length error encodes the result using
+/// u64_to_1_8bytes and writes it into the packet returns Ok((encoded_counter, max_cap))
+/// on success, where max_cap is the max counter range per field size used to embed
+/// sequence number and packet type (e.g., data/control) in a compact format
 ///
 /// get_counter reconstructs the full 64-bit counter from packet and context
 /// takes immutable packet data, topology, and two context counters (countr1 and countr2)
-/// returns Ok((reconstructed_counter, WPackageType)) or error if counter field is missing or packet is truncated
-/// reads raw counter bytes and extracts:
+/// returns Ok((reconstructed_counter, WPackageType)) or error if counter field is missing
+/// or packet is truncated reads raw counter bytes and extracts:
 /// - the data counter (bits 1–63, right-shifted and masked)
 /// - the flag bit (LSB) indicating packet type (via WPackageType)
-/// selects base counter: countr1 if flag bit is 1, countr2 if 0 — used for packet stream differentiation
-/// reconstructs full counter by combining high bits from base counter with low bits from packet
-/// if reconstructed counter is less than base, assumes wraparound and adds (max_cap + 1) to handle overflow
-/// enables reliable counter recovery in lossy or out-of-order networks, supporting anti-replay and ordering
-/// critical for protocols using sliding windows or requiring full sequence tracking across restarts
+/// selects base counter: countr1 if flag bit is 1, countr2 if 0 — used for packet stream
+/// differentiation reconstructs full counter by combining high bits from base counter
+/// with low bits from packet if reconstructed counter is less than base, assumes
+/// wraparound and adds (max_cap + 1) to handle overflow enables reliable counter recovery
+/// in lossy or out-of-order networks, supporting anti-replay and ordering critical for
+/// protocols using sliding windows or requiring full sequence tracking across restarts
 pub fn get_counter(
     pack: &[u8],
     topology: &PackTopology,
@@ -402,18 +418,20 @@ pub fn get_counter(
     Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
 }
 
-/// set_user_field generates and fills the user-defined field (aka "trash field") in the packet header
-/// takes mutable packet data, topology, a counter value, full packet length, and a user-provided generator function
-/// the generator function: fn(&mut [u8], u64, usize) -> Result<(), &'static str>
-/// is called with the field's byte slice, counter, and total packet length for custom data generation
-/// only executes if trash_content_slice is defined in topology; otherwise returns error
-/// validates that packet length covers the entire field range; returns error if out of bounds
+/// set_user_field generates and fills the user-defined field (aka "trash field") in the
+/// packet header takes mutable packet data, topology, a counter value, full packet
+/// length, and a user-provided generator function the generator function: fn(&mut [u8],
+/// u64, usize) -> Result<(), &'static str> is called with the field's byte slice,
+/// counter, and total packet length for custom data generation only executes if
+/// trash_content_slice is defined in topology; otherwise returns error validates that
+/// packet length covers the entire field range; returns error if out of bounds
 /// writes generated data directly into the specified slice in the packet
 /// returns Ok(()) on success, or error if field is missing or generator fails
-/// this field is unencrypted and intended to obscure packet structure from DPI and traffic analysis systems
-/// by varying content at fixed positions, it helps prevent protocol fingerprinting and blocking
-/// no getter function is provided to avoid accidental exposure of sensitive or generated data
-/// purely for obfuscation — commonly used in censorship-resistant or mimicry protocols
+/// this field is unencrypted and intended to obscure packet structure from DPI and
+/// traffic analysis systems by varying content at fixed positions, it helps prevent
+/// protocol fingerprinting and blocking no getter function is provided to avoid
+/// accidental exposure of sensitive or generated data purely for obfuscation — commonly
+/// used in censorship-resistant or mimicry protocols
 pub fn set_user_field(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -432,16 +450,19 @@ pub fn set_user_field(
     Err(WTypeErr::NoneFieldErr("user_field not in PackTopology"))
 }
 
-/// crypt performs encryption or decryption of the packet payload and computes authentication tag
-/// takes mutable packet data, packet topology, encryption mode (enc/dec), optional counter, and nonce generator
-/// returns Ok(()) on success, or error if validation or crypto operation fails
-/// ensures packet length meets minimal required size (header + tag) before processing
+/// crypt performs encryption or decryption of the packet payload and computes
+/// authentication tag takes mutable packet data, packet topology, encryption mode
+/// (enc/dec), optional counter, and nonce generator returns Ok(()) on success, or error
+/// if validation or crypto operation fails ensures packet length meets minimal required
+/// size (header + tag) before processing
 ///
 /// during encryption:
 /// - requires either a counter, a nonce, or both; if neither present, returns error
-/// - if nonce is used, calls nonce_gener to fill the nonce field in the header with random data
+/// - if nonce is used, calls nonce_gener to fill the nonce field in the header with
+///   random data
 /// - counter must be provided if counter_slice exists; otherwise returns error
-/// - zeroizes TTL and HeadCRC fields before crypto operation, as they may change in transit and invalidate the tag
+/// - zeroizes TTL and HeadCRC fields before crypto operation, as they may change in
+///   transit and invalidate the tag
 /// - preserves original values in temporary buffers to restore them after encryption
 ///
 /// supports two crypto interface modes via TypeGetMode for maximum library compatibility:
@@ -464,9 +485,10 @@ pub fn set_user_field(
 /// - allows in-place processing with offset-based access
 /// - useful for libraries requiring full packet context or custom memory layout
 ///
-/// after crypto operation, restores original TTL and HeadCRC values to maintain packet semantics
-/// designed for use with AEAD ciphers (e.g., ChaCha20-Poly1305, AES-GCM) where tag covers both header and payload
-/// enables censorship-resistant protocols by allowing flexible, pluggable crypto backends
+/// after crypto operation, restores original TTL and HeadCRC values to maintain packet
+/// semantics designed for use with AEAD ciphers (e.g., ChaCha20-Poly1305, AES-GCM) where
+/// tag covers both header and payload enables censorship-resistant protocols by allowing
+/// flexible, pluggable crypto backends
 pub fn crypt<Tenc, Tnoncer>(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -518,14 +540,16 @@ where
         );
         if 0 == n + c {
             return Err(WTypeErr::NoneFieldErr(
-                "Incorrect combination, the packet must have either a counter field, a nonce field, or a nonce field + a counter field. This topology has neither a counter field nor a nonce field.",
+                "Incorrect combination, the packet must have either a counter field, a nonce \
+                 field, or a nonce field + a counter field. This topology has neither a counter \
+                 field nor a nonce field.",
             ));
         }
     }
 
-    //since TTL and HEADCRC can be changed during packet transmission, these two fields are filled with zeros because
-    // the whole packet falls into tag, and head data too, while TTL and HEADCRC do not affect data integrity and
-    //can be changed.
+    //since TTL and HEADCRC can be changed during packet transmission, these two fields are
+    // filled with zeros because the whole packet falls into tag, and head data too, while
+    // TTL and HEADCRC do not affect data integrity and can be changed.
     let mut ttl_vec_temp_mem = [0_u8; t0pology::MAXIMAL_TTL_LEN];
     let mut crc_vec_temp_mem = [0_u8; t0pology::MAXIMAL_CRC_LEN];
     if let Some((s, e, len)) = topology.ttl_slice() {
@@ -541,8 +565,8 @@ where
     let enc_start = topology.encrypt_start_pos();
     let enc_end = p_len - topology.tag_len();
     //Previously, a check was performed to ensure that p_len < topology.total_minimal_len(),
-    //which means that the packet length is large enough so that the operation of splitting into
-    //slays does not cause panic.
+    //which means that the packet length is large enough so that the operation of splitting
+    // into slays does not cause panic.
     let (free_data, mac_only) = pack.split_at_mut(enc_end);
     let (head, to_enc_only) = free_data.split_at_mut(enc_start);
 
@@ -574,8 +598,6 @@ where
 }
 
 //##=============================================================TESTS====================================TESTS===================////=============
-//##=============================================================TESTS====================================TESTS====================////=============
-//##=============================================================TESTS====================================TESTS====================////=============
 //##=============================================================TESTS====================================TESTS====================////=============
 
 #[cfg(test)]
@@ -732,7 +754,8 @@ mod tests {
             *x.1 = x.0 as u8;
         }
 
-        //println!("{:?}",&bb[result.head_crc_slice().unwrap().0..result.head_crc_slice().unwrap().1]);
+        //println!("{:?}",&bb[result.head_crc_slice().unwrap().0..result.head_crc_slice().
+        // unwrap().1]);
         assert_eq!(set_ttl(&mut bb, &result, 435, 1000, true), Ok(435));
 
         assert_eq!(set_ttl(&mut bb, &result, 6546, 1000, false).is_ok(), false);
@@ -781,7 +804,8 @@ mod tests {
         assert_eq!(
             set_ttl(&mut bb, &result, -435, 1000, true),
             Err(WTypeErr::WorkTimeErr(
-                "is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, since the initial TTL must be positive."
+                "is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, \
+                 since the initial TTL must be positive."
             ))
         );
 

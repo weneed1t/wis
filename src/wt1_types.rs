@@ -153,7 +153,8 @@ pub enum TypeGetMode {
     Type1SplitMutSlices(
         fn(&[u8], &mut [u8], &mut [u8], u64, Option<&[u8]>) -> Result<(), &'static str>,
     ),
-    /// (FULLDATA),  (HEAD non enc)[0..usize1],(PAYLOAD enc)[usize1..usize2],(TAG)[usize2..],(countr(nonce)), (NONCE)[start..end]
+    /// (FULLDATA),  (HEAD non enc)[0..usize1],(PAYLOAD
+    /// enc)[usize1..usize2],(TAG)[usize2..],(countr(nonce)), (NONCE)[start..end]
     Type2FullArrAndIndexes(
         fn(&mut [u8], usize, usize, u64, Option<(usize, usize)>) -> Result<(), &'static str>,
     ),
@@ -239,7 +240,8 @@ impl Noncer for DumpNonser {
     }
 }
 
-///(array(head fields len + headbyte len + payload len+ tag len),(payload start pos,  payload endpos) )
+///(array(head fields len + headbyte len + payload len+ tag len),(payload start pos,
+/// payload endpos) )
 pub fn pre_alloc(
     topology: &PackTopology,
     mtu: usize,

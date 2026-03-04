@@ -3,16 +3,13 @@
 const U64_LEN_IN_BYTES: usize = 8;
 
 pub mod recv_queue {
-    use crate::t0pology::PackTopology;
-    use crate::wutils;
-    use crate::{t1fields, t1queue_tcpudp::U64_LEN_IN_BYTES};
-
+    use std::collections::HashMap;
     use std::fmt::Debug;
+    use std::hash::{BuildHasher, Hasher};
 
-    use std::{
-        collections::HashMap,
-        hash::{BuildHasher, Hasher},
-    };
+    use crate::t0pology::PackTopology;
+    use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+    use crate::{t1fields, wutils};
 
     #[cfg_attr(test, derive(Debug))]
     pub enum WSQueueErr {
@@ -53,22 +50,24 @@ pub mod recv_queue {
         mtu: usize,
         crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
     }
-    ///TCP queue, already directly related to conversion into packets from a TCP data stream,
-    ///  since such data exchange protocols do not divide data into packets at the user level
-    ///  and provide abstraction only as a data stream.
+    ///TCP queue, already directly related to conversion into packets from a TCP data
+    /// stream,  since such data exchange protocols do not divide data into packets at
+    /// the user level  and provide abstraction only as a data stream.
     ///  When sending packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long)
     ///  , the recipient will receive a continuous stream of 300 bytes.
     ///  To split it into packets, the WSTcpLike class is used.
     ///  A stream of 300 bytes is passed to it,
-    ///  and the output is the packets that were sent: 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long).
+    ///  and the output is the packets that were sent: 1 (100 bytes long) 2 (150 bytes
+    /// long) 3 (50 bytes long).
     ///
     ///Note that WSTcpLike is resistant to packets being split during transmission,
-    /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long),
-    /// will be partially accepted as a stream of 290 bytes,
-    ///  which will be transferred to  split_byte_stream_into_packages(), and the remaining 10 bytes,
-    ///  then WSTcpLike will return two separate packets 1 (100 bytes long) 2(150 bytes long),
-    ///  after which it will wait to receive the remaining part of packet number 3 (10 bytes),
-    ///  and then return packet number 3 (50 bytes long).
+    /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150
+    /// bytes long) 3 (50 bytes long), will be partially accepted as a stream of 290
+    /// bytes,  which will be transferred to  split_byte_stream_into_packages(), and
+    /// the remaining 10 bytes,  then WSTcpLike will return two separate packets 1
+    /// (100 bytes long) 2(150 bytes long),  after which it will wait to receive the
+    /// remaining part of packet number 3 (10 bytes),  and then return packet number 3
+    /// (50 bytes long).
     impl<'a> WSTcpLike<'a> {
         pub fn new(
             mtu: usize,
@@ -105,11 +104,12 @@ pub mod recv_queue {
                 // check. choosing the shorter length.
                 // since there are two stores, 1 is the amount of free space in the buffer,
                 // 2 is the number of elements that need to be processed in data[].
-                // a lower value is selected and as many elements are copied from data to the buffer.
-                // elems_in_buf means how many elements are in
-                // the buffer and u_buf.len()-elems_in_buf means how much free space is in the buffer.
-                // data.len()-pos_in_data means how many elements are left in the data.
-                //pos_in_data and elems_in_buf are offsets for u_buf and data[], respectively.
+                // a lower value is selected and as many elements are copied from data to the
+                // buffer. elems_in_buf means how many elements are in
+                // the buffer and u_buf.len()-elems_in_buf means how much free space is in the
+                // buffer. data.len()-pos_in_data means how many elements are left
+                // in the data. pos_in_data and elems_in_buf are offsets for u_buf
+                // and data[], respectively.
                 let copy_elems_to_buf = {
                     let buf_void = self.u_buf.len().checked_sub(self.elems_in_buf).ok_or(
                         WSQueueErr::Critical("err in u_buf.len() checked_sub elems_in_buf <0"),
@@ -164,8 +164,9 @@ pub mod recv_queue {
                         .checked_sub(ptr_to_start)
                         .ok_or(WSQueueErr::Critical("err elems_in_buf sub ptr_to_start"))?;
 
-                    //if the length of the data in the buffer is greater than the minimum packet size,
-                    // it means that you can read the packet length fields to find out its end.
+                    //if the length of the data in the buffer is greater than the minimum packet
+                    // size, it means that you can read the packet length fields
+                    // to find out its end.
                     if elem_in_buf_quque >= min_len {
                         //if the package has a crc signature of the head data,
                         // then it must be checked. if the data is intact, add it to ret_paks
@@ -191,9 +192,10 @@ pub mod recv_queue {
                             return Err(WSQueueErr::Critical("len_of_curent_pack > mtu"));
                         }
                         //if the value of the length field is correct,
-                        //but in the raw data buffer it is less than the length from the length field,
-                        //then the packet has not arrived in its entirety,
-                        //and you need to wait until the packet arrives in its entirety.
+                        //but in the raw data buffer it is less than the length from the length
+                        // field, then the packet has not arrived in its
+                        // entirety, and you need to wait until the packet
+                        // arrives in its entirety.
                         if elem_in_buf_quque >= len_of_curent_pack {
                             //current package is a full in buf
                             ptr_to_start = ptr_to_start
@@ -264,7 +266,8 @@ pub mod recv_queue {
     ///The queue will return a vector of elements 1,2,3.
     //Since there is no packet number 4 in the queue,
     ///the queue has a continuity gap and will wait for packet number 4.
-    ///Upon receiving packet number 4, the queue will be able to return a vector of packets 4,5,6,7.
+    ///Upon receiving packet number 4, the queue will be able to return a vector of
+    /// packets 4,5,6,7.
     #[derive(Clone)]
     pub struct WSUdpLike<T> {
         in_queue: usize,
@@ -358,7 +361,7 @@ pub mod recv_queue {
                     return more elements than it has,
                     can't be handled via Result<>, Sorry~~"#
                     );
-                }
+                },
             };
 
             self.k_add(size_of_ret);
@@ -384,7 +387,7 @@ pub mod recv_queue {
 
                     _ => {
                         return vec![].into_boxed_slice();
-                    }
+                    },
                 },
             );
 
@@ -405,7 +408,8 @@ pub mod recv_queue {
         pub fn gap_in_queue(&self) -> bool {
             if self.in_queue > u64::MAX as usize {
                 panic!(
-                    "self.in_queue > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+                    "self.in_queue > u64::MAX as usize  There is a slight discrepancy between the \
+                     capacity of usize and u64. Your device is not suitable for this code :("
                 );
             }
 
@@ -442,7 +446,8 @@ pub mod recv_queue {
     struct IdentityHasher {
         hash: u64,
     }
-    //This hash table does not require a reliable hash function, as each packet has its own ID.
+    //This hash table does not require a reliable hash function, as each packet has its own
+    // ID.
     impl Hasher for IdentityHasher {
         fn finish(&self) -> u64 {
             self.hash
@@ -475,7 +480,8 @@ pub mod recv_queue {
     }
     ///Queue of packets, access to get, remove, and push takes O(1),
     ///uses a hash table internally, the table was chosen because
-    ///a binary tree showed extremely slow read and write operations in performance tests.
+    ///a binary tree showed extremely slow read and write operations in performance
+    /// tests.
     #[derive(Clone)]
     pub struct WSWaitQueue<T, P> {
         data_map: HashMap<u64, ElemMy<T, P>, IdentityBuildHasher>,
@@ -508,10 +514,11 @@ pub mod recv_queue {
         /// p_order is a check object, usually f32/f64 or u32/64.
         /// If p_order is greater than all p_orders currently in the table,
         /// the insertion occurs in O(1); if p_order is smaller,
-        /// force_to_max_p if  == true, then if the value of p_order is less than max_elem_id_and_p,
-        /// the element will be added, but its p_order will be equal to max_elem_id_and_p;
-        ///  if force_to_max_p if  == false, then if the value of p_order for the element is
-        ///  less than max_elem_id_and_p, an error will be triggered.
+        /// force_to_max_p if  == true, then if the value of p_order is less than
+        /// max_elem_id_and_p, the element will be added, but its p_order will be
+        /// equal to max_elem_id_and_p;  if force_to_max_p if  == false, then if
+        /// the value of p_order for the element is  less than max_elem_id_and_p,
+        /// an error will be triggered.
         pub fn push(
             &mut self,
             id: u64,
@@ -535,7 +542,7 @@ pub mod recv_queue {
             match self.data_map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(_) => {
                     return Err("this id elem is already in");
-                }
+                },
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     entry.insert(ElemMy {
                         cl: None,
@@ -547,11 +554,14 @@ pub mod recv_queue {
                         .elems_in_me
                         .checked_add(1)
                         .expect("err 1+ self.elems_in_me");
-                }
+                },
             };
 
             if let Some(lei) = self.of_max_p.as_ref().map(|x| x.0) {
-                let  last_elem = self.data_map.get_mut(&lei).expect("a critical condition that shouldn't exist, an element is missing, but it's impossible");
+                let last_elem = self.data_map.get_mut(&lei).expect(
+                    "a critical condition that shouldn't exist, an element is missing, but it's \
+                     impossible",
+                );
                 last_elem.cl = Some(id);
             }
             self.of_max_p = Some((id, p_order.clone()));
@@ -559,7 +569,8 @@ pub mod recv_queue {
             if self.of_min_p.is_none() {
                 if self.elems_in_me == 0 {
                     panic!(
-                        "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!"
+                        "Critically incorrect algorithm behavior! There are elements in data_map, \
+                         but the value of id_of_min_p is undefined!"
                     );
                 }
                 self.of_min_p = Some((id, p_order.clone()));
@@ -599,61 +610,89 @@ pub mod recv_queue {
 
             //swap:
             //Exchange ID pointers in the table:
-            //When deleting element number 2, obtain the cl of element cb, then 2cl and 2cb, then exchange the pointers.
-            //For element number 2cl, change the cb field to the value 2cb; for element number 2cb, change the cl field value to the value 2cl.
+            //When deleting element number 2, obtain the cl of element cb, then 2cl and 2cb, then
+            // exchange the pointers. For element number 2cl, change the cb field to the
+            // value 2cb; for element number 2cb, change the cl field value to the value 2cl.
             // 10cl = 2cl
             // 7cb = 2cb
             // | id:10 ,cb:None,cl:7 |---> | id:7 ,cb:10,cl:15 |---> | id:15 ,cb:7,cl:None |--->
 
             if let Some(x_cb) = removed_elem.cb {
-                let cb_elem = self.data_map.get_mut(&x_cb)
-                .expect("critical condition, the .cb counter points to an element that is not in the table");
+                let cb_elem = self.data_map.get_mut(&x_cb).expect(
+                    "critical condition, the .cb counter points to an element that is not in the \
+                     table",
+                );
                 cb_elem.cl = removed_elem.cl
             }
 
             if let Some(x_cl) = removed_elem.cl {
-                let cl_elem = self.data_map.get_mut(&x_cl)
-                .expect("critical condition, the .cl counter points to an element that is not in the table");
+                let cl_elem = self.data_map.get_mut(&x_cl).expect(
+                    "critical condition, the .cl counter points to an element that is not in the \
+                     table",
+                );
                 cl_elem.cb = removed_elem.cb
             }
 
             //If the deleted element was the element with the largest P,
-            //then the global pointer to the largest element is updated to the one that was before the deleted element.
+            //then the global pointer to the largest element is updated to the one that was before
+            // the deleted element.
             if let Some(last_elem_id) = self.of_max_p.as_ref() {
                 if last_elem_id.0 == id {
                     if let Some(cb_id) = removed_elem.cb.as_ref() {
-                        self.of_max_p =
-                            Some((*cb_id, self.data_map.get(cb_id).expect("Critical error: incorrect logic, link to previous element exists, but it is missing from the table.").p_order.clone()));
+                        self.of_max_p = Some((
+                            *cb_id,
+                            self.data_map
+                                .get(cb_id)
+                                .expect(
+                                    "Critical error: incorrect logic, link to previous element \
+                                     exists, but it is missing from the table.",
+                                )
+                                .p_order
+                                .clone(),
+                        ));
                     } else {
                         self.of_max_p = None;
                     }
                 }
             } else {
                 panic!(
-                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!"
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but \
+                     the value of id_of_max_p is undefined!"
                 );
             }
             //If the deleted element was the element with the smallest P,
-            //then the global pointer to the smallest element is updated to the one that was next after the deleted element.
+            //then the global pointer to the smallest element is updated to the one that was next
+            // after the deleted element.
             if let Some(first_elem_id) = self.of_min_p.as_ref() {
                 if first_elem_id.0 == id {
                     if let Some(cl_id) = removed_elem.cl.as_ref() {
-                        self.of_min_p =
-                            Some((*cl_id, self.data_map.get(cl_id).expect("Critical error: incorrect logic, link does not exist, but it is missing from the table.").p_order.clone()));
+                        self.of_min_p = Some((
+                            *cl_id,
+                            self.data_map
+                                .get(cl_id)
+                                .expect(
+                                    "Critical error: incorrect logic, link does not exist, but it \
+                                     is missing from the table.",
+                                )
+                                .p_order
+                                .clone(),
+                        ));
                     } else {
                         self.of_min_p = None;
                     }
                 }
             } else {
                 panic!(
-                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_max_p is undefined!"
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but \
+                     the value of id_of_max_p is undefined!"
                 );
             }
 
             Some((removed_elem.data, removed_elem.p_order.clone()))
         }
-        //returns all elements whose p_order value is less than or equal to p_order_limit as a list Vec<(u64, P, T)>,
-        // where u64 is its id, P is its p_order, and T is the data itself
+        //returns all elements whose p_order value is less than or equal to p_order_limit as a
+        // list Vec<(u64, P, T)>, where u64 is its id, P is its p_order, and T is the data
+        // itself
         pub fn get_elements_to(&mut self, p_order_limit: P) -> Vec<(u64, P, T)> {
             if self.elems_in_me == 0 {
                 return Vec::new();
@@ -663,15 +702,17 @@ pub mod recv_queue {
                 ret.0
             } else {
                 panic!(
-                    "Critically incorrect algorithm behavior! There are elements in data_map, but the value of id_of_min_p is undefined!"
+                    "Critically incorrect algorithm behavior! There are elements in data_map, but \
+                     the value of id_of_min_p is undefined!"
                 );
             };
             //self.elems_in_me / 3 is the optimal value,
-            //as it is assumed that the queue will wait for packets, and the packets can be in three places:
-            //1 place is in the network awaiting receipt
+            //as it is assumed that the queue will wait for packets, and the packets can be in
+            // three places: 1 place is in the network awaiting receipt
             //2 packets are received by the recipient and await transmission
             //3 the recipient sends confirmation packets to the network
-            //Therefore, in the vast majority of cases, the queue of unconfirmed packets will not exceed 1/3 of the total number of packets.
+            //Therefore, in the vast majority of cases, the queue of unconfirmed packets will not
+            // exceed 1/3 of the total number of packets.
             let mut reta_vec = Vec::with_capacity(self.elems_in_me / 3);
 
             let mut temp_id = first;
@@ -686,7 +727,8 @@ pub mod recv_queue {
                 }
                 //The last element in the sequence does not have a reference to the next element,
                 //so if x + 1 ==self.elems_in_me,
-                //then this element is the last one and there is no need to take cl from it, since it is None.
+                //then this element is the last one and there is no need to take cl from it, since
+                // it is None.
                 if x.checked_add(1).expect("err x + 1") == self.elems_in_me {
                     break;
                 }
@@ -711,7 +753,8 @@ pub mod recv_queue {
         }
     }
 
-    ///WSRecvQueueCtrs structure for creating and receiving accepted counters from the protocol packet field
+    ///WSRecvQueueCtrs structure for creating and receiving accepted counters from the
+    /// protocol packet field
     #[derive(Clone)]
     pub struct WSRecvQueueCtrs {
         data: Box<[u64]>,
@@ -743,8 +786,9 @@ pub mod recv_queue {
             Ok(ctrs)
         }
         ///payload_mtu indicates the maximum payload length in your network in bytes
-        ///len_ctr_slise is a variable that takes the length of the counter field in bytes.
-        ///max_len is the maximum number of counters in pieces that can be in the WSRecvQueueCtrs structure.
+        ///len_ctr_slise is a variable that takes the length of the counter field in
+        /// bytes. max_len is the maximum number of counters in pieces that can be
+        /// in the WSRecvQueueCtrs structure.
         ///
         ///
         ///  UPDATE !! blurred_boundaries always equals TRUE !!!
@@ -757,7 +801,8 @@ pub mod recv_queue {
         ///  you can use blurred_boundaries == true,
         ///
         ///
-        ///  What does blurred_boundaries == true affect? See pub fn copy_ctrs_pack_to_slice.
+        ///  What does blurred_boundaries == true affect? See pub fn
+        /// copy_ctrs_pack_to_slice.
         pub fn new(
             len_ctr_slise: usize,
             max_len: usize,
@@ -765,7 +810,8 @@ pub mod recv_queue {
         ) -> Result<Self, &'static str> {
             if max_len > Self::max_len_from_mtu(len_ctr_slise, payload_mtu)? {
                 return Err(
-                    "The byte representation of the maximum length must be less than or equal to mtu.",
+                    "The byte representation of the maximum length must be less than or equal to \
+                     mtu.",
                 );
             }
 
@@ -780,10 +826,12 @@ pub mod recv_queue {
         }
 
         ///push also checks that abs_diff (the largest counter in the queue,
-        ///  the smallest counter in the queue) was not greater than what can fit into 2^(8*len_ctr_slice)
+        ///  the smallest counter in the queue) was not greater than what can fit into
+        /// 2^(8*len_ctr_slice)
         ///
-        /// Please note that push does NOT implement SET() and uniqueness checks in order to save space,
-        ///  which means that some counters in the queue may be duplicated.  
+        /// Please note that push does NOT implement SET() and uniqueness checks in order
+        /// to save space,  which means that some counters in the queue may be
+        /// duplicated.
         pub fn push(&mut self, ctr_elem: u64) -> Result<(), &'static str> {
             if self.ptr >= self.data.len() {
                 return Err("the queue is full");
@@ -814,7 +862,8 @@ pub mod recv_queue {
             ) > wutils::len_byte_maximal_capacity_check(self.ctr_slice_len).0
             {
                 return Err(
-                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold.",
+                    "The difference between the maximum and minimum counters is greater than the \
+                     counter_slice field can hold.",
                 );
             }
 
@@ -825,16 +874,14 @@ pub mod recv_queue {
         }
         ///calculates how many more times counters can be push()
         pub fn free_space(&self) -> usize {
-            self
-                .data
-                .len()
-                .checked_sub(self.ptr)
-                .expect("obvious algorithm error The pointer counter is always no longer than the length of the Box.")
+            self.data.len().checked_sub(self.ptr).expect(
+                "obvious algorithm error The pointer counter is always no longer than the length \
+                 of the Box.",
+            )
         }
 
         ///returns the length of the entire queue in bytes
         ///queue structure
-        ///
         //// |--------------------|-----|-----|-----|----|-----|
         ///  |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
         //// |--------------------|-----|-----|-----|----|-----|
@@ -860,24 +907,27 @@ pub mod recv_queue {
                 .expect("algorithm error; if the code has been tested, there should be no errors ");
             ret_vec
         }
-        /// get the full set of reverse counters, but copy them to a byte array to avoid additional memory allocation  
-        /// To find out what the length of pack_payload_slice should be, call self.payload_len_in_bytes().
-        /// get_ctrs_as_byte_pack_vec and copy_ctrs_pack_to_slice return all contents of the queue,
-        /// and the WSRecvQueueCtrs structure is completely cleared of internal objects.
+        /// get the full set of reverse counters, but copy them to a byte array to avoid
+        /// additional memory allocation To find out what the length of
+        /// pack_payload_slice should be, call self.payload_len_in_bytes().
+        /// get_ctrs_as_byte_pack_vec and copy_ctrs_pack_to_slice return all contents of
+        /// the queue, and the WSRecvQueueCtrs structure is completely cleared of
+        /// internal objects.
         ///
         ///  UPDATE !! blurred_boundaries always equals TRUE !!!
         ///
         /// if blurred_boundaries == true
-        ///then pack_payload_slice: &mut [u8] can be GREATER THAN OR EQUAL TO self.payload_len_in_bytes() usize,
+        ///then pack_payload_slice: &mut [u8] can be GREATER THAN OR EQUAL TO
+        /// self.payload_len_in_bytes() usize,
         ///
         ///queue structure
-        ///
         //// |--------------------|-----|-----|-----|----|-----|
         ///  |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
         //// |--------------------|-----|-----|-----|----|-----|
         ///
         /// ctr len = len_ctr_slise
-        ///The counter under the number ctr_N, i.e. the last counter, is always equal to 0.
+        ///The counter under the number ctr_N, i.e. the last counter, is always equal to
+        /// 0.
         pub fn copy_ctrs_pack_to_slice(
             &mut self,
             pack_payload_slice: &mut [u8],
@@ -911,7 +961,14 @@ pub mod recv_queue {
                 .chunks_exact_mut(self.ctr_slice_len)
                 .zip(self.data[..self.ptr].iter())
             {
-                wutils::u64_to_1_8bytes((*sls.1).checked_sub(self.min).expect("algorithm error, the minimum value must be less than any value in the array"), sls.0).unwrap();
+                wutils::u64_to_1_8bytes(
+                    (*sls.1).checked_sub(self.min).expect(
+                        "algorithm error, the minimum value must be less than any value in the \
+                         array",
+                    ),
+                    sls.0,
+                )
+                .unwrap();
             }
             //cleansing of the internal state
             self.ptr = 0;
@@ -925,8 +982,10 @@ pub mod recv_queue {
             payload: &'a [u8],
             len_ctr_slise: usize,
         ) -> Result<(u64, usize, std::slice::ChunksExact<'a, u8>), &'static str> {
-            let ret_len_ctrs = payload.len().checked_sub(U64_LEN_IN_BYTES)
-            .ok_or("The packet length is less than the reference counter length, which is an invalid packet.")?;
+            let ret_len_ctrs = payload.len().checked_sub(U64_LEN_IN_BYTES).ok_or(
+                "The packet length is less than the reference counter length, which is an invalid \
+                 packet.",
+            )?;
 
             if 0 == len_ctr_slise {
                 panic!("0 == len_ctr_slise")
@@ -934,7 +993,9 @@ pub mod recv_queue {
 
             // UPDATE !! blurred_boundaries always equals TRUE !!!
             //if 0 != ret_len_ctrs % len_ctr_slise {
-            //    return Err("The packet length is incorrect because the packet length (the length of the reference counter) is not a multiple of the counter field length in the packet topology.");
+            //    return Err("The packet length is incorrect because the packet length (the length
+            // of the reference counter) is not a multiple of the counter field length in the packet
+            // topology.");
             //}
 
             Ok((
@@ -944,8 +1005,8 @@ pub mod recv_queue {
             ))
         }
         ///receives a slice as input, i.e.
-        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec method,
-        ///  and then returns an array of u64 values that are counters.
+        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec
+        /// method,  and then returns an array of u64 values that are counters.
         pub fn split_byte_ctrs_pack_to_vec(
             pack: &[u8],
             len_ctr_slise: usize,
@@ -958,7 +1019,10 @@ pub mod recv_queue {
                 let r_ctr = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
-                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+                    .ok_or(
+                        "The reference counter + one of the delta counters caused overflow \
+                         operations; most likely, the packet has an error.",
+                    )?;
 
                 ret.push(r_ctr);
                 if r_ctr == pre_pross.0 {
@@ -970,11 +1034,13 @@ pub mod recv_queue {
             Ok(ret)
         }
         ///receives a slice as input, i.e.
-        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec method,
+        ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec
+        /// method,
         ///
-        /// Since WSRecvQueueCtrs is intended to be used with WSWaitQueue to avoid unnecessary allocation,
-        ///  it receives a mutable wait_queue: &mut WSWaitQueue<T, P>,
-        ///  and removes from it all counters that are encoded in pack: &[u8],
+        /// Since WSRecvQueueCtrs is intended to be used with WSWaitQueue to avoid
+        /// unnecessary allocation,  it receives a mutable wait_queue: &mut
+        /// WSWaitQueue<T, P>,  and removes from it all counters that are encoded
+        /// in pack: &[u8],
         ///
         /// --
         ///
@@ -1004,7 +1070,10 @@ pub mod recv_queue {
                 let ret_el = pre_pross
                     .0
                     .checked_add(wutils::bytes_to_u64(ctr_chank)?)
-                    .ok_or("The reference counter + one of the delta counters caused overflow operations; most likely, the packet has an error.")?;
+                    .ok_or(
+                        "The reference counter + one of the delta counters caused overflow \
+                         operations; most likely, the packet has an error.",
+                    )?;
 
                 if let Some(ref del_elem) = wait_queue.remove(ret_el) {
                     if let Some(min_xax) = &mut min_del {
@@ -1665,11 +1734,11 @@ pub mod recv_queue {
     #[cfg(test)]
     mod test_recv_queue_ctrs {
 
+        use ::std::collections::HashMap;
+
         use crate::t0pology::{PackTopology, PakFields};
         use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
         use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
-
-        use ::std::collections::HashMap;
         #[test]
         fn test_base() {
             let fields = vec![PakFields::Counter(2)];
@@ -1739,7 +1808,8 @@ pub mod recv_queue {
                 assert_eq!(
                     test_me.push(iterata_ma + 256),
                     Err(
-                        "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                        "The difference between the maximum and minimum counters is greater than \
+                         the counter_slice field can hold."
                     )
                 );
 
@@ -1792,7 +1862,8 @@ pub mod recv_queue {
 
                 // println!(
                 //    "{:?}",
-                //    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..], &pack_topology).unwrap()
+                //    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..],
+                // &pack_topology).unwrap()
                 //);
             }
         }
@@ -1865,7 +1936,7 @@ pub mod recv_queue {
             assert_eq!(
                 WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vet[..vet.len() - 3], ctr_len)
                     .unwrap(),
-                [11, 1022, 10322, 1430, 18876] /* -2 ctr*/
+                [11, 1022, 10322, 1430, 18876] /* -2 ctr */
             );
         }
 
@@ -1898,7 +1969,8 @@ pub mod recv_queue {
             assert_eq!(
                 test_me1.push(1),
                 Err(
-                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                    "The difference between the maximum and minimum counters is greater than the \
+                     counter_slice field can hold."
                 )
             );
 
@@ -1909,7 +1981,8 @@ pub mod recv_queue {
             assert_eq!(
                 test_me1.push(1 << (8 * 2) + 1),
                 Err(
-                    "The difference between the maximum and minimum counters is greater than the counter_slice field can hold."
+                    "The difference between the maximum and minimum counters is greater than the \
+                     counter_slice field can hold."
                 )
             );
         }
@@ -1972,7 +2045,8 @@ pub mod recv_queue {
 
             if time_soon % 500 == 0 {
                 println!(
-                    "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent confirmation:{:<5} |",
+                    "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent \
+                     confirmation:{:<5} |",
                     udp_que.how_items_in_queue(),
                     un_blear_ctr,
                     wait_que.len(),

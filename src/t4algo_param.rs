@@ -9,24 +9,21 @@ pub struct WsConnectParam {
     ///maximum packet size in bytes on the network</br>
     mtu: usize,
     //
-    //
     ///After sending the packet, the sender waits for a certain amount of time X.</br>
     ///  If no confirmation is received within the specified time X,</br>
-    ///  the waiting time X is increased by the latency_increase_coefficient coefficient. X = X+X*latency_increase_coefficient</br>
-    ///  The value of X changes dynamically during the operation of the algorithm,</br>
-    ///  and the values of max_ms_latency and min_ms_latency</br>
-    ///  limit its limits so that the sender does not wait forever or wait 0.0 ms.</br>
+    ///  the waiting time X is increased by the latency_increase_coefficient coefficient.
+    /// X = X+X*latency_increase_coefficient</br>  The value of X changes dynamically
+    /// during the operation of the algorithm,</br>  and the values of max_ms_latency
+    /// and min_ms_latency</br>  limit its limits so that the sender does not wait
+    /// forever or wait 0.0 ms.</br>
     max_ms_latency: f64,
-    //
     //
     ///see description max_ms_latency ^^^</br></br>
     min_ms_latency: f64,
     //
-    //
     ///see description max_ms_latency ^^^ +</br></br>
     /// initial latency must be between max_ms_latency: f64 and min_ms_latency: f64,</br>
     start_ms_latency: f64,
-    //
     //
     ///see description max_ms_latency ^^^+</br></br>
     ///  if confirmation of the packet has not arrived within the waiting time X,</br>
@@ -35,7 +32,6 @@ pub struct WsConnectParam {
     /// 1.0 >= latency_increase_coefficient >0
     latency_increase_coefficient: f64,
     //
-    //
     ///If confirmation of the packet has not been received,</br>
     ///  it is sent again. If confirmation of the packet is not received several</br>
     ///  times in a row, the connection is terminated. If the number of attempts</br>
@@ -43,115 +39,116 @@ pub struct WsConnectParam {
     ///  the connection is terminated.</br>
     max_num_attempts_resend_package: usize,
     //
-    //
     ///The connection dynamically changes the latency time.</br>
     ///  To do this, it calculates the average latency of</br>
     ///  the last packages_measurement_window_size_determining_latency packets.</br>
     ///  The smaller this number is,</br>
     ///  the faster the algorithm will respond to changes in latency.</br>
-    ///not related to other parameters, the lower the value, the more the adjustment will occur while waiting for confirmation
+    ///not related to other parameters, the lower the value, the more the adjustment will
+    /// occur while waiting for confirmation
     packages_measurement_window_size_determining_latency: usize,
     //
-    //
-    ///see description max_ms_latency ^^^ and packages_measurement_window_size_determining_latency +
-    ///Network latency is determined dynamically during algorithm execution when a</br>
-    ///  packet is sent and the sender waits for confirmation within: average latency</br>
+    ///see description max_ms_latency ^^^ and
+    /// packages_measurement_window_size_determining_latency + Network latency is
+    /// determined dynamically during algorithm execution when a</br>  packet is sent
+    /// and the sender waits for confirmation within: average latency</br>
     ///  of the last
     /// (packages_measurement_window_size_determining_latency) network packets *
-    ///  overhead_network_latency_relative_window_coefficient  (1.0 >= overhead_network_latency_relative_window_coefficient >= 0.0).</br>
-    ///  This value is necessary so that packets are not resent in case of minor network instability.</br>
+    ///  overhead_network_latency_relative_window_coefficient  (1.0 >=
+    /// overhead_network_latency_relative_window_coefficient >= 0.0).</br>  This value
+    /// is necessary so that packets are not resent in case of minor network
+    /// instability.</br>
     overhead_network_latency_relative_window_coefficient: f64,
     //
-    //
-    ///maximum_packet_delay_fback_coefficient This is the coefficient needed to calculate how long</br>
-    ///  to wait before sending a packet confirmation.</br>
+    ///maximum_packet_delay_fback_coefficient This is the coefficient needed to calculate
+    /// how long</br>  to wait before sending a packet confirmation.</br>
     ///  It must be greater than 0, but not greater than 1.0.</br>
     ///  After the packet has been received by the recipient,</br>
     ///  the recipient must send an fback confirmation packet,</br>
     ///  but fback may contain several counters of received packets,</br>
-    ///  so the packet recipient waits for some time before sending the fback confirmation packet,</br>
-    ///  as it expects that more packets may arrive,</br>
+    ///  so the packet recipient waits for some time before sending the fback confirmation
+    /// packet,</br>  as it expects that more packets may arrive,</br>
     ///  and the recipient will add several counters of received packets</br>
     ///  to fback and send confirmation of several packets instead of one.</br></br>
     ///The waiting time is calculated as</br>
-    ///  maximum_packet_delay_fback_coefficient multiplied by the current network delay time.</br>
-    ///  The maximum value of 1.0 is chosen for reasonableness,</br>
+    ///  maximum_packet_delay_fback_coefficient multiplied by the current network delay
+    /// time.</br>  The maximum value of 1.0 is chosen for reasonableness,</br>
     /// so that the maximum waiting time for sending fback is not very long.</br>
     maximum_packet_delay_fback_coefficient: f64,
     //
-    //
     ///see description maximum_packet_delay_fback_coefficient ^^^
-    ///This is the maximum absolute value that the fback packet will wait before being sent.
-    ///The value must be between 0 and max_ms_latency.
+    ///This is the maximum absolute value that the fback packet will wait before being
+    /// sent. The value must be between 0 and max_ms_latency.
     maximum_packet_delay_absolute_fback: f64,
     //
-    //
     ///ttl is a standard field for TTL (Time To Live) Internet protocol algorithms.</br>
-    ///  The first u64 is the maximum number that the counter can accept; if it is greater</br>
-    ///  , the packet is considered incorrect. The second u64 is the starting ttl,</br>
-    ///  which is set for the packet by its sender and must always be less than the first usize.</br>
-    ///  The third i64 is the price of passing the packet through the node. In normal networks,</br>
-    ///  when a packet passes through a node, its TTL is reduced by -1.</br>
-    ///  If the third i64 is negative, the TTL counter will be reduced by this number</br>
-    ///  . If the third i64 is positive,</br>
-    ///  the TTL counter value will be increased by this number.</br>
+    ///  The first u64 is the maximum number that the counter can accept; if it is
+    /// greater</br>  , the packet is considered incorrect. The second u64 is the
+    /// starting ttl,</br>  which is set for the packet by its sender and must always
+    /// be less than the first usize.</br>  The third i64 is the price of passing the
+    /// packet through the node. In normal networks,</br>  when a packet passes
+    /// through a node, its TTL is reduced by -1.</br>  If the third i64 is negative,
+    /// the TTL counter will be reduced by this number</br>  . If the third i64 is
+    /// positive,</br>  the TTL counter value will be increased by this number.</br>
     ///  I don't know in what situations you need to increase it,</br>
     ///  but it may be necessary.</br>
-    ///  Carefully study the basics of Internet networks so you don't do anything stupid ;)</br>
-    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
-    ///  (ttl).</h4>
+    ///  Carefully study the basics of Internet networks so you don't do anything stupid
+    /// ;)</br> <h4>The maximum value of this field is limited by the maximum capacity
+    /// of the field from the PackTopology structure:  (ttl).</h4>
     ttl_max_start_cost: Option<(u64, u64, i64)>,
-    //
     //
     ///The maximum_length_udp_queue_packages value is used in the WSUdpLike class.</br>
     ///  For more details, see the WSUdpLike API. In short,</br>
     ///  WSUdpLike is needed to restore the sequence of packets</br>
-    ///  if some packets arrived out of order/were duplicated/or to wait for lost packets.</br>
-    ///  Ideally, maximum_length_udp_queue_packages should be greater than or equal to maximum_length_queue_unconfirmed_package.</br>
+    ///  if some packets arrived out of order/were duplicated/or to wait for lost
+    /// packets.</br>  Ideally, maximum_length_udp_queue_packages should be greater
+    /// than or equal to maximum_length_queue_unconfirmed_package.</br>
     ///  This is because if maximum_length_queue_unconfirmed_package is larger,</br>
-    ///  a situation may arise where the WSUdpLike queue overflows and valid packets are rejected.</br>
-    ///  This will lead to an increase in network load.</br>
-    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
-    ///  (field counter).</h4>
+    ///  a situation may arise where the WSUdpLike queue overflows and valid packets are
+    /// rejected.</br>  This will lead to an increase in network load.</br>
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the
+    /// field from the PackTopology structure:  (field counter).</h4>
     maximum_length_udp_queue_packages: usize,
-    //
     //
     ///maximum_length_fback_queue_packages is a value used in WSRecvQueueCtrs.</br>
     ///  For more information, see WSRecvQueueCtrs API. Brief information.</br>
-    /// When a node receives a packet, it must send a confirmation, analogous to an ACK packet in TCP.</br>
-    ///  In this algorithm, it is called “fback”.</br>
-    ///  The fback acknowledgment packet contains the numbers of the packet counters that were received.</br>
-    ///  The maximum number of counters is determined by maximum_length_fback_queue_packages. However,</br>
-    ///  the fback packet must fit entirely within the network MTU.</br>
-    ///  If the calculated size in bytes of the fback packet does not fit within the MTU,</br>
-    ///  maximum_length_fback_queue_packages will be forcibly reduced when the instance is created.  </br>
-    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
-    ///  (field counter +  length field, if such a field exists; if it does not exist, then the packet length is limited only by the MTU).</h4>
+    /// When a node receives a packet, it must send a confirmation, analogous to an ACK
+    /// packet in TCP.</br>  In this algorithm, it is called “fback”.</br>
+    ///  The fback acknowledgment packet contains the numbers of the packet counters that
+    /// were received.</br>  The maximum number of counters is determined by
+    /// maximum_length_fback_queue_packages. However,</br>  the fback packet must fit
+    /// entirely within the network MTU.</br>  If the calculated size in bytes of the
+    /// fback packet does not fit within the MTU,</br>
+    ///  maximum_length_fback_queue_packages will be forcibly reduced when the instance is
+    /// created.  </br> <h4>The maximum value of this field is limited by the maximum
+    /// capacity of the field from the PackTopology structure:  (field counter +
+    /// length field, if such a field exists; if it does not exist, then the packet length
+    /// is limited only by the MTU).</h4>
     maximum_length_fback_queue_packages: usize,
     //
-    //
-    ///maximum_length_queue_unconfirmed_packages is required for use in WSWaitQueue. </br>
-    ///  For complete information, see the WSWaitQueue API.</br></br>
+    ///maximum_length_queue_unconfirmed_packages is required for use in WSWaitQueue.
+    /// </br>  For complete information, see the WSWaitQueue API.</br></br>
     ///  In short, when the sender sends a packet, in addition to sending it,</br>
-    ///  this packet is sent to storage in WSWaitQueue. When the sender receives the fback packet,</br>
-    ///  it deletes all packets from fback that are in WSWaitQueue.</br>
-    ///  Periodically, the sender checks WSWaitQueue for packets with expired confirmation times and resends them.</br>
-    ///  It is recommended that maximum_length_queue_unconfirmed_packages be</br>
-    ///  three times larger than maximum_length_fback_queue_packages.</br>
-    /// This is a recommendation, not a mandatory value, and it depends on the parameters and properties of the external environment.</br></br>
-    ///  Logically, packets can be divided into:</br>
+    ///  this packet is sent to storage in WSWaitQueue. When the sender receives the fback
+    /// packet,</br>  it deletes all packets from fback that are in WSWaitQueue.</br>
+    ///  Periodically, the sender checks WSWaitQueue for packets with expired confirmation
+    /// times and resends them.</br>  It is recommended that
+    /// maximum_length_queue_unconfirmed_packages be</br>  three times larger than
+    /// maximum_length_fback_queue_packages.</br> This is a recommendation, not a
+    /// mandatory value, and it depends on the parameters and properties of the external
+    /// environment.</br></br>  Logically, packets can be divided into:</br>
     ///#### 1 those that are still in transit from the sender to the recipient.
     ///#### 2 those that have been received and are stored in fback.
     ///#### 3 those that have been sent to fback from the recipient to the sender to confirm receipt.</br></br>
-    /// <h4>The maximum value of this field is limited by the maximum capacity of the field from the PackTopology structure:
-    ///  (field counter).</h4>
+    /// <h4>The maximum value of this field is limited by the maximum capacity of the
+    /// field from the PackTopology structure:  (field counter).</h4>
     maximum_length_queue_unconfirmed_packages: usize,
     //
-    //
     ///percent_fake_data_packets can be in  0 > && <= 1.0.
-    ///  It is needed so that the protocol sends fake packets to make it difficult for traffic censorship
-    ///  tools to detect them. When creating a useful data packet, there is a chance that a packet of
-    ///  junk data will appear with the percent_fake_data_packets value.
+    ///  It is needed so that the protocol sends fake packets to make it difficult for
+    /// traffic censorship  tools to detect them. When creating a useful data packet,
+    /// there is a chance that a packet of  junk data will appear with the
+    /// percent_fake_data_packets value.
     percent_fake_data_packets: Option<f64>,
     //
     ///see description percent_fake_data_packets^^^
@@ -179,34 +176,36 @@ pub struct WsConnectParam {
         ///  i.e., junk data can be added to any fback packet.
         percent_add_rand_nums_bytes_fback_packs: Option<f64>,
     */
-    ///percent_len_random_coefficient is needed to randomize the length to which packets will be cut,<br><br>
-    ///  for example, file length = 1000 bytes, your network's MTU = 100 bytes,<br>
-    ///  the packet's working fields occupy 20 bytes, then to transfer the file,<br>
-    ///  you need 12 full packets of 100 bytes (20 bytes of service bytes  + 80 useful bytes)<br>
-    ///  and 1 packet of 60 bytes (20 service bytes + 40 useful bytes).<br>
-    ///  If the value of percent_len_random_coefficient Some(1.0>= x > 0.0) is,<br>
-    ///  for example, 0.3, then the packet length will not be 100 bytes,<br>
-    ///  but 100-20 (MTU - minimum packet size) * 0.3 = 24.<br>
+    ///percent_len_random_coefficient is needed to randomize the length to which packets
+    /// will be cut,<br><br>  for example, file length = 1000 bytes, your network's
+    /// MTU = 100 bytes,<br>  the packet's working fields occupy 20 bytes, then to
+    /// transfer the file,<br>  you need 12 full packets of 100 bytes (20 bytes of
+    /// service bytes  + 80 useful bytes)<br>  and 1 packet of 60 bytes (20 service
+    /// bytes + 40 useful bytes).<br>  If the value of percent_len_random_coefficient
+    /// Some(1.0>= x > 0.0) is,<br>  for example, 0.3, then the packet length will not
+    /// be 100 bytes,<br>  but 100-20 (MTU - minimum packet size) * 0.3 = 24.<br>
     ///  Each packet will have a length from MTU - 24 to MTU.<br>
     percent_len_random_coefficient: Option<f64>,
 
-    ///instant_feedback_on_packet_loss is needed so that when packet loss is detected,<br>
-    ///fback is immediately returned with confirmed packets. For example,<br>
-    ///the recipient received packets numbered 11, 12, 13, 15, 16, and 17.<br>
-    ///and sees that packet number 15 is missing,<br>
+    ///instant_feedback_on_packet_loss is needed so that when packet loss is
+    /// detected,<br> fback is immediately returned with confirmed packets. For
+    /// example,<br> the recipient received packets numbered 11, 12, 13, 15, 16, and
+    /// 17.<br> and sees that packet number 15 is missing,<br>
     ///sends fback with confirmation of receipt of 11, 12, 13, 15, 16, and 17.<br>
     ///The sender sees that the recipient<br>
-    ///did not receive packet 15 and sends packet 15 immediately after receiving fback.<br>
-    ///If instant_feedback_on_packet_los == false,<br>
-    ///then if the sender receives confirmation of receipt of packets 11,12,13,15,16,17,<br>
-    ///it will NOT send packet 15, but will wait for the packet confirmation timeout<br>
-    ///(see the latency_increase_coefficient and max_ms_latency documentation)<br>
-    ///and only after the timeout will it resend packet 15.<br>
+    ///did not receive packet 15 and sends packet 15 immediately after receiving
+    /// fback.<br> If instant_feedback_on_packet_los == false,<br>
+    ///then if the sender receives confirmation of receipt of packets
+    /// 11,12,13,15,16,17,<br> it will NOT send packet 15, but will wait for the
+    /// packet confirmation timeout<br> (see the latency_increase_coefficient and
+    /// max_ms_latency documentation)<br> and only after the timeout will it resend
+    /// packet 15.<br>
     instant_feedback_on_packet_loss: bool,
 }
 
 impl WsConnectParam {
-    ///<h2>Each variable is described in detail at the beginning of this file. Open the beginning of the file and read what is written there to avoid mistakes.
+    ///<h2>Each variable is described in detail at the beginning of this file. Open the
+    /// beginning of the file and read what is written there to avoid mistakes.
     pub fn new(
         pack_topology: &PackTopology,
         mtu: usize,
@@ -230,7 +229,11 @@ impl WsConnectParam {
     ) -> Result<Self, &'static str> {
         if pack_topology.total_minimal_len() >= mtu {
             return Err(
-                "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data.",
+                "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
+                 pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is \
+                 the minimum packet length, such a packet contains only protocol service \
+                 information, mtu must be large enough to accommodate the length of the packet's \
+                 useful data and service data.",
             );
         }
         if !min_ms_latency.is_normal()
@@ -267,80 +270,97 @@ impl WsConnectParam {
             || (overhead_network_latency_relative_window_coefficient > 1.0)
             || (maximum_packet_delay_fback_coefficient > 1.0)
         {
-            return Err(
-                "latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero",
-            );
+            return Err("latency_increase_coefficient \
+                        overhead_network_latency_relative_window_coefficient \
+                        maximum_packet_delay_fback_coefficient must be greater than zero");
         }
 
         //latency check
         {
             if min_ms_latency > max_ms_latency {
                 return Err(
-                    "min_ms_latency > max_ms_latency The minimum start_ms_latency < min_ms_latency must be less than or equal to the maximum latency.",
+                    "min_ms_latency > max_ms_latency The minimum start_ms_latency < \
+                     min_ms_latency must be less than or equal to the maximum latency.",
                 );
             }
 
             if start_ms_latency > max_ms_latency {
                 return Err(
-                    "start_ms_latency > max_ms_latency The start latency must be less than or equal to the maximum.",
+                    "start_ms_latency > max_ms_latency The start latency must be less than or \
+                     equal to the maximum.",
                 );
             }
 
             if start_ms_latency < min_ms_latency {
                 return Err(
-                    "start_ms_latency < min_ms_latency The start latency  must be greater than or equal to the minimum.",
+                    "start_ms_latency < min_ms_latency The start latency  must be greater than or \
+                     equal to the minimum.",
                 );
             }
         }
 
         {
             let ctr_max_capacity = wutils::len_byte_maximal_capacity_check(
-            pack_topology
-                .counter_slice()
-                .ok_or(
-                    "The counter_slice() field in pack_topology is None, but it must be specified!",
-                )?
-                .2,
-        );
+                pack_topology
+                    .counter_slice()
+                    .ok_or(
+                        "The counter_slice() field in pack_topology is None, but it must be \
+                         specified!",
+                    )?
+                    .2,
+            );
             //See the description of the pub fn set_counter function in the pub mod t1fields file
             // to understand why this logic for obtaining maximum capacity is used here.
-            let ctr_max_capacity_real = (ctr_max_capacity.0 >> 1).checked_sub(1).expect("(ctr_max_capacity.0 >> 1) - 1 < 0 error, impossible behavior, since the minimum length of counter_slice() is 1, 1 byte is 255 maximum value, 255 >>1 - 127, 127 is greater than 1.");
+            let ctr_max_capacity_real = (ctr_max_capacity.0 >> 1).checked_sub(1).expect(
+                "(ctr_max_capacity.0 >> 1) - 1 < 0 error, impossible behavior, since the minimum \
+                 length of counter_slice() is 1, 1 byte is 255 maximum value, 255 >>1 - 127, 127 \
+                 is greater than 1.",
+            );
 
             //https://github.com/ilostmyg1thubkey You dumbass,
-            //this shit will only work if ctr_max_capacity_real is not greater than 32 bits, even on 32-bit systems, bitch.
+            //this shit will only work if ctr_max_capacity_real is not greater than 32 bits, even
+            // on 32-bit systems, bitch.
             if ctr_max_capacity_real > usize::MAX as u64 {
                 return Err(
-                    "ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's usize limit",
+                    "ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's \
+                     usize limit",
                 );
             }
 
             if maximum_length_udp_queue_packages > ctr_max_capacity_real as usize {
                 return Err(
-                    " maximum_length_udp_queue_packages must be less than the maximum capacity of the pack_topology.counter_slice() field. ",
+                    " maximum_length_udp_queue_packages must be less than the maximum capacity of \
+                     the pack_topology.counter_slice() field. ",
                 );
             }
             if maximum_length_udp_queue_packages < maximum_length_queue_unconfirmed_packages {
-                return Err(
-                    " maximum_length_udp_queue_packages must be greater than maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For more information, see the description of this variable at the beginning of the file.",
-                );
+                return Err(" maximum_length_udp_queue_packages must be greater than \
+                            maximum_length_queue_unconfirmed_packages so that all packets are \
+                            confirmed. For more information, see the description of this \
+                            variable at the beginning of the file.");
             }
 
             if maximum_length_fback_queue_packages > ctr_max_capacity_real as usize {
                 return Err(
-                    "maximum_length_fback_queue_packages must not exceed the maximum capacity of the pack_topology.counter_slice() counter. ",
+                    "maximum_length_fback_queue_packages must not exceed the maximum capacity of \
+                     the pack_topology.counter_slice() counter. ",
                 );
             }
 
             if max_num_attempts_resend_package > ctr_max_capacity_real as usize {
                 return Err(
-                    "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  max_num_attempts_resend_package must be less than the maximum possible capacity in pack_topology.counter_slice().",
+                    "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
+                     max_num_attempts_resend_package must be less than the maximum possible \
+                     capacity in pack_topology.counter_slice().",
                 );
             }
         }
 
         if maximum_packet_delay_absolute_fback > max_ms_latency {
             return Err(
-                "The variable maximum_packet_delay_absolute_fback must be no greater than max_ms_latency For more information, see the description of this variable at the beginning of the file.",
+                "The variable maximum_packet_delay_absolute_fback must be no greater than \
+                 max_ms_latency For more information, see the description of this variable at the \
+                 beginning of the file.",
             );
         }
         //ttl
@@ -350,37 +370,39 @@ impl WsConnectParam {
 
                 if ttl_me.0 < ttl_me.1 {
                     return Err(
-                        "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file.",
+                        "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the \
+                         maximum ttl value. For more information, see the description of this \
+                         variable at the beginning of the file.",
                     );
                 }
                 if ttl_me.0 == 0 {
-                    return Err(
-                        "ttl_max_start_cost.0 must be greater than zero. For more information, see the description of this variable at the beginning of the file.",
-                    );
+                    return Err("ttl_max_start_cost.0 must be greater than zero. For more \
+                                information, see the description of this variable at the \
+                                beginning of the file.");
                 }
 
                 if ttl_me.1 == 0 {
-                    return Err(
-                        "ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file.",
-                    );
+                    return Err("ttl_max_start_cost.1 must be greater than zero. For more \
+                                information, see the description of this variable at the \
+                                beginning of the file.");
                 }
 
                 if ttl_me.1 > max_cap.0 {
                     return Err(
-                        "ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field.",
+                        "ttl_max_start_cost.1 is greater than the length that can be accommodated \
+                         in the pack_topology field.",
                     );
                 }
             } else {
-                return Err(
-                    "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None.",
-                );
+                return Err("The ttl_max_start_cost field is defined as Some(), but in \
+                            pack_topology this field is None.");
             }
         }
 
         if maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages {
-            return Err(
-                " maximum_length_fback_queue_packages must be less than maximum_length_queue_unconfirmed_packages.For more information, see the description of this variable at the beginning of the file.",
-            );
+            return Err(" maximum_length_fback_queue_packages must be less than \
+                        maximum_length_queue_unconfirmed_packages.For more information, see the \
+                        description of this variable at the beginning of the file.");
         }
         //percent
 
@@ -524,7 +546,8 @@ pub struct WsPackagesParam<Tenc: EncWis> {
 }
 */
 #[cfg(test)]
-///This function is needed so that when the new method is changed, all the fucking tests don't have to be rewritten.
+///This function is needed so that when the new method is changed, all the fucking tests
+/// don't have to be rewritten.
 fn get_struct_time_long_support(
     pack_topology: &PackTopology,
     mtu: usize,
@@ -650,7 +673,8 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         )
     }
 
-    // Test group 7: extended parameters (ttl_max_start_cost and instant_feedback_on_packet_loss)
+    // Test group 7: extended parameters (ttl_max_start_cost and
+    // instant_feedback_on_packet_loss)
 
     #[test]
     fn test_instant_feedback_flag_true() {
@@ -848,7 +872,8 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         );
         assert_eq!(
             result.err().unwrap(),
-            "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None."
+            "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field \
+             is None."
         );
     }
 
@@ -886,7 +911,9 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         assert!(result.is_err(), "ttl start > max should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
+             value. For more information, see the description of this variable at the beginning \
+             of the file."
         );
     }
 
@@ -959,7 +986,9 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         assert!(result.is_err(), "ttl max = 0 should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
+             value. For more information, see the description of this variable at the beginning \
+             of the file."
         );
     }
 
@@ -997,7 +1026,8 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         assert!(result.is_err(), "ttl start = 0 should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.1 must be greater than zero. For more information, see the \
+             description of this variable at the beginning of the file."
         );
     }
 
@@ -1035,7 +1065,8 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         assert!(result.is_err(), "ttl start exceeds capacity should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field."
+            "ttl_max_start_cost.1 is greater than the length that can be accommodated in the \
+             pack_topology field."
         );
     }
 
@@ -2165,7 +2196,8 @@ mod tests_delay {
 
         assert!(
             result.is_ok(),
-            "absolute_fback = 0.1 should be valid (documentation says between 0 and max_ms_latency)"
+            "absolute_fback = 0.1 should be valid (documentation says between 0 and \
+             max_ms_latency)"
         );
     }
 
@@ -2225,7 +2257,9 @@ mod tests_delay {
         );
         assert_eq!(
             result.err().unwrap(),
-            "The variable maximum_packet_delay_absolute_fback must be no greater than max_ms_latency For more information, see the description of this variable at the beginning of the file."
+            "The variable maximum_packet_delay_absolute_fback must be no greater than \
+             max_ms_latency For more information, see the description of this variable at the \
+             beginning of the file."
         );
     }
 
@@ -2496,7 +2530,8 @@ mod tests_packet_queue_management_group {
         );
         assert_eq!(
             result.err().unwrap(),
-            " maximum_length_udp_queue_packages must be less than the maximum capacity of the pack_topology.counter_slice() field. "
+            " maximum_length_udp_queue_packages must be less than the maximum capacity of the \
+             pack_topology.counter_slice() field. "
         );
 
         // maximum_length_fback_queue_packages > capacity
@@ -2511,7 +2546,8 @@ mod tests_packet_queue_management_group {
         );
         assert_eq!(
             result.err().unwrap(),
-            "maximum_length_fback_queue_packages must not exceed the maximum capacity of the pack_topology.counter_slice() counter. "
+            "maximum_length_fback_queue_packages must not exceed the maximum capacity of the \
+             pack_topology.counter_slice() counter. "
         );
 
         // max_num_attempts_resend_package > capacity
@@ -2526,7 +2562,9 @@ mod tests_packet_queue_management_group {
         );
         assert_eq!(
             result.err().unwrap(),
-            "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  max_num_attempts_resend_package must be less than the maximum possible capacity in pack_topology.counter_slice()."
+            "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
+             max_num_attempts_resend_package must be less than the maximum possible capacity in \
+             pack_topology.counter_slice()."
         );
     }
 
@@ -2535,7 +2573,8 @@ mod tests_packet_queue_management_group {
         let topo = get_topol(Some(2), 50, None); // 2-byte counter for larger capacity
         let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8) = create_valid_base_params(&topo);
 
-        // maximum_length_udp_queue_packages < maximum_length_queue_unconfirmed_packages (violation)
+        // maximum_length_udp_queue_packages < maximum_length_queue_unconfirmed_packages
+        // (violation)
         let result = get_struct_time_long_support(
             &topo, mtu, p0, p1, 50,  // udp queue
             20,  // fback queue
@@ -2549,7 +2588,9 @@ mod tests_packet_queue_management_group {
         );
         assert_eq!(
             result.err().unwrap(),
-            " maximum_length_udp_queue_packages must be greater than maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For more information, see the description of this variable at the beginning of the file."
+            " maximum_length_udp_queue_packages must be greater than \
+             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
+             more information, see the description of this variable at the beginning of the file."
         );
     }
 
@@ -2558,7 +2599,8 @@ mod tests_packet_queue_management_group {
         let topo = get_topol(Some(2), 50, None);
         let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8) = create_valid_base_params(&topo);
 
-        // maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages (violation)
+        // maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages
+        // (violation)
         let result = get_struct_time_long_support(
             &topo, mtu, p0, p1, 200, // udp queue (≥ unconfirmed)
             150, // fback queue
@@ -2572,7 +2614,9 @@ mod tests_packet_queue_management_group {
         );
         assert_eq!(
             result.err().unwrap(),
-            " maximum_length_fback_queue_packages must be less than maximum_length_queue_unconfirmed_packages.For more information, see the description of this variable at the beginning of the file."
+            " maximum_length_fback_queue_packages must be less than \
+             maximum_length_queue_unconfirmed_packages.For more information, see the description \
+             of this variable at the beginning of the file."
         );
     }
 
@@ -2613,7 +2657,8 @@ mod tests_packet_queue_management_group {
         let topo = get_topol(Some(1), 50, None);
         let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8) = create_valid_base_params(&topo);
 
-        // Test each queue parameter = 0 (should fail the "all usize variables must be greater than zero" check)
+        // Test each queue parameter = 0 (should fail the "all usize variables must be greater
+        // than zero" check)
 
         // maximum_length_udp_queue_packages = 0
         let result = get_struct_time_long_support(
@@ -2708,7 +2753,8 @@ mod tests_packet_queue_management_group {
 
     #[test]
     fn test_queue_params_recommended_ratio_not_enforced() {
-        // Documentation recommends unconfirmed queue be 3x fback queue, but code doesn't enforce this
+        // Documentation recommends unconfirmed queue be 3x fback queue, but code doesn't enforce
+        // this
         let topo = get_topol(Some(2), 50, None);
         let (mtu, p0, p1, p2, p3, p4, p5, p6, p7, p8) = create_valid_base_params(&topo);
 
@@ -2998,7 +3044,8 @@ mod tests_adaptation_coefficients {
         );
         assert_eq!(
             result.err().unwrap(),
-            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero"
+            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
+             maximum_packet_delay_fback_coefficient must be greater than zero"
         );
     }
 
@@ -3160,7 +3207,8 @@ mod tests_adaptation_coefficients {
         );
         assert_eq!(
             result.err().unwrap(),
-            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero"
+            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
+             maximum_packet_delay_fback_coefficient must be greater than zero"
         );
     }
 
@@ -3237,7 +3285,8 @@ mod tests_adaptation_coefficients {
 
         assert!(
             result.is_ok(),
-            "packages_measurement_window_size_determining_latency within 1-byte counter capacity should be valid"
+            "packages_measurement_window_size_determining_latency within 1-byte counter capacity \
+             should be valid"
         );
     }
 
@@ -3312,7 +3361,8 @@ mod tests_adaptation_coefficients {
 
         assert!(
             result.is_ok(),
-            "packages_measurement_window_size_determining_latency with large counter should be valid"
+            "packages_measurement_window_size_determining_latency with large counter should be \
+             valid"
         );
     }
 
@@ -3331,7 +3381,8 @@ mod tests_adaptation_coefficients {
         assert!(result.is_err());
         assert_eq!(
             result.err().unwrap(),
-            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient maximum_packet_delay_fback_coefficient must be greater than zero"
+            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
+             maximum_packet_delay_fback_coefficient must be greater than zero"
         );
     }
 }
@@ -3436,7 +3487,11 @@ mod tests_from_group {
         assert!(result.is_err(), "mtu == total_minimal_len should error");
         assert_eq!(
             result.err().unwrap(),
-            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data."
+            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
+             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
+             minimum packet length, such a packet contains only protocol service information, mtu \
+             must be large enough to accommodate the length of the packet's useful data and \
+             service data."
         );
     }
 
@@ -3455,7 +3510,11 @@ mod tests_from_group {
         assert!(result.is_err(), "mtu < total_minimal_len should error");
         assert_eq!(
             result.err().unwrap(),
-            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data."
+            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
+             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
+             minimum packet length, such a packet contains only protocol service information, mtu \
+             must be large enough to accommodate the length of the packet's useful data and \
+             service data."
         );
     }
 
@@ -3588,7 +3647,8 @@ mod tests_from_group {
     fn test_mtu_zero_error_but_not_from_group1() {
         // Note: mtu=0 would fail in usize checks, but that's not part of group 1 validation
         // The code doesn't explicitly check mtu > 0, but usize parameters are checked together
-        // This test shows that mtu=0 causes error from "all usize variables must be greater than zero"
+        // This test shows that mtu=0 causes error from "all usize variables must be greater than
+        // zero"
         let topo = get_topol(Some(1), 50, None);
         let (p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15, p16, p17, p18) =
             create_valid_other_params();
@@ -3602,7 +3662,11 @@ mod tests_from_group {
         // This error comes from the general usize check, not specifically from group 1
         assert_eq!(
             result.err().unwrap(),
-            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the minimum packet length, such a packet contains only protocol service information, mtu must be large enough to accommodate the length of the packet's useful data and service data."
+            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
+             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
+             minimum packet length, such a packet contains only protocol service information, mtu \
+             must be large enough to accommodate the length of the packet's useful data and \
+             service data."
         );
     }
 
@@ -3683,7 +3747,8 @@ mod tests_mt1 {
         )
     }
 
-    // Test group 7: extended parameters (ttl_max_start_cost and instant_feedback_on_packet_loss)
+    // Test group 7: extended parameters (ttl_max_start_cost and
+    // instant_feedback_on_packet_loss)
 
     #[test]
     fn test_instant_feedback_flag_true() {
@@ -3881,7 +3946,8 @@ mod tests_mt1 {
         );
         assert_eq!(
             result.err().unwrap(),
-            "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field is None."
+            "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field \
+             is None."
         );
     }
 
@@ -3919,7 +3985,9 @@ mod tests_mt1 {
         assert!(result.is_err(), "ttl start > max should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl value. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
+             value. For more information, see the description of this variable at the beginning \
+             of the file."
         );
     }
 
@@ -3992,7 +4060,8 @@ mod tests_mt1 {
         assert!(result.is_err(), "ttl max = 0 should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.0 must be greater than zero. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.0 must be greater than zero. For more information, see the \
+             description of this variable at the beginning of the file."
         );
     }
 
@@ -4030,7 +4099,8 @@ mod tests_mt1 {
         assert!(result.is_err(), "ttl start = 0 should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.1 must be greater than zero. For more information, see the description of this variable at the beginning of the file."
+            "ttl_max_start_cost.1 must be greater than zero. For more information, see the \
+             description of this variable at the beginning of the file."
         );
     }
 
@@ -4068,7 +4138,8 @@ mod tests_mt1 {
         assert!(result.is_err(), "ttl start exceeds capacity should error");
         assert_eq!(
             result.err().unwrap(),
-            "ttl_max_start_cost.1 is greater than the length that can be accommodated in the pack_topology field."
+            "ttl_max_start_cost.1 is greater than the length that can be accommodated in the \
+             pack_topology field."
         );
     }
 

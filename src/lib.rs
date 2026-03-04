@@ -16,8 +16,7 @@ pub use crate::t1queue_tcpudp::recv_queue::{
 };
 
 pub mod private_core {
-    pub use crate::t0pology as PackageFields;
-    pub use crate::t1fields as PacketsProcessingFields;
+    pub use crate::{t0pology as PackageFields, t1fields as PacketsProcessingFields};
 }
 /*
 delete this in prod dapgp
@@ -29,7 +28,13 @@ cargo clippy --fix --allow-dirty --broken-code
 git add . &&
 git commit -S -m "dev" &&
 git push origin main
+
 cargo fix --allow-dirty
 cargo clippy --fix --all --allow-dirty
 git rm -r --cached t.txt
+
+
+cargo +nightly fmt
+rustup toolchain install nightly
+rustup run nightly cargo fmt
 */

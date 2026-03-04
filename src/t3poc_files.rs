@@ -2,7 +2,8 @@ use crate::wutils;
 
 const FILE_HEAD_LEN: usize = 9;
 
-use std::{cmp::min, rc::Rc};
+use std::cmp::min;
+use std::rc::Rc;
 
 #[derive(Debug, PartialEq, Clone)]
 struct DataDrain {
@@ -12,8 +13,8 @@ struct DataDrain {
     head: [u8; FILE_HEAD_LEN],
 }
 
-///The WSFileSplitter structure is needed to split the data stream into separate user-defined
-///  files of arbitrary length and to create files from user data
+///The WSFileSplitter structure is needed to split the data stream into separate
+/// user-defined  files of arbitrary length and to create files from user data
 ///  for transmission over a TCP-like data stream.
 ///  In protocols where there is no data splitting and data is not marked.
 ///  The maximum file size is (2^64) - 9 bytes.
@@ -25,8 +26,8 @@ pub struct WSFileSplitter {
 }
 
 impl WSFileSplitter {
-    ///max_len_of_file is a variable that limits the maximum size of incoming and outgoing files.
-    ///  This is necessary to prevent systems with
+    ///max_len_of_file is a variable that limits the maximum size of incoming and
+    /// outgoing files.  This is necessary to prevent systems with
     ///  limited resources from allocating memory for very large files.
     ///  If the limitation is not needed, leave the value as None.
     pub fn new(max_len_of_file: Option<usize>) -> Result<Self, &'static str> {
@@ -43,8 +44,9 @@ impl WSFileSplitter {
         })
     }
     /// Write a new file get a file, Rc<Vec<u8>> Rc is used to minimize the overhead of
-    ///  copying data to a new vector. Only one file can be in the WSFileSplitter structure
-    ///  at a time. To find out if a file is in the structure, call remaining_len_of_rc_file(&self).
+    ///  copying data to a new vector. Only one file can be in the WSFileSplitter
+    /// structure  at a time. To find out if a file is in the structure, call
+    /// remaining_len_of_rc_file(&self).
     pub fn write_new_rc_file(&mut self, rc_file: Rc<Vec<u8>>) -> Result<(), &'static str> {
         if self.send_file.is_some() {
             return Err("WSFileSplitter already has an unprocessed file ");
@@ -59,7 +61,8 @@ impl WSFileSplitter {
         }
         if rc_file.len() > u64::MAX as usize {
             panic!(
-                "rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+                "rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the \
+                 capacity of usize and u64. Your device is not suitable for this code :("
             );
         }
         //Calculates how many bytes the file size will fit into
@@ -67,13 +70,15 @@ impl WSFileSplitter {
 
         if cap_head_of_rc > u8::MAX as usize {
             panic!(
-                "panic because the values from cap_head_of_rc.1 must be in a range smaller than u8::MAX"
+                "panic because the values from cap_head_of_rc.1 must be in a range smaller than \
+                 u8::MAX"
             );
         }
 
         if cap_head_of_rc + 1 > FILE_HEAD_LEN {
             panic!(
-                "Panic because the file header (u64 as bytes len + 1 byte length) is larger than FILE_HEAD_LEN"
+                "Panic because the file header (u64 as bytes len + 1 byte length) is larger than \
+                 FILE_HEAD_LEN"
             );
         }
 
@@ -97,21 +102,23 @@ impl WSFileSplitter {
         Ok(())
     }
 
-    ///file_to_slices accepts multiple slices of varying lengths and copies file data into them.
-    ///  IMPORTANT: file_to_slices DOES NOT MARK THE SEQUENCE OF SLICES IN ANY WAY!
-    ///  THE ORDER IN WHICH THE SLICES WERE TRANSFERRED
+    ///file_to_slices accepts multiple slices of varying lengths and copies file data
+    /// into them.  IMPORTANT: file_to_slices DOES NOT MARK THE SEQUENCE OF SLICES IN
+    /// ANY WAY!  THE ORDER IN WHICH THE SLICES WERE TRANSFERRED
     ///  IS THE ORDER IN WHICH THEY MUST BE RECEIVED IN slices_to_file!.
     ///
     ///Note that slices can be of any length.
     ///  If a slice is shorter than the file or the remaining part of the file,
     ///  the remaining end of the slice will be filled with zeros.
     ///  To calculate the slice length more optimally,
-    ///  you can find out the size of the remaining bytes by calling remaining_len_of_rc_file($self).
+    ///  you can find out the size of the remaining bytes by calling
+    /// remaining_len_of_rc_file($self).
     ///
-    ///  If the file bytes in the structure have ended, and remaining_len_of_rc_file($self) == None,
-    ///  then the structure can accept the next file in write_new_rc_file().
-    /// This function returns -> Option<usize> because it involves remaining_len_of_rc_file($self)
-    /// internally, so if file_to_slices() == None, it means the file is finished.
+    ///  If the file bytes in the structure have ended, and
+    /// remaining_len_of_rc_file($self) == None,  then the structure can accept the
+    /// next file in write_new_rc_file(). This function returns -> Option<usize>
+    /// because it involves remaining_len_of_rc_file($self) internally, so if
+    /// file_to_slices() == None, it means the file is finished.
     pub fn file_to_slices(&mut self, slice: &mut [u8]) -> Option<usize> {
         let mut how_much_left = 0;
         //if the file exists
@@ -146,14 +153,18 @@ impl WSFileSplitter {
                 rfile.0.ptr_in_body += min_len;
             }
             //rfile.0.len_of_head - rfile.0.ptr_in_head + (file.1.len() -rfile.0.ptr_in_body )
-            how_much_left = self.remaining_len_of_send_file().expect("impossible state, if &mut self.send_file == Some() then self.remaining_len_of_rc_file() must also return Some(usize)");
+            how_much_left = self.remaining_len_of_send_file().expect(
+                "impossible state, if &mut self.send_file == Some() then \
+                 self.remaining_len_of_rc_file() must also return Some(usize)",
+            );
         } else {
             //If the file does not exist,
             // fill the entire slice with zeros so that there
             // is no garbage in it that could have been left by the user.
             slice.fill(0)
         }
-        //if there are no more bytes left in the file, then the file will be deleted from the structure
+        //if there are no more bytes left in the file, then the file will be deleted from the
+        // structure
         if 0 == how_much_left {
             self.send_file = None;
             return None;
@@ -181,11 +192,13 @@ impl WSFileSplitter {
         //
 
         let slice = if self.recv_data.is_none() {
-            //if it is a new file, we look for the first non-zero byte; if the file is open, we return the slice unchanged
+            //if it is a new file, we look for the first non-zero byte; if the file is open, we
+            // return the slice unchanged
             if let Some(index) = slice.iter().position(|&x| x > 0) {
                 if slice[index] > 8 {
                     return Err(
-                        "error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  ",
+                        "error, the first non-zero byte of the file is greater than 8, the length \
+                         of u64 must be greater than 0 and less than 9 bytes  ",
                     );
                 }
                 //trimming the slice so that it starts with useful data (head)
@@ -265,24 +278,30 @@ impl WSFileSplitter {
                 if recv_me.1.is_none() {
                     //calculation of payload length
                     let len_vec =
-                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect("impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.");
+                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect(
+                            "impossible state Slice lengths and boundaries are static, verified \
+                             at compile time, and do not change dynamically.",
+                        );
 
                     if len_vec > usize::MAX as u64 {
                         panic!(
-                            "len_vec > usize::MAX as u64  There is a slight discrepancy between the capacity of usize and u64. Your device is not suitable for this code :("
+                            "len_vec > usize::MAX as u64  There is a slight discrepancy between \
+                             the capacity of usize and u64. Your device is not suitable for this \
+                             code :("
                         );
                     }
 
                     if 0 == len_vec {
                         return Err(
-                            "An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted",
+                            "An error occurred, the file size == 0 which is impossible, it's \
+                             likely the file has been corrupted",
                         );
                     }
                     if let Some(m_len) = self.max_len_of_file
                         && len_vec as usize > m_len
                     {
                         return Err(
-                            "The size of the received file exceeds the maximum max_len_of_file.",
+                            "The size of the received file exceeds the maximum max_len_of_file."
                         );
                     }
 
@@ -303,7 +322,8 @@ impl WSFileSplitter {
                     //
                     if recv_me.0.ptr_in_body > file_recv.len() {
                         panic!(
-                            "impossible condition, according to the logic of the program, the pointer should not be longer than the length of the massva file"
+                            "impossible condition, according to the logic of the program, the \
+                             pointer should not be longer than the length of the massva file"
                         );
                     }
                     //if the file is full and completely filled
@@ -318,11 +338,19 @@ impl WSFileSplitter {
 
                 //The file's payload is added to the array that needs to be returned.
                 reta.push(
-                    self.recv_data.take()
-                        .expect("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")
-                    .1
-                    .expect("Panic is an impossible state because this code only executes when self.recv_data is Some() and it has Some() vector and it's only called when the file is completely received, at this point the file should be longer than 0")
-
+                    self.recv_data
+                        .take()
+                        .expect(
+                            "Panicking is an impossible state because this code is executed only \
+                             when self.recv_data is Some.",
+                        )
+                        .1
+                        .expect(
+                            "Panic is an impossible state because this code only executes when \
+                             self.recv_data is Some() and it has Some() vector and it's only \
+                             called when the file is completely received, at this point the file \
+                             should be longer than 0",
+                        ),
                 );
 
                 self.recv_data = None
@@ -336,7 +364,8 @@ impl WSFileSplitter {
             //the loop will not repeat indefinitely and will exit the loop 100% of the time.
             if old_slice_len == slice.len() {
                 panic!(
-                    "Error in algorithm development: in each iteration of the loop, the value of slice.len() should decrease!"
+                    "Error in algorithm development: in each iteration of the loop, the value of \
+                     slice.len() should decrease!"
                 );
             }
             old_slice_len = slice.len()
@@ -366,12 +395,21 @@ impl WSFileSplitter {
     ///
     ///the remaining length in bytes will be returned.
     pub fn remaining_len_of_send_file(&self) -> Option<usize> {
-        self.send_file.as_ref().map(|rfile| rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head).
-            expect("panic an impossible state The pointer len_of_head must always be less than or equal to ptr_in_head.").
-            checked_add( rfile.1.len().
-            checked_sub(rfile.0.ptr_in_body).
-            expect("panic an impossible state The pointer rfile.1.len() must always be less than or equal to rfile.0.ptr_in_body.")).
-            expect("usize type is overflow"))
+        self.send_file.as_ref().map(|rfile| {
+            rfile
+                .0
+                .len_of_head
+                .checked_sub(rfile.0.ptr_in_head)
+                .expect(
+                    "panic an impossible state The pointer len_of_head must always be less than \
+                     or equal to ptr_in_head.",
+                )
+                .checked_add(rfile.1.len().checked_sub(rfile.0.ptr_in_body).expect(
+                    "panic an impossible state The pointer rfile.1.len() must always be less than \
+                     or equal to rfile.0.ptr_in_body.",
+                ))
+                .expect("usize type is overflow")
+        })
     }
     ///Returns the remaining length of the file received by the structure.
     ///
@@ -413,14 +451,16 @@ mod tests_wudp {
         assert_eq!(
             tw_s.slices_to_file(&vec![9, 1, 1, 1, 1,]),
             Err(
-                "error, the first non-zero byte of the file is greater than 8, the length of u64 must be greater than 0 and less than 9 bytes  "
+                "error, the first non-zero byte of the file is greater than 8, the length of u64 \
+                 must be greater than 0 and less than 9 bytes  "
             )
         );
 
         assert_eq!(
             tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]),
             Err(
-                "An error occurred, the file size == 0 which is impossible, it's likely the file has been corrupted"
+                "An error occurred, the file size == 0 which is impossible, it's likely the file \
+                 has been corrupted"
             )
         );
     }
@@ -603,8 +643,9 @@ mod tests_wudp {
                 over_len += *chunk_size;
                 // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
                 // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
-                //checking that remaining_len_of_recv_file() returns the correct number of bytes remaining in the file
-                //it does not take into account the length of the head
+                //checking that remaining_len_of_recv_file() returns the correct number of bytes
+                // remaining in the file it does not take into account the length of
+                // the head
                 max_me = if max_me < tw_s.remaining_len_of_recv_file().unwrap_or(0) {
                     assert_eq!(
                         tw_s.remaining_len_of_recv_file().unwrap_or(0) + chunk_size,
