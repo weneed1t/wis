@@ -36,7 +36,7 @@ impl WSFileSplitter {
             return Err("max_len_of_recv must be greater than zero");
         }
 
-        Ok(Self {
+        Ok(WSFileSplitter {
             max_len_of_file,
             send_file: None,
             recv_data: None,
