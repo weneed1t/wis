@@ -385,21 +385,22 @@ impl WsConnectParam {
         //percent
 
         if let Some(x) = percent_fake_data_packets
-            && (!x.is_normal() || x > 1.0 || x <= 0.0) {
-                return Err("percent_fake_data_packets must be in the range from (0.0 to 1.0]");
-            }
+            && (!x.is_normal() || x > 1.0 || x <= 0.0)
+        {
+            return Err("percent_fake_data_packets must be in the range from (0.0 to 1.0]");
+        }
 
         if let Some(x) = percent_fake_fback_packets
-            && (!x.is_normal() || x > 1.0 || x <= 0.0) {
-                return Err("percent_fake_fback_packets must be in the range from (0.0 to 1.0]");
-            }
+            && (!x.is_normal() || x > 1.0 || x <= 0.0)
+        {
+            return Err("percent_fake_fback_packets must be in the range from (0.0 to 1.0]");
+        }
 
         if let Some(x) = percent_len_random_coefficient
-            && (!x.is_normal() || x > 1.0 || x <= 0.0) {
-                return Err(
-                    "percent_len_random_coefficient must be in the range from (0.0 to 1.0]",
-                );
-            }
+            && (!x.is_normal() || x > 1.0 || x <= 0.0)
+        {
+            return Err("percent_len_random_coefficient must be in the range from (0.0 to 1.0]");
+        }
 
         Ok(Self {
             pack_topology: pack_topology.clone(), //

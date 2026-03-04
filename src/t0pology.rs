@@ -1,5 +1,3 @@
-use std::usize;
-
 //using in other files
 
 pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
@@ -270,9 +268,10 @@ impl PackTopology {
         }
 
         if let (Some(re), Some(se)) = (id_of_receiver_slice, id_of_sender_slice)
-            && re.2 != se.2 {
-                return Err("id_of_receiver_slice and id_of_sender_slice must be the same length");
-            }
+            && re.2 != se.2
+        {
+            return Err("id_of_receiver_slice and id_of_sender_slice must be the same length");
+        }
 
         let content_start_pos = shift
             .checked_add(1)

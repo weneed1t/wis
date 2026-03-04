@@ -8,11 +8,10 @@ pub mod recv_queue {
     use crate::{t1fields, t1queue_tcpudp::U64_LEN_IN_BYTES};
 
     use std::fmt::Debug;
-    use std::usize;
+
     use std::{
         collections::HashMap,
         hash::{BuildHasher, Hasher},
-        u64,
     };
 
     #[cfg_attr(test, derive(Debug))]
@@ -40,12 +39,8 @@ pub mod recv_queue {
     impl PartialEq for WSQueueErr {
         fn eq(&self, other: &Self) -> bool {
             match (self, other) {
-                (Self::NonCritical(x), Self::NonCritical(y)) => {
-                    x == y
-                }
-                (Self::Critical(x), Self::Critical(y)) => {
-                    x == y
-                }
+                (Self::NonCritical(x), Self::NonCritical(y)) => x == y,
+                (Self::Critical(x), Self::Critical(y)) => x == y,
                 _ => false,
             }
         }
@@ -66,7 +61,7 @@ pub mod recv_queue {
     ///  To split it into packets, the WSTcpLike class is used.
     ///  A stream of 300 bytes is passed to it,
     ///  and the output is the packets that were sent: 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long).
-
+    ///
     ///Note that WSTcpLike is resistant to packets being split during transmission,
     /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long),
     /// will be partially accepted as a stream of 290 bytes,
@@ -182,9 +177,9 @@ pub mod recv_queue {
                                 self.crcfn.ok_or(WSQueueErr::Critical("crcfn is none"))?,
                             )
                             .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
-                            {
-                                return Err(WSQueueErr::Critical("package is damaged"));
-                            }
+                        {
+                            return Err(WSQueueErr::Critical("package is damaged"));
+                        }
 
                         //getting the length of the packet from the length field in the packet.
                         let len_of_curent_pack =
@@ -252,13 +247,13 @@ pub mod recv_queue {
 
     impl PartialEq for WSQueueState {
         fn eq(&self, other: &Self) -> bool {
-            match (self, other) {
-                (Self::ElemIdIsBig, Self::ElemIdIsBig) => true,
-                (Self::ElemIdIsSmall, Self::ElemIdIsSmall) => true,
-                (Self::ElemIsAlreadyIn, Self::ElemIsAlreadyIn) => true,
-                (Self::SuccessfulInsertion, Self::SuccessfulInsertion) => true,
-                _ => false,
-            }
+            matches!(
+                (self, other),
+                (Self::ElemIdIsBig, Self::ElemIdIsBig)
+                    | (Self::ElemIdIsSmall, Self::ElemIdIsSmall)
+                    | (Self::ElemIsAlreadyIn, Self::ElemIsAlreadyIn)
+                    | (Self::SuccessfulInsertion, Self::SuccessfulInsertion)
+            )
         }
     }
 
@@ -422,7 +417,6 @@ pub mod recv_queue {
 
             if let Some(lctr) = self.largest_ctr {
                 let ad = self.last_give_ctr.is_some() as u64 & 1;
-                
 
                 //println!(
                 //    "last {} large {} sub {}  inq {}  gap {}",
@@ -573,23 +567,30 @@ pub mod recv_queue {
 
             Ok(())
         }
+
+        ///take an element by its id value and delete it from the table
+        fn get_removed_elem(&mut self, id: u64) -> Option<ElemMy<T, P>> {
+            let removed_elem = self.data_map.remove(&id);
+
+            if removed_elem.is_none() {
+                None
+            } else {
+                self.elems_in_me = self
+                    .elems_in_me
+                    .checked_sub(1)
+                    .expect("impossible situation");
+                removed_elem
+            }
+        }
+
         ///Deleting an element.
         ///Each element has a pointer in the form of an id
         ///cl -> means the next element
         ///cb -> means the previous element
         pub fn remove(&mut self, id: u64) -> Option<(T, P)> {
             //take an element by its id value and delete it from the table
-            let removed_elem = self.data_map.remove(&id);
+            let removed_elem = self.get_removed_elem(id)?;
 
-            let removed_elem = if removed_elem.is_none() {
-                return None;
-            } else {
-                self.elems_in_me = self
-                    .elems_in_me
-                    .checked_sub(1)
-                    .expect("impossible situation");
-                removed_elem.unwrap()
-            };
             // example:
             // | id:10 ,cb:None,cl:2 |---> | id:2 ,cb:10,cl:7 |---> | id:7 ,cb:2,cl:15 |---> | id:15 ,cb:7,cl:None |--->
 
@@ -757,7 +758,6 @@ pub mod recv_queue {
         ///
         ///
         ///  What does blurred_boundaries == true affect? See pub fn copy_ctrs_pack_to_slice.
-
         pub fn new(
             len_ctr_slise: usize,
             max_len: usize,

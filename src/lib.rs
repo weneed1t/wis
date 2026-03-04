@@ -23,10 +23,13 @@ pub mod private_core {
 delete this in prod dapgp
 rustup component add clippy
 cargo clippy --fix
+cargo fix --allow-dirty
+cargo clippy --fix --allow-dirty --broken-code
 
 git add . &&
 git commit -S -m "dev" &&
 git push origin main
-
+cargo fix --allow-dirty
+cargo clippy --fix --all --allow-dirty
 git rm -r --cached t.txt
 */

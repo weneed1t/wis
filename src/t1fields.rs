@@ -9,19 +9,19 @@ use crate::{t0pology, wutils};
 /// if head_crc_slice is not defined in topology, returns error
 /// ensures crc field length does not exceed MAXIMAL_CRC_LEN (32 bytes), otherwise returns error
 /// before computing crc, the crc field in the header is zeroed to prevent self-inclusion in calculation
-/// uses a temporary buffer (twice MAXIMAL_CRC_LEN) to store:
+/// uses a temporary buffer (twice MAXIMAL_CRC_LEN) to store:<br>
 /// - current crc value (from packet) in first half
-/// - recalculated crc value in second half
-/// compares both to determine integrity
-/// warning: calling this function twice on corrupted data may yield false positive on second call
-/// because the first call may overwrite the crc field with correct value — always validate result on first invocation
-/// intended for use in unreliable channels where header integrity must be verified independently of payload
+/// - recalculated crc value in second half<br>
+/// compares both to determine integrity<br>
+/// warning: calling this function twice on corrupted data may yield false positive on second call<br>
+/// because the first call may overwrite the crc field with correct value — always validate result on first invocation<br>
+/// intended for use in unreliable channels where header integrity must be verified independently of payload<br>
 /// ---------------------------------------------------------------------------------
-/// #addition, to the previous fart, a new behavior has been added to set_get_head_crc,
-/// #repeated generation of crc only if create_new_crc_summ == true,
-/// #if create_new_crc_summ == false, the crc value does not change and
-/// #repeated checking with incorrect chc will give Ok(false).
-/// #this change was accepted during the discussion about dangerous behavior
+/// #addition, to the previous fart, a new behavior has been added to set_get_head_crc,<br>
+/// #repeated generation of crc only if create_new_crc_summ == true,<br>
+/// #if create_new_crc_summ == false, the crc value does not change and<br>
+/// #repeated checking with incorrect chc will give Ok(false).<br>
+/// #this change was accepted during the discussion about dangerous behavior<br>
 pub fn set_get_head_crc(
     create_new_crc_summ: bool,
     pack: &mut [u8],

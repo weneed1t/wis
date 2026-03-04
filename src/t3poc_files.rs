@@ -31,9 +31,10 @@ impl WSFileSplitter {
     ///  If the limitation is not needed, leave the value as None.
     pub fn new(max_len_of_file: Option<usize>) -> Result<Self, &'static str> {
         if let Some(x) = max_len_of_file
-            && x == 0 {
-                return Err("max_len_of_recv must be greater than zero");
-            }
+            && x == 0
+        {
+            return Err("max_len_of_recv must be greater than zero");
+        }
 
         Ok(Self {
             max_len_of_file,
@@ -49,9 +50,10 @@ impl WSFileSplitter {
             return Err("WSFileSplitter already has an unprocessed file ");
         }
         if let Some(x) = self.max_len_of_file
-            && rc_file.len() > x {
-                return Err("rc_file length greater than max_len_of_recv");
-            }
+            && rc_file.len() > x
+        {
+            return Err("rc_file length greater than max_len_of_recv");
+        }
         if rc_file.is_empty() {
             return Err("rc_file must be greater than zero");
         }
@@ -277,11 +279,12 @@ impl WSFileSplitter {
                         );
                     }
                     if let Some(m_len) = self.max_len_of_file
-                        && len_vec as usize > m_len {
-                            return Err(
-                                "The size of the received file exceeds the maximum max_len_of_file.",
-                            );
-                        }
+                        && len_vec as usize > m_len
+                    {
+                        return Err(
+                            "The size of the received file exceeds the maximum max_len_of_file.",
+                        );
+                    }
 
                     recv_me.1 = Some(vec![0; len_vec as usize]);
                 }
@@ -378,9 +381,11 @@ impl WSFileSplitter {
     /// then the remaining length will be returned.
     pub fn remaining_len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
-            hea.1.as_ref().map(|dataa| dataa.len().checked_sub(hea.0.ptr_in_body).expect(
+            hea.1.as_ref().map(|dataa| {
+                dataa.len().checked_sub(hea.0.ptr_in_body).expect(
                     "impossible condition, hea.0.ptr_in_bod must always be less than dataa.len()",
-                ))
+                )
+            })
         } else {
             None
         }

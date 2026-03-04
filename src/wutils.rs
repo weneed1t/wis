@@ -5,11 +5,13 @@ pub enum WNotification {
 
 impl PartialEq for WNotification {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::CriticalErrorKillConnect(_), Self::CriticalErrorKillConnect(_)) => true,
-            (Self::WarningNonCirtical(_), Self::WarningNonCirtical(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (
+                Self::CriticalErrorKillConnect(_),
+                Self::CriticalErrorKillConnect(_)
+            ) | (Self::WarningNonCirtical(_), Self::WarningNonCirtical(_))
+        )
     }
 }
 
@@ -71,7 +73,7 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
     for i in pos..end_pos {
         let byte_index: usize = i / 8; // Byte index
         let bit_offset: usize = 7 - (i % 8); // Bit offset (big-endian)
-                                             // extract the bit from the byte
+        // extract the bit from the byte
         let bit: u8 = (data[byte_index] >> bit_offset) & 1;
         // add the bit to the result
         result = (result << 1) | (bit as u32);
@@ -96,7 +98,7 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     for i in pos..end_pos {
         let byte_indx: usize = i / 8; // Byte index
         let bit_offst: usize = 7 - (i % 8); // Bit offset (big-endian)
-                                            // extract the current bit from the input bits
+        // extract the current bit from the input bits
         let bit: u32 = (bits_to_insert >> (end_pos - i - 1)) & 1;
         if bit == 1 {
             output[byte_indx] |= 1 << bit_offst; // set the bit
@@ -311,7 +313,7 @@ pub fn smpp_no_crypt_hash128(input: &[u64]) -> (u64, u64) {
         temp[ii & 0b11] = temp[ii & 0b11].rotate_left(59); //ror ( a )
         temp[(ii + 2) & 0b11] = temp[(ii + 2) & 0b11].wrapping_mul(k0); //mul ( c )
         temp[ii & 0b11] ^= temp[(ii + 2) & 0b11]; //xor (a^= c)
-                                                  //mix end
+        //mix end
         temp[ii & 0b11] = temp[ii & 0b11].wrapping_add(xx); // ( a+= x)
 
         temp[(ii + 1) & 0b11] = temp[(ii + 1) & 0b11].rotate_left(25);

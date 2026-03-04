@@ -91,9 +91,10 @@ pub fn recv_pack<
             pack,
             topology,
             crcfn.expect("topology: &PackTopology has a field but crcfn == None"),
-        )? {
-            return Err(wt1_types::WTypeErr::NoneFieldErr("crc summ does not match"));
-        };
+        )?
+    {
+        return Err(wt1_types::WTypeErr::NoneFieldErr("crc summ does not match"));
+    };
 
     let pack = if topology.len_slice().is_some() {
         let size_pack = t1fields::get_len(pack, topology)?;

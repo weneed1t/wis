@@ -9,10 +9,7 @@ pub enum WTypeErr {
 
 impl WTypeErr {
     pub fn is_len_small_err(&self) -> bool {
-        match self {
-            Self::LenSizeErr(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::LenSizeErr(_))
     }
 
     pub fn is_none_field(&self) -> bool {
@@ -23,16 +20,10 @@ impl WTypeErr {
     }
 
     pub fn is_pascage_damaget(&self) -> bool {
-        match self {
-            Self::PackageDamaged(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::PackageDamaged(_))
     }
     pub fn is_work_time_err(&self) -> bool {
-        match self {
-            Self::WorkTimeErr(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::WorkTimeErr(_))
     }
 
     pub fn err_to_str(&self) -> &'static str {
@@ -63,17 +54,11 @@ pub enum MyRole {
 }
 impl MyRole {
     pub fn is_initiator(&self) -> bool {
-        match self {
-            Self::Initiator => true,
-            _ => false,
-        }
+        matches!(self, Self::Initiator)
     }
 
     pub fn is_passive(&self) -> bool {
-        match self {
-            Self::Passive => true,
-            _ => false,
-        }
+        matches!(self, Self::Passive)
     }
 
     pub fn sate_to_bit(&self) -> u8 {
@@ -94,11 +79,10 @@ impl MyRole {
 
 impl PartialEq for MyRole {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Initiator, Self::Initiator) => true,
-            (Self::Passive, Self::Passive) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Self::Initiator, Self::Initiator) | (Self::Passive, Self::Passive)
+        )
     }
 }
 
@@ -109,17 +93,11 @@ pub enum PackType {
 }
 impl PackType {
     pub fn is_data(&self) -> bool {
-        match self {
-            Self::Data => true,
-            _ => false,
-        }
+        matches!(self, Self::Data)
     }
 
     pub fn is_fback(&self) -> bool {
-        match self {
-            Self::FBack => true,
-            _ => false,
-        }
+        matches!(self, Self::FBack)
     }
 
     pub fn sate_to_bit(&self) -> u8 {
@@ -140,11 +118,10 @@ impl PackType {
 
 impl PartialEq for PackType {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Data, Self::Data) => true,
-            (Self::FBack, Self::FBack) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Self::Data, Self::Data) | (Self::FBack, Self::FBack)
+        )
     }
 }
 
@@ -194,28 +171,21 @@ pub enum StatusDecrypt {
 
 impl StatusDecrypt {
     pub fn is_correctly(&self) -> bool {
-        match self {
-            Self::DecodedCorrectly => true,
-            _ => false,
-        }
+        matches!(self, Self::DecodedCorrectly)
     }
 
     pub fn is_damaged(&self) -> bool {
-        match self {
-            Self::PackageDamaged => true,
-            _ => false,
-        }
+        matches!(self, Self::PackageDamaged)
     }
 }
 
 impl PartialEq for StatusDecrypt {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::DecodedCorrectly, Self::DecodedCorrectly) => true,
-            (Self::PackageDamaged, Self::PackageDamaged) => true,
-
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Self::DecodedCorrectly, Self::DecodedCorrectly)
+                | (Self::PackageDamaged, Self::PackageDamaged)
+        )
     }
 }
 
