@@ -441,9 +441,9 @@ pub struct WsConnectParamBuilder {
 
 impl WsConnectParamBuilder {
     /// Creates a new builder with the mandatory `pack_topology` and all defaults applied.
-    pub fn new(pack_topology: PackTopology) -> Self {
+    pub fn new(pack_topology: &PackTopology) -> Self {
         Self {
-            pack_topology,
+            pack_topology: pack_topology.clone(),
             // Default values from the problem statement
             mtu: 1400,
             instant_feedback_on_packet_loss: false,
@@ -852,7 +852,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_instant_feedback_flag_true() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(true)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -886,7 +886,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_instant_feedback_flag_false() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -910,7 +910,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_none_when_topology_has_ttl() {
         let topo = get_topol(Some(1), 50, Some(1)); // topology has TTL
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -930,7 +930,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_none_when_topology_no_ttl() {
         let topo = get_topol(Some(1), 50, None); // topology has NO TTL
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -949,7 +949,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_some_when_topology_has_ttl_valid_values() {
         let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -970,7 +970,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_some_when_topology_no_ttl_error() {
         let topo = get_topol(Some(1), 50, None); // topology has NO TTL
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -995,7 +995,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_start_greater_than_max_error() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1018,7 +1018,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_start_equal_to_max_valid() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1036,7 +1036,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_max_zero_error() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1059,7 +1059,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_start_zero_error() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1081,7 +1081,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_start_exceeds_capacity_error() {
         let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1103,7 +1103,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_start_at_capacity_boundary_valid() {
         let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1123,7 +1123,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_cost_positive_valid() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1141,7 +1141,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_cost_zero_valid() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1159,7 +1159,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_cost_negative_valid() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1177,7 +1177,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
         // Test with 2-byte TTL field (capacity = 65535)
         let topo = get_topol(Some(1), 50, Some(2));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(false)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1194,7 +1194,7 @@ mod tests_ttl_max_start_cost_and_instant_feedback_on_packet_loss {
     fn test_ttl_instant_feedback_combination() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .instant_feedback_on_packet_loss(true)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
@@ -1222,7 +1222,7 @@ mod tests_percent {
     fn test_all_traffic_masking_none() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1245,7 +1245,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_valid() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1265,7 +1265,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_exactly_one() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1285,7 +1285,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_zero_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1308,7 +1308,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_negative_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1331,7 +1331,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_greater_than_one_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1354,7 +1354,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_nan_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1377,7 +1377,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_infinity_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1400,7 +1400,7 @@ mod tests_percent {
     fn test_percent_fake_fback_packets_valid() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1420,7 +1420,7 @@ mod tests_percent {
     fn test_percent_fake_fback_packets_zero_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1443,7 +1443,7 @@ mod tests_percent {
     fn test_percent_len_random_coefficient_valid() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1463,7 +1463,7 @@ mod tests_percent {
     fn test_percent_len_random_coefficient_zero_error() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1486,7 +1486,7 @@ mod tests_percent {
     fn test_all_traffic_masking_valid_values() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1511,7 +1511,7 @@ mod tests_percent {
     fn test_percent_fake_data_packets_small_positive_value() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1531,7 +1531,7 @@ mod tests_percent {
     fn test_percent_len_random_coefficient_one() {
         let topo = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1551,7 +1551,7 @@ mod tests_percent {
     fn test_combination_ttl_and_traffic_masking() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+        let result = WsConnectParamBuilder::new(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1576,7 +1576,7 @@ mod tests_packet_queue_management_group {
 
     // compact builder for queue tests – only queue-related fields are varied.
     // all other fields set to minimal valid values.
-    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
         WsConnectParamBuilder::new(topo)
             .mtu(1500)
             .max_ms_latency(100.0)
@@ -1597,7 +1597,7 @@ mod tests_packet_queue_management_group {
     #[test]
     fn queue_accepts_minimal_positive_values() {
         let topo = get_topol(Some(1), 50, None);
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .maximum_length_udp_queue_packages(1)
             .maximum_length_fback_queue_packages(1)
             .maximum_length_queue_unconfirmed_packages(1)
@@ -1614,7 +1614,7 @@ mod tests_packet_queue_management_group {
     fn queue_accepts_values_within_capacity() {
         let topo = get_topol(Some(1), 50, None); // capacity = 126
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(100)
                 .maximum_length_fback_queue_packages(30)
                 .maximum_length_queue_unconfirmed_packages(60)
@@ -1628,7 +1628,7 @@ mod tests_packet_queue_management_group {
     fn queue_accepts_values_at_capacity_boundary() {
         let topo = get_topol(Some(1), 50, None); // capacity = 126
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(126)
                 .maximum_length_fback_queue_packages(126)
                 .maximum_length_queue_unconfirmed_packages(126)
@@ -1643,7 +1643,7 @@ mod tests_packet_queue_management_group {
         let topo = get_topol(Some(1), 50, None); // capacity = 126
 
         // udp queue > capacity
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(127)
             .maximum_length_fback_queue_packages(30)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1657,7 +1657,7 @@ mod tests_packet_queue_management_group {
         );
 
         // fback queue > capacity
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(127)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1671,7 +1671,7 @@ mod tests_packet_queue_management_group {
         );
 
         // max attempts > capacity
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(30)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1690,7 +1690,7 @@ mod tests_packet_queue_management_group {
     fn queue_rejects_zero_values() {
         let topo = get_topol(Some(1), 50, None);
 
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(0)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(150)
@@ -1699,7 +1699,7 @@ mod tests_packet_queue_management_group {
             .unwrap_err();
         assert_eq!(err, "all usize variables must be greater than zero");
 
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(0)
             .maximum_length_queue_unconfirmed_packages(150)
@@ -1708,7 +1708,7 @@ mod tests_packet_queue_management_group {
             .unwrap_err();
         assert_eq!(err, "all usize variables must be greater than zero");
 
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(0)
@@ -1717,7 +1717,7 @@ mod tests_packet_queue_management_group {
             .unwrap_err();
         assert_eq!(err, "all usize variables must be greater than zero");
 
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(150)
@@ -1734,7 +1734,7 @@ mod tests_packet_queue_management_group {
     fn udp_must_be_at_least_unconfirmed() {
         let topo = get_topol(Some(2), 50, None);
 
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(50)
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(100) // udp < unconfirmed
@@ -1750,7 +1750,7 @@ mod tests_packet_queue_management_group {
 
         // udp == unconfirmed is allowed
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(100)
                 .maximum_length_fback_queue_packages(50)
                 .maximum_length_queue_unconfirmed_packages(100)
@@ -1764,7 +1764,7 @@ mod tests_packet_queue_management_group {
     fn fback_must_not_exceed_unconfirmed() {
         let topo = get_topol(Some(2), 50, None);
 
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(150) // fback > unconfirmed
             .maximum_length_queue_unconfirmed_packages(100)
@@ -1780,7 +1780,7 @@ mod tests_packet_queue_management_group {
 
         // fback == unconfirmed is allowed
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(200)
                 .maximum_length_fback_queue_packages(100)
                 .maximum_length_queue_unconfirmed_packages(100)
@@ -1796,7 +1796,7 @@ mod tests_packet_queue_management_group {
     #[test]
     fn counter_slice_required() {
         let topo = get_topol(None, 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(50)
             .maximum_length_queue_unconfirmed_packages(60)
@@ -1816,7 +1816,7 @@ mod tests_packet_queue_management_group {
     fn works_with_larger_counter_capacity() {
         let topo = get_topol(Some(2), 50, None); // capacity = 32767
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(20000)
                 .maximum_length_fback_queue_packages(5000)
                 .maximum_length_queue_unconfirmed_packages(15000)
@@ -1833,7 +1833,7 @@ mod tests_packet_queue_management_group {
     fn queue_works_with_ttl() {
         let topo = get_topol(Some(1), 50, Some(1));
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(100)
                 .maximum_length_fback_queue_packages(30)
                 .maximum_length_queue_unconfirmed_packages(60)
@@ -1851,7 +1851,7 @@ mod tests_packet_queue_management_group {
     fn recommended_ratio_not_enforced() {
         let topo = get_topol(Some(2), 50, None);
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .maximum_length_udp_queue_packages(200)
                 .maximum_length_fback_queue_packages(50)
                 .maximum_length_queue_unconfirmed_packages(100) // 2x fback (not 3x)
@@ -1868,7 +1868,7 @@ mod tests_delay {
 
     // compact builder for delay tests – only fback-related fields are varied.
     // all other fields set to minimal valid values.
-    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
         WsConnectParamBuilder::new(topo)
             .mtu(1500)
             .max_ms_latency(100.0)
@@ -1892,7 +1892,7 @@ mod tests_delay {
         let topo = get_topol(Some(1), 50, None);
 
         // mid-range
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1901,7 +1901,7 @@ mod tests_delay {
         assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.5);
 
         // minimum positive
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.0001)
             .maximum_packet_delay_absolute_fback(0.0001)
@@ -1910,7 +1910,7 @@ mod tests_delay {
         assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.0001);
 
         // maximum = 1.0
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(1.0)
             .maximum_packet_delay_absolute_fback(100.0)
@@ -1922,7 +1922,7 @@ mod tests_delay {
     #[test]
     fn fback_coefficient_rejects_zero() {
         let topo = get_topol(Some(1), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.0)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1934,7 +1934,7 @@ mod tests_delay {
     #[test]
     fn fback_coefficient_rejects_negative() {
         let topo = get_topol(Some(1), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(-0.5)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1946,7 +1946,7 @@ mod tests_delay {
     #[test]
     fn fback_coefficient_rejects_above_one() {
         let topo = get_topol(Some(1), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(1.1)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1959,7 +1959,7 @@ mod tests_delay {
     fn fback_coefficient_rejects_nan_and_inf() {
         let topo = get_topol(Some(1), 50, None);
 
-        let err_nan = base_builder(topo.clone())
+        let err_nan = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(f64::NAN)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1967,7 +1967,7 @@ mod tests_delay {
             .unwrap_err();
         assert_eq!(err_nan, "all f64 variables must be is_normal()");
 
-        let err_inf = base_builder(topo)
+        let err_inf = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(f64::INFINITY)
             .maximum_packet_delay_absolute_fback(50.0)
@@ -1983,7 +1983,7 @@ mod tests_delay {
     fn absolute_fback_accepts_zero() {
         let topo = get_topol(Some(1), 50, None);
         // zero is allowed? test says it should be valid
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
             .maximum_packet_delay_absolute_fback(0.1)
@@ -1997,7 +1997,7 @@ mod tests_delay {
         let topo = get_topol(Some(1), 50, None);
 
         // exactly max_latency
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
@@ -2010,7 +2010,7 @@ mod tests_delay {
     #[test]
     fn absolute_fback_rejects_exceeding_max_latency() {
         let topo = get_topol(Some(1), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
@@ -2028,7 +2028,7 @@ mod tests_delay {
     #[test]
     fn absolute_fback_rejects_negative() {
         let topo = get_topol(Some(1), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
@@ -2042,7 +2042,7 @@ mod tests_delay {
     fn absolute_fback_rejects_nan_and_inf() {
         let topo = get_topol(Some(1), 50, None);
 
-        let err_nan = base_builder(topo.clone())
+        let err_nan = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
@@ -2051,7 +2051,7 @@ mod tests_delay {
             .unwrap_err();
         assert_eq!(err_nan, "all f64 variables must be is_normal()");
 
-        let err_inf = base_builder(topo)
+        let err_inf = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.5)
@@ -2067,7 +2067,7 @@ mod tests_delay {
     #[test]
     fn both_fback_parameters_at_maximum() {
         let topo = get_topol(Some(1), 50, None);
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .max_ms_latency(100.0)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(1.0)
@@ -2083,7 +2083,7 @@ mod tests_delay {
         let topo = get_topol(Some(1), 50, None);
         let small_max = 110.0;
 
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .max_ms_latency(small_max)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
@@ -2101,7 +2101,7 @@ mod tests_adaptation_coefficients {
 
     // compact builder for coefficient testing – only latency_increase and overhead are
     // relevant. all other fields set to minimal valid values.
-    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
         WsConnectParamBuilder::new(topo)
             .mtu(1500)
             .max_ms_latency(100.0)
@@ -2125,7 +2125,7 @@ mod tests_adaptation_coefficients {
         let topo = get_topol(Some(2), 50, None);
 
         // min positive
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(f64::MIN_POSITIVE)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2133,7 +2133,7 @@ mod tests_adaptation_coefficients {
         assert_eq!(p.latency_increase_coefficient(), f64::MIN_POSITIVE);
 
         // max = 1.0
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(1.0)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2144,7 +2144,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn latency_increase_rejects_zero() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(0.0)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2155,7 +2155,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn latency_increase_rejects_negative() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(-0.1)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2166,7 +2166,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn latency_increase_rejects_above_one() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(1.1)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2182,14 +2182,14 @@ mod tests_adaptation_coefficients {
     fn latency_increase_rejects_nan_and_inf() {
         let topo = get_topol(Some(2), 50, None);
 
-        let err_nan = base_builder(topo.clone())
+        let err_nan = base_builder(&topo)
             .latency_increase_coefficient(f64::NAN)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
             .unwrap_err();
         assert_eq!(err_nan, "all f64 variables must be is_normal()");
 
-        let err_inf = base_builder(topo)
+        let err_inf = base_builder(&topo)
             .latency_increase_coefficient(f64::INFINITY)
             .maximum_packet_delay_fback_coefficient(0.8)
             .build()
@@ -2205,7 +2205,7 @@ mod tests_adaptation_coefficients {
         let topo = get_topol(Some(2), 50, None);
 
         // very small positive
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .overhead_network_latency_relative_window_coefficient(0.00001)
@@ -2217,7 +2217,7 @@ mod tests_adaptation_coefficients {
         );
 
         // max = 1.0
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .overhead_network_latency_relative_window_coefficient(1.0)
@@ -2232,7 +2232,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn overhead_coefficient_rejects_negative() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .overhead_network_latency_relative_window_coefficient(-0.1)
@@ -2244,7 +2244,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn overhead_coefficient_rejects_above_one() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .overhead_network_latency_relative_window_coefficient(1.1)
@@ -2264,7 +2264,7 @@ mod tests_adaptation_coefficients {
     fn measurement_window_accepts_positive() {
         let topo = get_topol(Some(2), 50, None);
 
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .packages_measurement_window_size_determining_latency(1)
@@ -2272,7 +2272,7 @@ mod tests_adaptation_coefficients {
             .unwrap();
         assert_eq!(p.packages_measurement_window_size_determining_latency(), 1);
 
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .packages_measurement_window_size_determining_latency(1000)
@@ -2287,7 +2287,7 @@ mod tests_adaptation_coefficients {
     #[test]
     fn measurement_window_rejects_zero() {
         let topo = get_topol(Some(2), 50, None);
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .latency_increase_coefficient(0.5)
             .maximum_packet_delay_fback_coefficient(0.8)
             .packages_measurement_window_size_determining_latency(0)
@@ -2303,7 +2303,7 @@ mod tests_adaptation_coefficients {
     fn multiple_coefficients_work_together() {
         let topo = get_topol(Some(2), 50, None);
 
-        let p = base_builder(topo.clone())
+        let p = base_builder(&topo)
             .latency_increase_coefficient(0.3)
             .overhead_network_latency_relative_window_coefficient(0.7)
             .maximum_packet_delay_fback_coefficient(0.8)
@@ -2316,7 +2316,7 @@ mod tests_adaptation_coefficients {
         );
         assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.8);
 
-        let p = base_builder(topo)
+        let p = base_builder(&topo)
             .latency_increase_coefficient(1.0)
             .overhead_network_latency_relative_window_coefficient(0.0000001)
             .maximum_packet_delay_fback_coefficient(0.8)
@@ -2336,7 +2336,7 @@ mod tests_from_group {
 
     // compact builder with only mtu-related parameters.
     // all other fields are set to minimal valid values needed to satisfy the constructor.
-    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
         WsConnectParamBuilder::new(topo)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
@@ -2360,14 +2360,14 @@ mod tests_from_group {
     #[test]
     fn mtu_greater_than_minimal_succeeds() {
         let topo = get_topol(Some(1), 50, None);
-        let param = base_builder(topo).mtu(1500).build().unwrap();
+        let param = base_builder(&topo).mtu(1500).build().unwrap();
         assert_eq!(param.mtu(), 1500);
     }
 
     #[test]
     fn mtu_equal_to_minimal_fails() {
         let topo = get_topol(Some(1), 100, None);
-        let err = base_builder(topo).mtu(100).build().unwrap_err();
+        let err = base_builder(&topo).mtu(100).build().unwrap_err();
         assert_eq!(
             err,
             "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
@@ -2381,7 +2381,7 @@ mod tests_from_group {
     #[test]
     fn mtu_less_than_minimal_fails() {
         let topo = get_topol(Some(1), 500, None);
-        let err = base_builder(topo).mtu(300).build().unwrap_err();
+        let err = base_builder(&topo).mtu(300).build().unwrap_err();
         assert_eq!(
             err,
             "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
@@ -2395,14 +2395,14 @@ mod tests_from_group {
     #[test]
     fn mtu_boundary_works() {
         let topo = get_topol(Some(1), 100, None);
-        let param = base_builder(topo).mtu(101).build().unwrap();
+        let param = base_builder(&topo).mtu(101).build().unwrap();
         assert_eq!(param.mtu(), 101);
     }
 
     #[test]
     fn mtu_large_value_accepted() {
         let topo = get_topol(Some(1), 50, None);
-        let param = base_builder(topo).mtu(65535).build().unwrap();
+        let param = base_builder(&topo).mtu(65535).build().unwrap();
         assert_eq!(param.mtu(), 65535);
     }
 
@@ -2411,7 +2411,7 @@ mod tests_from_group {
         let cases = [(10, 100), (100, 1500), (500, 2000)];
         for (min_len, mtu) in cases {
             let topo = get_topol(Some(1), min_len, None);
-            let param = base_builder(topo).mtu(mtu).build().unwrap();
+            let param = base_builder(&topo).mtu(mtu).build().unwrap();
             assert_eq!(param.mtu(), mtu);
             assert_eq!(param.pack_topology().total_minimal_len(), min_len);
         }
@@ -2420,7 +2420,7 @@ mod tests_from_group {
     #[test]
     fn mtu_with_minimal_len_one() {
         let topo = get_topol(Some(1), 1, None);
-        let param = base_builder(topo).mtu(2).build().unwrap();
+        let param = base_builder(&topo).mtu(2).build().unwrap();
         assert_eq!(param.mtu(), 2);
     }
 
@@ -2430,7 +2430,7 @@ mod tests_from_group {
     #[test]
     fn counter_slice_absent_fails() {
         let topo = get_topol(None, 50, None);
-        let err = base_builder(topo).mtu(1500).build().unwrap_err();
+        let err = base_builder(&topo).mtu(1500).build().unwrap_err();
         assert_eq!(
             err,
             "The counter_slice() field in pack_topology is None, but it must be specified!"
@@ -2440,7 +2440,7 @@ mod tests_from_group {
     #[test]
     fn counter_slice_present_succeeds() {
         let topo = get_topol(Some(1), 50, None);
-        assert!(base_builder(topo).mtu(1500).build().is_ok());
+        assert!(base_builder(&topo).mtu(1500).build().is_ok());
     }
 }
 
@@ -2453,7 +2453,7 @@ mod tests_mt1 {
     // object.
 
     // base valid configuration (used as foundation for all tests)
-    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
         WsConnectParamBuilder::new(topo)
             .mtu(1500)
             .max_ms_latency(100.0)
@@ -2481,10 +2481,10 @@ mod tests_mt1 {
         let topo_without_ttl = get_topol(Some(1), 50, None);
 
         // ttl not set → always valid, regardless of topology
-        assert!(base_builder(topo_with_ttl.clone()).build().is_ok());
-        assert!(base_builder(topo_without_ttl).build().is_ok());
+        assert!(base_builder(&topo_with_ttl).build().is_ok());
+        assert!(base_builder(&topo_without_ttl).build().is_ok());
         assert_eq!(
-            base_builder(topo_with_ttl)
+            base_builder(&topo_with_ttl)
                 .build()
                 .unwrap()
                 .ttl_max_start_cost(),
@@ -2499,13 +2499,13 @@ mod tests_mt1 {
 
         // ttl specified → must have ttl in topology
         assert!(
-            base_builder(topo_with_ttl.clone())
+            base_builder(&topo_with_ttl)
                 .ttl_max_start_cost((255, 128, -1))
                 .build()
                 .is_ok()
         );
 
-        let err = base_builder(topo_without_ttl)
+        let err = base_builder(&topo_without_ttl)
             .ttl_max_start_cost((255, 128, -1))
             .build()
             .unwrap_err();
@@ -2521,7 +2521,7 @@ mod tests_mt1 {
         let topo = get_topol(Some(1), 50, Some(1));
 
         // start > max → error
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .ttl_max_start_cost((100, 200, -1))
             .build()
             .unwrap_err();
@@ -2534,7 +2534,7 @@ mod tests_mt1 {
 
         // start == max → allowed (code uses <, not <=)
         assert!(
-            base_builder(topo.clone())
+            base_builder(&topo)
                 .ttl_max_start_cost((255, 255, -1))
                 .build()
                 .is_ok()
@@ -2546,7 +2546,7 @@ mod tests_mt1 {
         let topo = get_topol(Some(1), 50, Some(1));
 
         // max = 0 → error
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .ttl_max_start_cost((0, 0, -1))
             .build()
             .unwrap_err();
@@ -2557,7 +2557,7 @@ mod tests_mt1 {
         );
 
         // start = 0 → error
-        let err = base_builder(topo.clone())
+        let err = base_builder(&topo)
             .ttl_max_start_cost((254, 0, -1))
             .build()
             .unwrap_err();
@@ -2572,7 +2572,7 @@ mod tests_mt1 {
     fn ttl_start_exceeds_capacity() {
         let topo = get_topol(Some(1), 50, Some(1)); // 1‑byte ttl → max 255
 
-        let err = base_builder(topo)
+        let err = base_builder(&topo)
             .ttl_max_start_cost((300, 256, -1))
             .build()
             .unwrap_err();
@@ -2589,19 +2589,19 @@ mod tests_mt1 {
 
         // positive, zero, negative – all allowed
         assert!(
-            base_builder(topo.clone())
+            base_builder(&topo)
                 .ttl_max_start_cost((255, 128, 1))
                 .build()
                 .is_ok()
         );
         assert!(
-            base_builder(topo.clone())
+            base_builder(&topo)
                 .ttl_max_start_cost((255, 128, 0))
                 .build()
                 .is_ok()
         );
         assert!(
-            base_builder(topo.clone())
+            base_builder(&topo)
                 .ttl_max_start_cost((255, 128, -1))
                 .build()
                 .is_ok()
@@ -2613,7 +2613,7 @@ mod tests_mt1 {
         // 2‑byte ttl field → capacity up to 65535
         let topo = get_topol(Some(1), 50, Some(2));
         assert!(
-            base_builder(topo)
+            base_builder(&topo)
                 .ttl_max_start_cost((65535, 32768, -1))
                 .build()
                 .is_ok()
@@ -2627,13 +2627,13 @@ mod tests_mt1 {
     fn instant_feedback_accepts_both_values() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let true_val = base_builder(topo.clone())
+        let true_val = base_builder(&topo)
             .instant_feedback_on_packet_loss(true)
             .build()
             .unwrap();
         assert!(true_val.instant_feedback_on_packet_loss());
 
-        let false_val = base_builder(topo)
+        let false_val = base_builder(&topo)
             .instant_feedback_on_packet_loss(false)
             .build()
             .unwrap();
@@ -2647,13 +2647,13 @@ mod tests_mt1 {
     fn max_len_file_accepts_none_and_some() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let none_val = base_builder(topo.clone())
-            .max_len_file(None)
-            .build()
-            .unwrap();
+        let none_val = base_builder(&topo).max_len_file(None).build().unwrap();
         assert_eq!(none_val.max_len_file(), None);
 
-        let some_val = base_builder(topo).max_len_file_value(1000).build().unwrap();
+        let some_val = base_builder(&topo)
+            .max_len_file_value(1000)
+            .build()
+            .unwrap();
         assert_eq!(some_val.max_len_file(), Some(1000));
     }
 
@@ -2664,34 +2664,100 @@ mod tests_mt1 {
     fn ttl_and_instant_feedback_can_be_combined() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let param = base_builder(topo)
+        let param = base_builder(&topo)
             .instant_feedback_on_packet_loss(true)
             .ttl_max_start_cost((255, 128, -1))
             .max_len_file_value(2048)
-            .intermediate_questionable_packages_queue(Some(121420))
+            .intermediate_questionable_packages_queue(Some(120))
             .build()
             .unwrap();
 
         assert!(param.instant_feedback_on_packet_loss());
         assert_eq!(param.ttl_max_start_cost(), Some((255, 128, -1)));
         assert_eq!(param.max_len_file(), Some(2048));
-        assert_eq!(
-            param.intermediate_questionable_packages_queue(),
-            Some(121420)
-        );
+        assert_eq!(param.intermediate_questionable_packages_queue(), Some(120));
     }
 
     #[test]
     fn intermediate_questionable_packages_queue() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let param = base_builder(topo)
+        let param_normal = base_builder(&topo)
             .instant_feedback_on_packet_loss(true)
             .ttl_max_start_cost((255, 128, -1))
-            .max_len_file_value(2048)
+            .max_len_file_value(2048);
+
+        let param = param_normal
+            .clone()
             .intermediate_questionable_packages_queue(Some(0))
             .build();
 
-        assert_eq!(param.err().unwrap(), "");
+        assert_eq!(
+            param.err().unwrap(),
+            "intermediate_questionable_packages_queue is Some(0), but Some(the value must be \
+             greater than zero) "
+        );
+
+        let param = param_normal
+            .clone()
+            .intermediate_questionable_packages_queue(Some(111110))
+            .build();
+
+        assert_eq!(
+            param.err().unwrap(),
+            "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The maximum \
+             value that the counter field in the packet topology can hold must be GREATER than \
+             intermediate_questionable_packages_queue."
+        );
+
+        let param = param_normal
+            .clone()
+            .maximum_length_udp_queue_packages(10011000)
+            .build();
+        assert_eq!(
+            param.err().unwrap(),
+            " maximum_length_udp_queue_packages must be less than the maximum capacity of the \
+             pack_topology.counter_slice() field. "
+        );
+        let param = param_normal
+            .clone()
+            .maximum_length_queue_unconfirmed_packages(10110000)
+            .build();
+        assert_eq!(
+            param.err().unwrap(),
+            " maximum_length_udp_queue_packages must be greater than \
+             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
+             more information, see the description of this variable at the beginning of the file."
+        );
+        let param = param_normal
+            .clone()
+            .maximum_length_fback_queue_packages(10110000)
+            .build();
+        assert_eq!(
+            param.err().unwrap(),
+            "maximum_length_fback_queue_packages must not exceed the maximum capacity of the \
+             pack_topology.counter_slice() counter. "
+        );
+        let param = param_normal
+            .clone()
+            .max_num_attempts_resend_package(10110000)
+            .build();
+        assert_eq!(
+            param.err().unwrap(),
+            "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
+             max_num_attempts_resend_package must be less than the maximum possible capacity in \
+             pack_topology.counter_slice()."
+        );
+        let param = param_normal
+            .clone()
+            .intermediate_questionable_packages_queue(Some(10110000))
+            .build();
+
+        assert_eq!(
+            param.err().unwrap(),
+            "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The maximum \
+             value that the counter field in the packet topology can hold must be GREATER than \
+             intermediate_questionable_packages_queue."
+        );
     }
 }
