@@ -403,16 +403,16 @@ impl WsConnectParamBuilder {
         Self {
             pack_topology,
             // Default values from the problem statement
-            mtu: 1500,
+            mtu: 1400,
             instant_feedback_on_packet_loss: false,
             packages_measurement_window_size_determining_latency: 10,
-            max_ms_latency: 100.0,
-            min_ms_latency: 10.0,
+            max_ms_latency: 500.0,
+            min_ms_latency: 2.0,
             start_ms_latency: 50.0,
-            latency_increase_coefficient: 0.5,
+            latency_increase_coefficient: 0.2,
             overhead_network_latency_relative_window_coefficient: 0.2,
-            maximum_packet_delay_fback_coefficient: 0.8,
-            maximum_packet_delay_absolute_fback: 80.0,
+            maximum_packet_delay_fback_coefficient: 0.5,
+            maximum_packet_delay_absolute_fback: 20.0,
             // Fields without defaults start as None
             maximum_length_udp_queue_packages: None,
             maximum_length_fback_queue_packages: None,

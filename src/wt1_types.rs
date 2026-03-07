@@ -1,10 +1,37 @@
 use crate::t0pology::PackTopology;
 #[derive(Debug, Clone)]
+
+pub enum PackErr {
+    IdConnErr(&'static str),
+    IdSendRecvErr(&'static str),
+    CrcErr(&'static str),
+    TagErr(&'static str),
+    LenErr(&'static str),
+    UndefinedErr(&'static str),
+    TTLErr(&'static str),
+}
+
+#[derive(Debug, Clone)]
 pub enum WTypeErr {
     LenSizeErr(&'static str),
     NoneFieldErr(&'static str),
     PackageDamaged(&'static str),
     WorkTimeErr(&'static str),
+}
+
+impl PartialEq for PackErr {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Self::IdConnErr(_), Self::IdConnErr(_))
+                | (Self::IdSendRecvErr(_), Self::IdSendRecvErr(_))
+                | (Self::CrcErr(_), Self::CrcErr(_))
+                | (Self::TagErr(_), Self::TagErr(_))
+                | (Self::LenErr(_), Self::LenErr(_))
+                | (Self::UndefinedErr(_), Self::UndefinedErr(_))
+                | (Self::TTLErr(_), Self::TTLErr(_))
+        )
+    }
 }
 
 impl WTypeErr {
@@ -221,6 +248,16 @@ pub trait Noncer: Sized {
     fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
 }
 
+pub trait Cfcser: Sized {
+    fn new(_key: &[u8]) -> Result<Self, &'static str>;
+    fn gen_crc(&mut self, cfc_field: &mut [u8], payload: &[u8]) -> Result<(), &'static str>;
+}
+
+pub trait Randomer: Sized {
+    fn new(_key: &[u8]) -> Result<Self, &'static str>;
+    fn gen_rand_u64(&mut self) -> u64;
+}
+
 pub struct DumpNonser {}
 
 impl Noncer for DumpNonser {
@@ -240,11 +277,6 @@ impl Noncer for DumpNonser {
         );
         //Ok(())
     }
-}
-
-pub trait Cfcser: Sized {
-    fn new(_key: &[u8]) -> Result<Self, &'static str>;
-    fn gen_crc(&mut self, cfc_field: &mut [u8], payload: &[u8]) -> Result<(), &'static str>;
 }
 
 pub struct DumpCfcser {}
@@ -609,5 +641,84 @@ mod tests_statusdecrypt {
                 StatusDecrypt::PackageDamaged => assert!(v.is_damaged()),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests_pack_err {
+    use super::*;
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ packerr partialeq – equality depends only on variant, not on string       │
+    // └────────────────────────────────────────────────────────────────────────────┘
+
+    #[test]
+    fn same_variant_with_different_strings_are_equal() {
+        // any two strings inside the same variant compare as equal
+        assert_eq!(PackErr::IdConnErr("a"), PackErr::IdConnErr("b"));
+        assert_eq!(PackErr::IdSendRecvErr("x"), PackErr::IdSendRecvErr("y"));
+        assert_eq!(PackErr::CrcErr("foo"), PackErr::CrcErr("bar"));
+        assert_eq!(PackErr::TagErr("1"), PackErr::TagErr("2"));
+        assert_eq!(PackErr::LenErr("short"), PackErr::LenErr("long"));
+        assert_eq!(PackErr::UndefinedErr("?"), PackErr::UndefinedErr("!"));
+        assert_eq!(PackErr::TTLErr("127"), PackErr::TTLErr("255"));
+    }
+
+    #[test]
+    fn same_variant_with_identical_strings_are_equal() {
+        // sanity check – identical strings are obviously equal
+        assert_eq!(PackErr::IdConnErr("same"), PackErr::IdConnErr("same"));
+    }
+
+    #[test]
+    fn different_variants_are_not_equal() {
+        // every pair of different variants must compare as not equal
+        let all_variants = [
+            PackErr::IdConnErr(""),
+            PackErr::IdSendRecvErr(""),
+            PackErr::CrcErr(""),
+            PackErr::TagErr(""),
+            PackErr::LenErr(""),
+            PackErr::UndefinedErr(""),
+            PackErr::TTLErr(""),
+        ];
+
+        for (i, a) in all_variants.iter().enumerate() {
+            for (j, b) in all_variants.iter().enumerate() {
+                if i == j {
+                    assert_eq!(a, b, "same variant {:?} should equal itself", a);
+                } else {
+                    assert_ne!(
+                        a, b,
+                        "different variants {:?} and {:?} must not be equal",
+                        a, b
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn equality_is_symmetric() {
+        let a = PackErr::CrcErr("left");
+        let b = PackErr::CrcErr("right");
+        assert_eq!(a, b);
+        assert_eq!(b, a); // symmetry property
+    }
+
+    #[test]
+    fn equality_is_transitive() {
+        let a = PackErr::TagErr("first");
+        let b = PackErr::TagErr("second");
+        let c = PackErr::TagErr("third");
+        assert_eq!(a, b);
+        assert_eq!(b, c);
+        assert_eq!(a, c); // transitivity holds because all are same variant
+    }
+
+    #[test]
+    fn equality_with_self_always_true() {
+        let err = PackErr::LenErr("self");
+        assert_eq!(err, err); // reflexivity
     }
 }

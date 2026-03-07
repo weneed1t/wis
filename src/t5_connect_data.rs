@@ -103,4 +103,11 @@ impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_
             measurement_window_latency: connect_param.start_ms_latency(),
         })
     }
+
+    pub fn paste_file() {}
+
+    pub fn send_pack() {}
+    pub fn recv_pack() {}
+
+    pub fn send_fake_pack() {}
 }
