@@ -2668,11 +2668,30 @@ mod tests_mt1 {
             .instant_feedback_on_packet_loss(true)
             .ttl_max_start_cost((255, 128, -1))
             .max_len_file_value(2048)
+            .intermediate_questionable_packages_queue(Some(121420))
             .build()
             .unwrap();
 
         assert!(param.instant_feedback_on_packet_loss());
         assert_eq!(param.ttl_max_start_cost(), Some((255, 128, -1)));
         assert_eq!(param.max_len_file(), Some(2048));
+        assert_eq!(
+            param.intermediate_questionable_packages_queue(),
+            Some(121420)
+        );
+    }
+
+    #[test]
+    fn intermediate_questionable_packages_queue() {
+        let topo = get_topol(Some(1), 50, Some(1));
+
+        let param = base_builder(topo)
+            .instant_feedback_on_packet_loss(true)
+            .ttl_max_start_cost((255, 128, -1))
+            .max_len_file_value(2048)
+            .intermediate_questionable_packages_queue(Some(0))
+            .build();
+
+        assert_eq!(param.err().unwrap(), "");
     }
 }
