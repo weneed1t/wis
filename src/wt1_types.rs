@@ -248,6 +248,12 @@ pub trait Noncer: Sized {
     fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
 }
 
+pub trait Thrasher: Sized {
+    fn new(key: &[u8]) -> Result<Self, &'static str>;
+
+    fn set_user_field(&mut self, user_field: &mut [u8]) -> Result<(), &'static str>;
+}
+
 pub trait Cfcser: Sized {
     fn new(_key: &[u8]) -> Result<Self, &'static str>;
     fn gen_crc(&mut self, cfc_field: &mut [u8], payload: &[u8]) -> Result<(), &'static str>;
@@ -300,12 +306,34 @@ impl Cfcser for DumpCfcser {
     }
 }
 
+pub struct DumpThrasher {}
+
+impl Thrasher for DumpThrasher {
+    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+        panic!(
+            "This panic is called from Thrasher because it is a stub class,
+            none of its methods should be called in normal code and this class only
+            serves to indicate it as None in variable:Option<Thrasher> = None;"
+        );
+        //Ok(Self {})
+    }
+    fn set_user_field(&mut self, _user_field: &mut [u8]) -> Result<(), &'static str> {
+        panic!(
+            "This panic is called from Thrasher because it is a stub class,
+            none of its methods should be called in normal code and this class only
+            serves to indicate it as None in variable:Option<Thrasher> = None;"
+        );
+        //Ok(())
+    }
+}
+
 ///(array(head fields len + headbyte len + payload len+ tag len),(payload start pos,
 /// payload endpos) )
 pub fn pre_alloc(
     topology: &PackTopology,
     mtu: usize,
     payloadlen: usize,
+    fill: u8,
 ) -> Result<(Box<[u8]>, (usize, usize)), WTypeErr> {
     let len_pack = topology
         .total_minimal_len()
@@ -314,7 +342,7 @@ pub fn pre_alloc(
 
     Ok((
         vec![
-            0;
+            fill;
             if len_pack > mtu {
                 return Err(WTypeErr::LenSizeErr("len_pack > mtu"));
             } else {
@@ -469,11 +497,11 @@ mod tests_prealocc {
         let total: usize = mkd.iter().sum();
 
         assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 50),
+            pre_alloc(&result, total + 50 + 19, 50, 0),
             Err(WTypeErr::LenSizeErr("len_pack > mtu"))
         );
         assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 49),
+            pre_alloc(&result, total + 50 + 19, 49, 0),
             Ok((
                 vec![
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -487,11 +515,27 @@ mod tests_prealocc {
         );
 
         assert_eq!(
-            pre_alloc(&result, !0_usize, (!0_usize) - 1),
+            pre_alloc(&result, total + 50 + 19, 49, 99),
+            Ok((
+                vec![
+                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
+                    99, 99, 99
+                ]
+                .into_boxed_slice(),
+                (35usize, 84usize)
+            ))
+        );
+
+        assert_eq!(
+            pre_alloc(&result, !0_usize, (!0_usize) - 1, 0),
             Err(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))
         );
 
-        let mut t = pre_alloc(&result, 100000, 43).unwrap();
+        let mut t = pre_alloc(&result, 100000, 43, 0).unwrap();
         t.0[t.1.0..t.1.1].fill(1);
         let count = t.0.iter().filter(|&&element| element == 1).count();
         let count0 = t.0.iter().take_while(|&&x| x == 0).count();

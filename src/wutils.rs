@@ -284,6 +284,16 @@ pub fn u16_to_u32_approx(x: u16) -> u32 {
     x as u32 * 0xFF_FF
 }
 
+/// convert f32 to 4 bytes (big endian)
+pub fn f32_to_bytes_be(value: f32, mass: &mut [u8; 4]) {
+    mass.copy_from_slice(&value.to_be_bytes());
+}
+
+/// convert 4 bytes (big endian) to f32
+pub fn bytes_to_f32_be(bytes: &[u8; 4]) -> f32 {
+    f32::from_be_bytes(*bytes)
+}
+
 pub fn smpp_no_crypt_hash128(input: &[u64]) -> (u64, u64) {
     //first 120 nums if pi
     //14159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706798214808651328230664
@@ -587,4 +597,205 @@ mod position_tests {
         );
         assert!(false);
     }*/
+}
+
+#[cfg(test)]
+mod tests_f32 {
+    use super::*;
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ f32 to/from bytes conversion tests                                        │
+    // └────────────────────────────────────────────────────────────────────────────┘
+
+    #[test]
+    fn f32_to_bytes_be_roundtrip() {
+        let test_values = [
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            3.14159,
+            -3.14159,
+            f32::MAX,
+            f32::MIN,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            f32::EPSILON,
+        ];
+
+        for &original in &test_values {
+            let mut bytes = [0u8; 4];
+            f32_to_bytes_be(original, &mut bytes);
+            let restored = bytes_to_f32_be(&bytes);
+
+            // compare using bit patterns for NaN handling
+            if original.is_nan() {
+                assert!(restored.is_nan(), "NaN should remain NaN");
+            } else {
+                assert_eq!(
+                    original, restored,
+                    "roundtrip failed for value: {}",
+                    original
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn f32_to_bytes_be_correct_endianness() {
+        let value = 1.0_f32;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(value, &mut bytes);
+
+        // IEEE 754 representation of 1.0 in big endian: 0x3f800000
+        // bytes should be [0x3f, 0x80, 0x00, 0x00]
+        assert_eq!(
+            bytes,
+            [0x3f, 0x80, 0x00, 0x00],
+            "big endian representation of 1.0 is incorrect"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_zero() {
+        let value = 0.0_f32;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(value, &mut bytes);
+
+        // positive zero: 0x00000000
+        assert_eq!(
+            bytes,
+            [0x00, 0x00, 0x00, 0x00],
+            "zero representation incorrect"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_negative_zero() {
+        let value = -0.0_f32;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(value, &mut bytes);
+
+        // negative zero: 0x80000000 in big endian
+        assert_eq!(
+            bytes,
+            [0x80, 0x00, 0x00, 0x00],
+            "negative zero representation incorrect"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_pi() {
+        let value = std::f32::consts::PI;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(value, &mut bytes);
+
+        // known value for debugging, but we'll just verify roundtrip
+        let restored = bytes_to_f32_be(&bytes);
+        assert!(
+            (value - restored).abs() < f32::EPSILON,
+            "PI conversion failed"
+        );
+    }
+
+    #[test]
+    fn bytes_to_f32_be_nan_handling() {
+        // NaN has multiple representations, test that it stays NaN
+        let nan = f32::NAN;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(nan, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+
+        assert!(restored.is_nan(), "NaN should remain NaN after conversion");
+    }
+
+    #[test]
+    fn f32_to_bytes_be_infinity() {
+        let inf = f32::INFINITY;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(inf, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+
+        assert!(
+            restored.is_infinite() && restored.is_sign_positive(),
+            "positive infinity lost"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_neg_infinity() {
+        let neg_inf = f32::NEG_INFINITY;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(neg_inf, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+
+        assert!(
+            restored.is_infinite() && restored.is_sign_negative(),
+            "negative infinity lost"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_max_min() {
+        // test maximum finite value
+        let max_val = f32::MAX;
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(max_val, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+        assert_eq!(max_val, restored, "f32::MAX conversion failed");
+
+        // test minimum finite value
+        let min_val = f32::MIN;
+        f32_to_bytes_be(min_val, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+        assert_eq!(min_val, restored, "f32::MIN conversion failed");
+    }
+
+    #[test]
+    fn f32_to_bytes_be_subnormal_numbers() {
+        // test smallest positive subnormal number
+        let smallest = f32::from_bits(1); // smallest positive subnormal
+        let mut bytes = [0u8; 4];
+        f32_to_bytes_be(smallest, &mut bytes);
+        let restored = bytes_to_f32_be(&bytes);
+        assert_eq!(
+            smallest.to_bits(),
+            restored.to_bits(),
+            "subnormal number conversion failed"
+        );
+    }
+
+    #[test]
+    fn f32_to_bytes_be_buffer_modification() {
+        let value = 42.0_f32;
+        let mut bytes = [0xFFu8; 4]; // fill with garbage
+        f32_to_bytes_be(value, &mut bytes);
+
+        // verify that all bytes were overwritten
+        let restored = bytes_to_f32_be(&bytes);
+        assert_eq!(value, restored, "buffer should be completely overwritten");
+    }
+
+    // property-based test using quickcheck (if you want to add quickcheck dependency)
+    /*
+    #[cfg(test)]
+    mod quickcheck_tests {
+        use super::*;
+        use quickcheck::quickcheck;
+
+        quickcheck! {
+            fn f32_roundtrip_property(x: f32) -> bool {
+                let mut bytes = [0u8; 4];
+                f32_to_bytes_be(x, &mut bytes);
+                let y = bytes_to_f32_be(&bytes);
+
+                if x.is_nan() {
+                    y.is_nan()
+                } else {
+                    x == y
+                }
+            }
+        }
+    }
+    */
 }
