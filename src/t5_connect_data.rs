@@ -2,7 +2,7 @@ use crate::t1queue_tcpudp::recv_queue::{WSQueueErr, WSRecvQueueCtrs, WSUdpLike, 
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
 use crate::wt1_types;
-use crate::wt1_types::{Cfcser, MyRole, Noncer};
+use crate::wt1_types::{MyRole /* , Cfcser, Noncer */};
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
@@ -15,8 +15,8 @@ pub struct Identified {
 }
 
 pub struct WsConnection<
-    TCfcser: Cfcser,
-    Tnoncer: Noncer,
+    //TCfcser: Cfcser,
+    //Tnoncer: Noncer,
     Tudp: Clone,
     Twait: Clone,
     Tencrypt: wt1_types::EncWis,
@@ -33,23 +33,26 @@ pub struct WsConnection<
     connect_param: WsConnectParam,
     enrypaaa: bool,
     is_active: bool,
-    nonce_gener: Option<Tnoncer>,
-    cfc_gener: Option<TCfcser>,
+    //nonce_gener: Option<Tnoncer>,
+    //cfc_gener: Option<TCfcser>,
     measurement_window_latency: f64,
     my_role: MyRole,
     my_identified: Identified,
 }
 
-impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis>
-    WsConnection<TCfcser, Tnoncer, Tudp, Twait, Tencrypt>
+impl<
+    /* TCfcser: Cfcser, Tnoncer: Noncer, */ Tudp: Clone,
+    Twait: Clone,
+    Tencrypt: wt1_types::EncWis,
+> WsConnection</* TCfcser, Tnoncer, */ Tudp, Twait, Tencrypt>
 {
     pub fn new(
         connect_param: &WsConnectParam,
         default_enc_key: &[u8],
         my_role: MyRole,
         my_identified: Identified,
-        nonce_seed: Option<&[u8]>,
-        cfc_seed: Option<&[u8]>,
+        //nonce_seed: Option<&[u8]>,
+        //cfc_seed: Option<&[u8]>,
     ) -> Result<Self, WSQueueErr> {
         Ok(Self {
             file_proc: WSFileSplitter::new(connect_param.max_len_file())
@@ -76,6 +79,7 @@ impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_
             connect_param: connect_param.clone(),
             enrypaaa: true,
             is_active: true,
+            /*
             nonce_gener: if connect_param.pack_topology().nonce_slice().is_some() {
                 Some(
                     Tnoncer::new(nonce_seed.ok_or(WSQueueErr::Critical(
@@ -98,6 +102,7 @@ impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_
             } else {
                 None
             },
+            */
             my_identified,
             my_role,
             measurement_window_latency: connect_param.start_ms_latency(),
