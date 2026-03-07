@@ -40,7 +40,7 @@ pub struct WsConnection<
 impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis>
     WsConnection<TCfcser, Tnoncer, Tudp, Twait, Tencrypt>
 {
-    pub fn new(connect_param: WsConnectParam) -> Result<Self, WSQueueErr> {
+    pub fn new(connect_param: &WsConnectParam) -> Result<Self, WSQueueErr> {
         Ok(Self {
             file_proc: WSFileSplitter::new(connect_param.max_len_file())
                 .map_err(WSQueueErr::Critical)?,
@@ -63,11 +63,19 @@ impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_
             network_stability: 0.0,
             network_latency: 0.0,
             enrypt: Tencrypt::new(&[1]).map_err(WSQueueErr::Critical)?,
-            connect_param,
+            connect_param: connect_param.clone(),
             enrypaaa: true,
             is_active: true,
-            nonce_gener: Some(Tnoncer::new(&[1]).map_err(WSQueueErr::Critical)?),
-            cfc_gener: Some(TCfcser::new(&[1]).map_err(WSQueueErr::Critical)?),
+            nonce_gener: if connect_param.pack_topology().nonce_slice().is_some() {
+                Some(Tnoncer::new(&[1]).map_err(WSQueueErr::Critical)?)
+            } else {
+                None
+            },
+            cfc_gener: if connect_param.pack_topology().head_crc_slice().is_some() {
+                Some(TCfcser::new(&[1]).map_err(WSQueueErr::Critical)?)
+            } else {
+                None
+            },
         })
     }
 }

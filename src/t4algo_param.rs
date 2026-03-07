@@ -3,7 +3,7 @@
 use crate::t0pology::PackTopology;
 use crate::wutils;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct WsConnectParam {
     pack_topology: PackTopology,
     mtu: usize,
