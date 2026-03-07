@@ -4,12 +4,13 @@ pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 pub mod t2proc_fields;
 
 pub mod t3poc_files;
-pub mod t4_connect_data;
 pub mod t4algo_param;
+pub mod t5_connect_data;
 pub mod wt1_types;
 pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;
+pub mod zw;
 pub use crate::t1queue_tcpudp::recv_queue::{
     WSQueueErr as ErrType, WSRecvQueueCtrs, WSTcpLike as TcpPackageSplitter, WSUdpLike,
     WSWaitQueue as UnconfirmedQueuePackets,
@@ -37,4 +38,15 @@ git rm -r --cached t.txt
 cargo +nightly fmt
 rustup toolchain install nightly
 rustup run nightly cargo fmt
+
+
+
+
+cargo clippy --fix  --allow-dirty &&
+cargo fix --allow-dirty &&
+cargo clippy --fix --allow-dirty --broken-code &&
+cargo clippy --fix --all --allow-dirty &&
+rustup run nightly cargo fmt &&
+cargo fmt
+
 */

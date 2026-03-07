@@ -1,8 +1,6 @@
 use std::u64;
 
-use crate::t0pology::PackTopology;
 use crate::wt1_types::MyRole;
-use crate::{t1fields, t4_connect_data, wt1_types};
 
 /*
 
@@ -30,15 +28,16 @@ pub enum WsErr {
     AnyErr(&'static str),
 }
 
+/*
 pub trait WsConnectStorager<Tudp, Twait, Tencrypt: wt1_types::EncWis> {
     fn checking_if_is_my_pack(
         fn_if_is_my_pack: fn(
-            &mut t4_connect_data::WsConnectData<Tudp, Twait, Tencrypt>,
+            &mut t5_connect_data::WsConnectData<Tudp, Twait, Tencrypt>,
             u64,
             usize,
         ) -> Result<(), WsErr>,
     ) -> Result<(), WsErr>;
-}
+}*/
 
 pub struct Ids {
     pub id_sender: u64,
@@ -61,7 +60,7 @@ pub struct WsPubFields {
     pub my_ctr: u64,
     pub is_fback: bool,
 }
-
+/*
 pub fn recv_pack<
     Tudp,
     Twait,
@@ -132,6 +131,9 @@ pub fn recv_pack<
     //EEEDET
     Ok(WsOk::IsMyPackage)
 }
+
+
+*/
 
 //trait  {
 

@@ -301,7 +301,7 @@ impl WSFileSplitter {
                         && len_vec as usize > m_len
                     {
                         return Err(
-                            "The size of the received file exceeds the maximum max_len_of_file."
+                            "The size of the received file exceeds the maximum max_len_of_file.",
                         );
                     }
 
