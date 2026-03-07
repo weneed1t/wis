@@ -1,10 +1,8 @@
-use crate::t0pology::PackTopology;
-use crate::t1queue_tcpudp::recv_queue::{
-    WSQueueErr, WSQueueState, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue,
-};
+use crate::t1queue_tcpudp::recv_queue::{WSQueueErr, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
 use crate::wt1_types;
+use crate::wt1_types::{Cfcser, Noncer};
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
@@ -16,7 +14,13 @@ pub struct Identified {
     id_conn: Option<u64>,
 }
 
-pub struct WsConnection<Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis> {
+pub struct WsConnection<
+    TCfcser: Cfcser,
+    Tnoncer: Noncer,
+    Tudp: Clone,
+    Twait: Clone,
+    Tencrypt: wt1_types::EncWis,
+> {
     file_proc: WSFileSplitter,
     udp_queue: WSUdpLike<Tudp>,
     wait_queue: WSWaitQueue<Twait, f32>,
@@ -29,14 +33,14 @@ pub struct WsConnection<Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis> 
     connect_param: WsConnectParam,
     enrypaaa: bool,
     is_active: bool,
+    nonce_gener: Option<Tnoncer>,
+    cfc_gener: Option<TCfcser>,
 }
 
-impl<Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis> WsConnection<Tudp, Twait, Tencrypt> {
-    pub fn new(
-        connect_param: WsConnectParam,
-        enrypt: Tencrypt,
-        enrypaaa: bool,
-    ) -> Result<Self, WSQueueErr> {
+impl<TCfcser: Cfcser, Tnoncer: Noncer, Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis>
+    WsConnection<TCfcser, Tnoncer, Tudp, Twait, Tencrypt>
+{
+    pub fn new(connect_param: WsConnectParam) -> Result<Self, WSQueueErr> {
         Ok(Self {
             file_proc: WSFileSplitter::new(connect_param.max_len_file())
                 .map_err(WSQueueErr::Critical)?,
@@ -58,10 +62,12 @@ impl<Tudp: Clone, Twait: Clone, Tencrypt: wt1_types::EncWis> WsConnection<Tudp, 
             ctr_fback: 1,
             network_stability: 0.0,
             network_latency: 0.0,
-            enrypt,
+            enrypt: Tencrypt::new(&[1]).map_err(WSQueueErr::Critical)?,
             connect_param,
-            enrypaaa,
+            enrypaaa: true,
             is_active: true,
+            nonce_gener: Some(Tnoncer::new(&[1]).map_err(WSQueueErr::Critical)?),
+            cfc_gener: Some(TCfcser::new(&[1]).map_err(WSQueueErr::Critical)?),
         })
     }
 }

@@ -840,7 +840,7 @@ mod tests {
 
         assert_eq!(set_len(&mut bb, &result, 100), Ok(()));
 
-        let mut noncex = NonceStruct::new().unwrap();
+        let mut noncex = NonceStruct::new(&[0]).unwrap();
 
         let ctr_n = Some(1000);
 
@@ -1466,7 +1466,7 @@ mod tests {
             let llen = pack.len();
 
             pack[topology.content_start_pos()..llen - topology.tag_len()].fill(0x71);
-            let mut noncex = NonceStruct::new().unwrap();
+            let mut noncex = NonceStruct::new(&[0]).unwrap();
 
             let none_nonse: Option<&mut DumpNonser> = None;
             assert_ne!(
@@ -1530,7 +1530,7 @@ mod tests {
         let crsrsr = topology
             .head_crc_slice()
             .unwrap_or((9999999999, 9999999999, 0));
-        let mut noncex = NonceStruct::new().unwrap();
+        let mut noncex = NonceStruct::new(&[0]).unwrap();
         for x in 0..topology.encrypt_start_pos() {
             let mut t = vec![0; pack.len()];
             for x in t.iter_mut().zip(pack.iter()) {
@@ -1840,7 +1840,7 @@ mod tests {
     struct NonceStruct {}
 
     impl Noncer for NonceStruct {
-        fn new() -> Result<Self, &'static str> {
+        fn new(_key: &[u8]) -> Result<Self, &'static str> {
             Ok(Self {})
         }
 

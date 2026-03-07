@@ -125,7 +125,7 @@ impl PartialEq for PackType {
     }
 }
 
-///======================================================================================================
+//======================================================================================================
 
 /*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), &'static str>
 where &[u8] is the head, the data that is not encrypted,
@@ -146,7 +146,7 @@ ok() means that the data was encrypted successfully
 and there were no errors, &'static str reports some error,
  when it is called, the preparation of the packet for sending
  will be interrupted and it will not be sent
-*/
+
 #[derive(Debug, Clone)]
 pub enum TypeGetMode {
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
@@ -159,6 +159,8 @@ pub enum TypeGetMode {
         fn(&mut [u8], usize, usize, u64, Option<(usize, usize)>) -> Result<(), &'static str>,
     ),
 }
+    */
+
 #[derive(Debug, Clone)]
 pub enum Cryptlag {
     Encrypt,
@@ -214,7 +216,7 @@ pub trait EncWis: Sized {
 }
 
 pub trait Noncer: Sized {
-    fn new() -> Result<Self, &'static str>;
+    fn new(key: &[u8]) -> Result<Self, &'static str>;
 
     fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
 }
@@ -222,7 +224,7 @@ pub trait Noncer: Sized {
 pub struct DumpNonser {}
 
 impl Noncer for DumpNonser {
-    fn new() -> Result<Self, &'static str> {
+    fn new(_key: &[u8]) -> Result<Self, &'static str> {
         panic!(
             "This panic is called from DumpNonser because it is a stub class,
          none of its methods should be called in normal code and this class only
@@ -235,6 +237,32 @@ impl Noncer for DumpNonser {
             "This panic is called from DumpNonser because it is a stub class,
          none of its methods should be called in normal code and this class only
           serves to indicate it as None in variable:Option<DumpNonser> = None;"
+        );
+        //Ok(())
+    }
+}
+
+pub trait Cfcser: Sized {
+    fn new(_key: &[u8]) -> Result<Self, &'static str>;
+    fn gen_crc(&mut self, cfc_field: &mut [u8], payload: &[u8]) -> Result<(), &'static str>;
+}
+
+pub struct DumpCfcser {}
+
+impl Cfcser for DumpCfcser {
+    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+        panic!(
+            "This panic is called from DumpCfcser because it is a stub class,
+            none of its methods should be called in normal code and this class only
+            serves to indicate it as None in variable:Option<DumpCfcser> = None;"
+        );
+        //Ok(Self {})
+    }
+    fn gen_crc(&mut self, _cfc_field: &mut [u8], _payload: &[u8]) -> Result<(), &'static str> {
+        panic!(
+            "This panic is called from DumpCfcser because it is a stub class,
+            none of its methods should be called in normal code and this class only
+            serves to indicate it as None in variable:Option<DumpCfcser> = None;"
         );
         //Ok(())
     }
@@ -440,5 +468,146 @@ mod tests_prealocc {
         assert_eq!(count0, result.total_head_slice().2 + 1);
 
         println!("{:?}   /n{} /n {}", t.0, count, count0);
+    }
+}
+
+#[cfg(test)]
+mod tests_dumps_nonser_cfcser {
+    use super::*;
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ dumpnonser tests – every method must panic with the documented message    │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    #[should_panic(expected = "This panic is called from DumpNonser")]
+    fn dumpnonser_new_panics() {
+        let _ = DumpNonser::new(&[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "This panic is called from DumpNonser")]
+    fn dumpnonser_set_nonce_panics() {
+        let mut stub = DumpNonser {}; // we can create it directly because it's a struct
+        let mut buf = [0u8; 8];
+        stub.set_nonce(&mut buf).unwrap();
+    }
+
+    // verify that the type can be placed in an Option (as intended)
+    #[test]
+    fn dumpnonser_option_none_works() {
+        let opt: Option<DumpNonser> = None;
+        assert!(opt.is_none());
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ dumpcfcser tests – every method must panic with the documented message    │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    #[should_panic(expected = "This panic is called from DumpCfcser")]
+    fn dumpcfcser_new_panics() {
+        let _ = DumpCfcser::new(&[]);
+    }
+
+    #[test]
+    #[should_panic(expected = "This panic is called from DumpCfcser")]
+    fn dumpcfcser_gen_crc_panics() {
+        let mut stub = DumpCfcser {};
+        let mut cfc_field = [0u8; 4];
+        let payload = [1, 2, 3];
+        stub.gen_crc(&mut cfc_field, &payload).unwrap();
+    }
+
+    #[test]
+    fn dumpcfcser_option_none_works() {
+        let opt: Option<DumpCfcser> = None;
+        assert!(opt.is_none());
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ trait bounds – ensure that the stubs satisfy all required traits          │
+    // │ (compilation already guarantees this, but we can explicitly check)        │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn dumpnonser_impl_noncer() {
+        fn takes_noncer<T: Noncer>(_: T) {}
+        takes_noncer(DumpNonser {}); // compiles -> ok
+    }
+
+    #[test]
+    fn dumpcfcser_impl_cfcser() {
+        fn takes_cfcser<T: Cfcser>(_: T) {}
+        takes_cfcser(DumpCfcser {}); // compiles -> ok
+    }
+}
+
+#[cfg(test)]
+mod tests_statusdecrypt {
+    use super::*;
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ group 1: creation & debug/clone traits (auto-derived)                     │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn debug_and_clone_work() {
+        let original = StatusDecrypt::DecodedCorrectly;
+        let cloned = original.clone();
+        assert!(format!("{:?}", cloned).contains("DecodedCorrectly"));
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ group 2: equality (PartialEq) – both variants compare correctly          │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn decoded_correctly_equals_itself() {
+        assert_eq!(
+            StatusDecrypt::DecodedCorrectly,
+            StatusDecrypt::DecodedCorrectly
+        );
+    }
+
+    #[test]
+    fn package_damaged_equals_itself() {
+        assert_eq!(StatusDecrypt::PackageDamaged, StatusDecrypt::PackageDamaged);
+    }
+
+    #[test]
+    fn different_variants_are_not_equal() {
+        assert_ne!(
+            StatusDecrypt::DecodedCorrectly,
+            StatusDecrypt::PackageDamaged
+        );
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ group 3: helper methods (is_correctly / is_damaged) – one test per variant│
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn is_correctly_returns_true_only_for_decoded_correctly() {
+        assert!(StatusDecrypt::DecodedCorrectly.is_correctly());
+        assert!(!StatusDecrypt::PackageDamaged.is_correctly());
+    }
+
+    #[test]
+    fn is_damaged_returns_true_only_for_package_damaged() {
+        assert!(StatusDecrypt::PackageDamaged.is_damaged());
+        assert!(!StatusDecrypt::DecodedCorrectly.is_damaged());
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ group 4: exhaustive coverage – one test verifies all discriminant values  │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn all_variants_covered() {
+        // this test ensures we haven't missed any variant if the enum grows
+        let variants = [
+            StatusDecrypt::DecodedCorrectly,
+            StatusDecrypt::PackageDamaged,
+        ];
+        for v in variants {
+            match v {
+                StatusDecrypt::DecodedCorrectly => assert!(v.is_correctly()),
+                StatusDecrypt::PackageDamaged => assert!(v.is_damaged()),
+            }
+        }
     }
 }
