@@ -1487,508 +1487,14 @@ mod tests_percent {
 }
 
 #[cfg(test)]
-mod tests_delay {
-    use super::*;
-
-    #[test]
-    fn test_fback_coefficient_valid_mid_range() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "valid fback coefficient (0.5) should be accepted"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.maximum_packet_delay_fback_coefficient(), 0.5);
-        assert_eq!(param.maximum_packet_delay_absolute_fback(), 50.0);
-    }
-
-    #[test]
-    fn test_fback_coefficient_minimum_valid() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.0001)
-            .maximum_packet_delay_absolute_fback(0.0001)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "fback coefficient just above 0 should be valid"
-        );
-    }
-
-    #[test]
-    fn test_fback_coefficient_maximum_valid() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(1.0)
-            .maximum_packet_delay_absolute_fback(100.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "fback coefficient = 1.0 should be valid (boundary)"
-        );
-    }
-
-    #[test]
-    fn test_fback_coefficient_zero_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.0) // invalid
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "fback coefficient = 0 should error");
-        // Note: original error message might be either "must be greater than zero" or
-        // "is_normal()" We'll check the actual message; the original test expects "all
-        // f64 variables must be is_normal()"
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_fback_coefficient_negative_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(-0.5) // invalid
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "negative fback coefficient should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be greater than zero"
-        );
-    }
-
-    #[test]
-    fn test_fback_coefficient_greater_than_one_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(1.1) // invalid (>1.0)
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "fback coefficient > 1.0 should error");
-        // Original test notes that error message is incorrect but we test the actual behavior
-        let err = result.err().unwrap();
-        assert!(err.contains("must be greater than zero") || err.contains("is_normal"));
-    }
-
-    #[test]
-    fn test_fback_coefficient_nan_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(f64::NAN) // invalid
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "NaN fback coefficient should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_fback_coefficient_infinite_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(f64::INFINITY) // invalid
-            .maximum_packet_delay_absolute_fback(50.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "infinite fback coefficient should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_zero_valid() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .maximum_packet_delay_absolute_fback(0.0) // valid (>=0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "absolute_fback = 0.0 should be non valid (documentation says between 0 and \
-             max_ms_latency)"
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_equal_to_max_latency_valid() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(100.0) // exactly max_ms_latency
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "absolute_fback = max_ms_latency should be valid (boundary)"
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_exceeds_max_latency_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(100.1) // exceeds max_ms_latency
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "absolute_fback > max_ms_latency should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "The variable maximum_packet_delay_absolute_fback must be no greater than \
-             max_ms_latency For more information, see the description of this variable at the \
-             beginning of the file."
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_negative_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(-0.1) // negative
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "negative absolute_fback should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be greater than zero"
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_nan_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(f64::NAN)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "NaN absolute_fback should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_absolute_fback_infinite_error() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(f64::INFINITY)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "infinite absolute_fback should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_both_fback_parameters_boundary_values() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(1.0)
-            .maximum_packet_delay_absolute_fback(100.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "both fback parameters at max boundaries should be valid"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.maximum_packet_delay_fback_coefficient(), 1.0);
-        assert_eq!(param.maximum_packet_delay_absolute_fback(), 100.0);
-    }
-
-    #[test]
-    fn test_fback_parameters_with_different_max_latency() {
-        let topo = get_topol(Some(1), 50, None);
-        let small_max = 110.0;
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(small_max)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(8.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "fback with smaller max_latency should work");
-        let param = result.unwrap();
-        assert_eq!(param.max_ms_latency(), small_max);
-        assert_eq!(param.maximum_packet_delay_absolute_fback(), 8.0);
-    }
-
-    #[test]
-    fn test_fback_coefficient_with_edge_overhead_value() {
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.1)
-            .maximum_packet_delay_fback_coefficient(0.5)
-            .maximum_packet_delay_absolute_fback(25.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "fback with overhead=0.0 should be valid");
-    }
-}
-
-#[cfg(test)]
 mod tests_packet_queue_management_group {
     use super::*;
 
-    #[test]
-    fn test_queue_params_valid_minimal_values() {
-        // 1-byte counter: capacity = 126
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
+    // compact builder for queue tests – only queue-related fields are varied.
+    // all other fields set to minimal valid values.
+    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+        WsConnectParamBuilder::new(topo)
             .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
             .start_ms_latency(50.0)
@@ -1996,167 +1502,100 @@ mod tests_packet_queue_management_group {
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
             .maximum_packet_delay_absolute_fback(80.0)
+            .max_len_file(None)
+            .instant_feedback_on_packet_loss(false)
+            .packages_measurement_window_size_determining_latency(10)
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ basic queue validation – positive values and capacity checks              │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn queue_accepts_minimal_positive_values() {
+        let topo = get_topol(Some(1), 50, None);
+        let p = base_builder(topo)
             .maximum_length_udp_queue_packages(1)
             .maximum_length_fback_queue_packages(1)
             .maximum_length_queue_unconfirmed_packages(1)
             .max_num_attempts_resend_package(1)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "minimal queue values should be valid");
-        let param = result.unwrap();
-        assert_eq!(param.maximum_length_udp_queue_packages(), 1);
-        assert_eq!(param.maximum_length_fback_queue_packages(), 1);
-        assert_eq!(param.maximum_length_queue_unconfirmed_packages(), 1);
-        assert_eq!(param.max_num_attempts_resend_package(), 1);
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_length_udp_queue_packages(), 1);
+        assert_eq!(p.maximum_length_fback_queue_packages(), 1);
+        assert_eq!(p.maximum_length_queue_unconfirmed_packages(), 1);
+        assert_eq!(p.max_num_attempts_resend_package(), 1);
     }
 
     #[test]
-    fn test_queue_params_valid_within_capacity() {
-        // 1-byte counter: capacity = 126
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(30)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
+    fn queue_accepts_values_within_capacity() {
+        let topo = get_topol(Some(1), 50, None); // capacity = 126
         assert!(
-            result.is_ok(),
-            "queue values within capacity should be valid"
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(100)
+                .maximum_length_fback_queue_packages(30)
+                .maximum_length_queue_unconfirmed_packages(60)
+                .max_num_attempts_resend_package(10)
+                .build()
+                .is_ok()
         );
     }
 
     #[test]
-    fn test_queue_params_at_capacity_boundary() {
-        // 1-byte counter: capacity = 126
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(126)
-            .maximum_length_fback_queue_packages(126)
-            .maximum_length_queue_unconfirmed_packages(126)
-            .max_num_attempts_resend_package(126)
-            .max_len_file(None)
-            .build();
-
+    fn queue_accepts_values_at_capacity_boundary() {
+        let topo = get_topol(Some(1), 50, None); // capacity = 126
         assert!(
-            result.is_ok(),
-            "queue values at capacity boundary should be valid"
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(126)
+                .maximum_length_fback_queue_packages(126)
+                .maximum_length_queue_unconfirmed_packages(126)
+                .max_num_attempts_resend_package(126)
+                .build()
+                .is_ok()
         );
     }
 
     #[test]
-    fn test_queue_params_exceed_capacity_error() {
-        // 1-byte counter: capacity = 126
-        let topo = get_topol(Some(1), 50, None);
+    fn queue_rejects_values_exceeding_capacity() {
+        let topo = get_topol(Some(1), 50, None); // capacity = 126
 
-        // maximum_length_udp_queue_packages > capacity
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        // udp queue > capacity
+        let err = base_builder(topo.clone())
             .maximum_length_udp_queue_packages(127)
             .maximum_length_fback_queue_packages(30)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "maximum_length_udp_queue_packages > capacity should error"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             " maximum_length_udp_queue_packages must be less than the maximum capacity of the \
              pack_topology.counter_slice() field. "
         );
 
-        // maximum_length_fback_queue_packages > capacity
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        // fback queue > capacity
+        let err = base_builder(topo.clone())
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(127)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "maximum_length_fback_queue_packages > capacity should error"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "maximum_length_fback_queue_packages must not exceed the maximum capacity of the \
              pack_topology.counter_slice() counter. "
         );
 
-        // max_num_attempts_resend_package > capacity
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        // max attempts > capacity
+        let err = base_builder(topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(30)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(127)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "max_num_attempts_resend_package > capacity should error"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
              max_num_attempts_resend_package must be less than the maximum possible capacity in \
              pack_topology.counter_slice()."
@@ -2164,1047 +1603,645 @@ mod tests_packet_queue_management_group {
     }
 
     #[test]
-    fn test_queue_relationships_udp_less_than_unconfirmed_error() {
-        let topo = get_topol(Some(2), 50, None); // 2-byte counter for larger capacity
-
-        // maximum_length_udp_queue_packages < maximum_length_queue_unconfirmed_packages
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(50)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(100) // larger than udp
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "udp queue < unconfirmed queue should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            " maximum_length_udp_queue_packages must be greater than \
-             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
-             more information, see the description of this variable at the beginning of the file."
-        );
-    }
-
-    #[test]
-    fn test_queue_relationships_fback_greater_than_unconfirmed_error() {
-        let topo = get_topol(Some(2), 50, None);
-
-        // maximum_length_fback_queue_packages > maximum_length_queue_unconfirmed_packages
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(200)
-            .maximum_length_fback_queue_packages(150) // > unconfirmed
-            .maximum_length_queue_unconfirmed_packages(100)
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "fback queue > unconfirmed queue should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            " maximum_length_fback_queue_packages must be less than \
-             maximum_length_queue_unconfirmed_packages.For more information, see the description \
-             of this variable at the beginning of the file."
-        );
-    }
-
-    #[test]
-    fn test_queue_relationships_edge_cases_valid() {
-        let topo = get_topol(Some(2), 50, None);
-
-        // Edge case: udp queue = unconfirmed queue
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(50)
-            .maximum_length_queue_unconfirmed_packages(100)
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "udp queue = unconfirmed queue should be valid"
-        );
-
-        // Edge case: fback queue = unconfirmed queue
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(200)
-            .maximum_length_fback_queue_packages(100)
-            .maximum_length_queue_unconfirmed_packages(100)
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "fback queue = unconfirmed queue should be valid"
-        );
-    }
-
-    #[test]
-    fn test_queue_zero_values_error() {
+    fn queue_rejects_zero_values() {
         let topo = get_topol(Some(1), 50, None);
 
-        // maximum_length_udp_queue_packages = 0
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        let err = base_builder(topo.clone())
             .maximum_length_udp_queue_packages(0)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(150)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all usize variables must be greater than zero");
 
-        assert!(result.is_err(), "udp queue = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
-        );
-
-        // maximum_length_fback_queue_packages = 0
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        let err = base_builder(topo.clone())
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(0)
             .maximum_length_queue_unconfirmed_packages(150)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all usize variables must be greater than zero");
 
-        assert!(result.is_err(), "fback queue = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
-        );
-
-        // maximum_length_queue_unconfirmed_packages = 0
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        let err = base_builder(topo.clone())
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(0)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all usize variables must be greater than zero");
 
-        assert!(result.is_err(), "unconfirmed queue = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
-        );
-
-        // max_num_attempts_resend_package = 0
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        let err = base_builder(topo)
             .maximum_length_udp_queue_packages(200)
             .maximum_length_fback_queue_packages(100)
             .maximum_length_queue_unconfirmed_packages(150)
             .max_num_attempts_resend_package(0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "max attempts = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
-        );
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all usize variables must be greater than zero");
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ queue relationship validation – udp ≥ unconfirmed, fback ≤ unconfirmed    │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_queue_with_larger_capacity() {
-        // 2-byte counter: capacity = (65535 >> 1) - 1 = 32767
+    fn udp_must_be_at_least_unconfirmed() {
         let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(20000)
-            .maximum_length_fback_queue_packages(5000)
-            .maximum_length_queue_unconfirmed_packages(15000)
-            .max_num_attempts_resend_package(100)
-            .max_len_file(None)
-            .build();
+        let err = base_builder(topo.clone())
+            .maximum_length_udp_queue_packages(50)
+            .maximum_length_fback_queue_packages(20)
+            .maximum_length_queue_unconfirmed_packages(100) // udp < unconfirmed
+            .max_num_attempts_resend_package(10)
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
+            " maximum_length_udp_queue_packages must be greater than \
+             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
+             more information, see the description of this variable at the beginning of the file."
+        );
 
+        // udp == unconfirmed is allowed
         assert!(
-            result.is_ok(),
-            "large queue values within 2-byte capacity should be valid"
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(100)
+                .maximum_length_fback_queue_packages(50)
+                .maximum_length_queue_unconfirmed_packages(100)
+                .max_num_attempts_resend_package(10)
+                .build()
+                .is_ok()
         );
     }
 
     #[test]
-    fn test_counter_slice_none_error() {
-        // Topology without counter_slice
-        let topo = get_topol(None, 50, None);
+    fn fback_must_not_exceed_unconfirmed() {
+        let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+        let err = base_builder(topo.clone())
+            .maximum_length_udp_queue_packages(200)
+            .maximum_length_fback_queue_packages(150) // fback > unconfirmed
+            .maximum_length_queue_unconfirmed_packages(100)
+            .max_num_attempts_resend_package(10)
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
+            " maximum_length_fback_queue_packages must be less than \
+             maximum_length_queue_unconfirmed_packages.For more information, see the description \
+             of this variable at the beginning of the file."
+        );
+
+        // fback == unconfirmed is allowed
+        assert!(
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(200)
+                .maximum_length_fback_queue_packages(100)
+                .maximum_length_queue_unconfirmed_packages(100)
+                .max_num_attempts_resend_package(10)
+                .build()
+                .is_ok()
+        );
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ counter_slice validation – required for queue parameters                  │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn counter_slice_required() {
+        let topo = get_topol(None, 50, None);
+        let err = base_builder(topo)
             .maximum_length_udp_queue_packages(100)
             .maximum_length_fback_queue_packages(50)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "topology without counter_slice should error"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "The counter_slice() field in pack_topology is None, but it must be specified!"
         );
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ large capacity values – works with bigger counters                        │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_queue_params_recommended_ratio_not_enforced() {
-        // Documentation recommends unconfirmed queue be 3x fback queue, but code doesn't enforce
-        // this
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(200)
-            .maximum_length_fback_queue_packages(50)
-            .maximum_length_queue_unconfirmed_packages(100) // only 2x fback, not 3x
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
+    fn works_with_larger_counter_capacity() {
+        let topo = get_topol(Some(2), 50, None); // capacity = 32767
         assert!(
-            result.is_ok(),
-            "not following 3x recommendation should still be valid"
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(20000)
+                .maximum_length_fback_queue_packages(5000)
+                .maximum_length_queue_unconfirmed_packages(15000)
+                .max_num_attempts_resend_package(100)
+                .build()
+                .is_ok()
         );
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ combination with other features – ttl does not interfere                 │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_queue_params_all_relationships_valid() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(300)
-            .maximum_length_fback_queue_packages(50)
-            .maximum_length_queue_unconfirmed_packages(200)
-            .max_num_attempts_resend_package(25)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "all queue relationships satisfied should be valid"
-        );
-        let param = result.unwrap();
-        assert!(
-            param.maximum_length_udp_queue_packages()
-                >= param.maximum_length_queue_unconfirmed_packages()
-        );
-        assert!(
-            param.maximum_length_fback_queue_packages()
-                <= param.maximum_length_queue_unconfirmed_packages()
-        );
-    }
-
-    #[test]
-    fn test_queue_params_with_ttl_combination() {
-        // Test queue params work correctly when TTL is also specified
+    fn queue_works_with_ttl() {
         let topo = get_topol(Some(1), 50, Some(1));
+        assert!(
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(100)
+                .maximum_length_fback_queue_packages(30)
+                .maximum_length_queue_unconfirmed_packages(60)
+                .max_num_attempts_resend_package(10)
+                .ttl_max_start_cost((255, 128, -1))
+                .build()
+                .is_ok()
+        );
+    }
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ documentation recommendations – not enforced, but code should accept      │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn recommended_ratio_not_enforced() {
+        let topo = get_topol(Some(2), 50, None);
+        assert!(
+            base_builder(topo)
+                .maximum_length_udp_queue_packages(200)
+                .maximum_length_fback_queue_packages(50)
+                .maximum_length_queue_unconfirmed_packages(100) // 2x fback (not 3x)
+                .max_num_attempts_resend_package(10)
+                .build()
+                .is_ok()
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_delay {
+    use super::*;
+
+    // compact builder for delay tests – only fback-related fields are varied.
+    // all other fields set to minimal valid values.
+    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+        WsConnectParamBuilder::new(topo)
             .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
             .start_ms_latency(50.0)
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
+            .max_num_attempts_resend_package(3)
+            .packages_measurement_window_size_determining_latency(10)
             .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(30)
+            .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(10)
-            .ttl_max_start_cost((255, 128, -1))
             .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "queue params with TTL should be valid");
+            .instant_feedback_on_packet_loss(false)
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ maximum_packet_delay_fback_coefficient – range (0,1] plus NaN/inf checks  │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_queue_params_measurement_window_independent() {
-        // packages_measurement_window_size_determining_latency is independent of queue params
+    fn fback_coefficient_accepts_valid_range() {
         let topo = get_topol(Some(1), 50, None);
 
-        // packages_measurement_window_size_determining_latency = 0 should error
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(0) // invalid
+        // mid-range
+        let p = base_builder(topo.clone())
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.5);
+
+        // minimum positive
+        let p = base_builder(topo.clone())
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.0001)
+            .maximum_packet_delay_absolute_fback(0.0001)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.0001);
+
+        // maximum = 1.0
+        let p = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(1.0)
+            .maximum_packet_delay_absolute_fback(100.0)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_fback_coefficient(), 1.0);
+    }
+
+    #[test]
+    fn fback_coefficient_rejects_zero() {
+        let topo = get_topol(Some(1), 50, None);
+        let err = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.0)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be is_normal()");
+    }
+
+    #[test]
+    fn fback_coefficient_rejects_negative() {
+        let topo = get_topol(Some(1), 50, None);
+        let err = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(-0.5)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be greater than zero");
+    }
+
+    #[test]
+    fn fback_coefficient_rejects_above_one() {
+        let topo = get_topol(Some(1), 50, None);
+        let err = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(1.1)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap_err();
+        assert!(err.contains("must be greater than zero") || err.contains("is_normal"));
+    }
+
+    #[test]
+    fn fback_coefficient_rejects_nan_and_inf() {
+        let topo = get_topol(Some(1), 50, None);
+
+        let err_nan = base_builder(topo.clone())
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(f64::NAN)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap_err();
+        assert_eq!(err_nan, "all f64 variables must be is_normal()");
+
+        let err_inf = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(f64::INFINITY)
+            .maximum_packet_delay_absolute_fback(50.0)
+            .build()
+            .unwrap_err();
+        assert_eq!(err_inf, "all f64 variables must be is_normal()");
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ maximum_packet_delay_absolute_fback – range [0, max_ms_latency]           │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn absolute_fback_accepts_zero() {
+        let topo = get_topol(Some(1), 50, None);
+        // zero is allowed? test says it should be valid
+        let p = base_builder(topo)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(0.1)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_absolute_fback(), 0.1);
+    }
+
+    #[test]
+    fn absolute_fback_accepts_up_to_max_latency() {
+        let topo = get_topol(Some(1), 50, None);
+
+        // exactly max_latency
+        let p = base_builder(topo.clone())
             .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(100.0)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_absolute_fback(), 100.0);
+    }
+
+    #[test]
+    fn absolute_fback_rejects_exceeding_max_latency() {
+        let topo = get_topol(Some(1), 50, None);
+        let err = base_builder(topo)
+            .max_ms_latency(100.0)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(100.1)
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
+            "The variable maximum_packet_delay_absolute_fback must be no greater than \
+             max_ms_latency For more information, see the description of this variable at the \
+             beginning of the file."
+        );
+    }
+
+    #[test]
+    fn absolute_fback_rejects_negative() {
+        let topo = get_topol(Some(1), 50, None);
+        let err = base_builder(topo)
+            .max_ms_latency(100.0)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(-0.1)
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be greater than zero");
+    }
+
+    #[test]
+    fn absolute_fback_rejects_nan_and_inf() {
+        let topo = get_topol(Some(1), 50, None);
+
+        let err_nan = base_builder(topo.clone())
+            .max_ms_latency(100.0)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(f64::NAN)
+            .build()
+            .unwrap_err();
+        assert_eq!(err_nan, "all f64 variables must be is_normal()");
+
+        let err_inf = base_builder(topo)
+            .max_ms_latency(100.0)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(0.5)
+            .maximum_packet_delay_absolute_fback(f64::INFINITY)
+            .build()
+            .unwrap_err();
+        assert_eq!(err_inf, "all f64 variables must be is_normal()");
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ combined scenarios – both parameters at boundaries                         │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn both_fback_parameters_at_maximum() {
+        let topo = get_topol(Some(1), 50, None);
+        let p = base_builder(topo)
+            .max_ms_latency(100.0)
+            .overhead_network_latency_relative_window_coefficient(0.2)
+            .maximum_packet_delay_fback_coefficient(1.0)
+            .maximum_packet_delay_absolute_fback(100.0)
+            .build()
+            .unwrap();
+        assert_eq!(p.maximum_packet_delay_fback_coefficient(), 1.0);
+        assert_eq!(p.maximum_packet_delay_absolute_fback(), 100.0);
+    }
+
+    #[test]
+    fn fback_works_with_different_max_latency() {
+        let topo = get_topol(Some(1), 50, None);
+        let small_max = 110.0;
+
+        let p = base_builder(topo)
+            .max_ms_latency(small_max)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(30)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(10)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "measurement window = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
-        );
+            .maximum_packet_delay_absolute_fback(8.0)
+            .build()
+            .unwrap();
+        assert_eq!(p.max_ms_latency(), small_max);
+        assert_eq!(p.maximum_packet_delay_absolute_fback(), 8.0);
     }
 }
 
 #[cfg(test)]
 mod tests_adaptation_coefficients {
     use super::*;
-    #[test]
-    fn test_all_coefficients_with_valid_values() {
-        let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+    // compact builder for coefficient testing – only latency_increase and overhead are
+    // relevant. all other fields set to minimal valid values.
+    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+        WsConnectParamBuilder::new(topo)
             .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
             .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.3) // changed from default 0.2
-            .maximum_packet_delay_fback_coefficient(0.8)
+            .max_num_attempts_resend_package(3)
+            .packages_measurement_window_size_determining_latency(10)
             .maximum_packet_delay_absolute_fback(80.0)
+            .maximum_length_udp_queue_packages(100)
+            .maximum_length_fback_queue_packages(20)
+            .maximum_length_queue_unconfirmed_packages(60)
             .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "all coefficients with valid values should be accepted"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.latency_increase_coefficient(), 0.5);
-        assert_eq!(
-            param.overhead_network_latency_relative_window_coefficient(),
-            0.3
-        );
-        assert_eq!(
-            param.packages_measurement_window_size_determining_latency(),
-            10
-        );
+            .instant_feedback_on_packet_loss(false)
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ latency_increase_coefficient – range (0,1] plus NaN/inf checks            │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_latency_increase_coefficient_at_minimum_valid() {
+    fn latency_increase_valid_range() {
         let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(f64::MIN_POSITIVE) // smallest positive f64
-            .overhead_network_latency_relative_window_coefficient(0.2) // unchanged default
+        // min positive
+        let p = base_builder(topo.clone())
+            .latency_increase_coefficient(f64::MIN_POSITIVE)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap();
+        assert_eq!(p.latency_increase_coefficient(), f64::MIN_POSITIVE);
 
-        assert!(
-            result.is_ok(),
-            "latency_increase_coefficient at minimum positive should be valid"
-        );
-    }
-
-    #[test]
-    fn test_latency_increase_coefficient_at_maximum_valid() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        // max = 1.0
+        let p = base_builder(topo.clone())
             .latency_increase_coefficient(1.0)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "latency_increase_coefficient = 1.0 should be valid"
-        );
+            .build()
+            .unwrap();
+        assert_eq!(p.latency_increase_coefficient(), 1.0);
     }
 
     #[test]
-    fn test_latency_increase_coefficient_zero_error() {
+    fn latency_increase_rejects_zero() {
         let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.0) // invalid
-            .overhead_network_latency_relative_window_coefficient(0.2)
+        let err = base_builder(topo)
+            .latency_increase_coefficient(0.0)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "latency_increase_coefficient = 0.0 should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be is_normal()");
     }
 
     #[test]
-    fn test_latency_increase_coefficient_negative_error() {
+    fn latency_increase_rejects_negative() {
         let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(-0.1) // invalid
-            .overhead_network_latency_relative_window_coefficient(0.2)
+        let err = base_builder(topo)
+            .latency_increase_coefficient(-0.1)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "latency_increase_coefficient negative should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be greater than zero"
-        );
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be greater than zero");
     }
 
     #[test]
-    fn test_latency_increase_coefficient_greater_than_one_error() {
+    fn latency_increase_rejects_above_one() {
         let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(1.1) // invalid (>1.0)
-            .overhead_network_latency_relative_window_coefficient(0.2)
+        let err = base_builder(topo)
+            .latency_increase_coefficient(1.1)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "latency_increase_coefficient > 1.0 should error"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
              maximum_packet_delay_fback_coefficient must be greater than zero"
         );
     }
 
     #[test]
-    fn test_latency_increase_coefficient_nan_error() {
+    fn latency_increase_rejects_nan_and_inf() {
         let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        let err_nan = base_builder(topo.clone())
             .latency_increase_coefficient(f64::NAN)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err_nan, "all f64 variables must be is_normal()");
 
-        assert!(
-            result.is_err(),
-            "latency_increase_coefficient NaN should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
-        );
-    }
-
-    #[test]
-    fn test_latency_increase_coefficient_infinite_error() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        let err_inf = base_builder(topo)
             .latency_increase_coefficient(f64::INFINITY)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
+            .build()
+            .unwrap_err();
+        assert_eq!(err_inf, "all f64 variables must be is_normal()");
+    }
 
-        assert!(
-            result.is_err(),
-            "latency_increase_coefficient infinite should error"
-        );
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ overhead_network_latency_relative_window_coefficient – range [ε,1]        │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn overhead_coefficient_valid_range() {
+        let topo = get_topol(Some(2), 50, None);
+
+        // very small positive
+        let p = base_builder(topo.clone())
+            .latency_increase_coefficient(0.5)
+            .maximum_packet_delay_fback_coefficient(0.8)
+            .overhead_network_latency_relative_window_coefficient(0.00001)
+            .build()
+            .unwrap();
         assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be is_normal()"
+            p.overhead_network_latency_relative_window_coefficient(),
+            0.00001
         );
-    }
 
-    #[test]
-    fn test_overhead_coefficient_at_minimum_valid() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        // max = 1.0
+        let p = base_builder(topo.clone())
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.00001) // very small positive
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "overhead_network_latency_relative_window_coefficient = 0.00001 should be valid"
-        );
-    }
-
-    #[test]
-    fn test_overhead_coefficient_at_maximum_valid() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(1.0) // max allowed
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "overhead_network_latency_relative_window_coefficient = 1.0 should be valid"
-        );
-    }
-
-    #[test]
-    fn test_overhead_coefficient_negative_error() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(-0.1) // invalid
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "overhead_network_latency_relative_window_coefficient negative should error"
-        );
+            .overhead_network_latency_relative_window_coefficient(1.0)
+            .build()
+            .unwrap();
         assert_eq!(
-            result.err().unwrap(),
-            "all f64 variables must be greater than zero"
+            p.overhead_network_latency_relative_window_coefficient(),
+            1.0
         );
     }
 
     #[test]
-    fn test_overhead_coefficient_greater_than_one_error() {
+    fn overhead_coefficient_rejects_negative() {
         let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        let err = base_builder(topo)
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(1.1) // >1.0 invalid
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
+            .overhead_network_latency_relative_window_coefficient(-0.1)
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all f64 variables must be greater than zero");
+    }
 
-        assert!(
-            result.is_err(),
-            "overhead_network_latency_relative_window_coefficient > 1.0 should error"
-        );
+    #[test]
+    fn overhead_coefficient_rejects_above_one() {
+        let topo = get_topol(Some(2), 50, None);
+        let err = base_builder(topo)
+            .latency_increase_coefficient(0.5)
+            .maximum_packet_delay_fback_coefficient(0.8)
+            .overhead_network_latency_relative_window_coefficient(1.1)
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
              maximum_packet_delay_fback_coefficient must be greater than zero"
         );
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ packages_measurement_window_size_determining_latency – usize > 0          │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_packages_measurement_window_minimum_valid() {
+    fn measurement_window_accepts_positive() {
         let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(1) // minimum
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        let p = base_builder(topo.clone())
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
+            .packages_measurement_window_size_determining_latency(1)
+            .build()
+            .unwrap();
+        assert_eq!(p.packages_measurement_window_size_determining_latency(), 1);
 
-        assert!(
-            result.is_ok(),
-            "packages_measurement_window_size_determining_latency = 1 should be valid"
-        );
-    }
-
-    #[test]
-    fn test_packages_measurement_window_large_valid() {
-        let topo = get_topol(Some(2), 50, None); // counter 2 bytes = max capacity ~32767
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(1000) // large but within capacity
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+        let p = base_builder(topo)
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "packages_measurement_window_size_determining_latency large should be valid"
-        );
-    }
-
-    #[test]
-    fn test_packages_measurement_window_zero_error() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(0) // invalid
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "packages_measurement_window_size_determining_latency = 0 should error"
-        );
+            .packages_measurement_window_size_determining_latency(1000)
+            .build()
+            .unwrap();
         assert_eq!(
-            result.err().unwrap(),
-            "all usize variables must be greater than zero"
+            p.packages_measurement_window_size_determining_latency(),
+            1000
         );
     }
 
     #[test]
-    fn test_packages_measurement_window_with_small_counter_capacity() {
-        // Create topology with 1-byte counter (max capacity ~127)
-        let topo = get_topol(Some(1), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(50) // within 1-byte capacity
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
+    fn measurement_window_rejects_zero() {
+        let topo = get_topol(Some(2), 50, None);
+        let err = base_builder(topo)
             .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "packages_measurement_window_size_determining_latency within 1-byte counter capacity \
-             should be valid"
-        );
+            .packages_measurement_window_size_determining_latency(0)
+            .build()
+            .unwrap_err();
+        assert_eq!(err, "all usize variables must be greater than zero");
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ combination tests – verify multiple coefficients together                 │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_all_coefficients_at_boundary_values() {
+    fn multiple_coefficients_work_together() {
         let topo = get_topol(Some(2), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(1.0) // max
-            .overhead_network_latency_relative_window_coefficient(0.0000001) // min positive
-            .maximum_packet_delay_fback_coefficient(0.8) // unchanged
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "all coefficients at boundary values should be valid"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.latency_increase_coefficient(), 1.0);
-        assert_eq!(
-            param.overhead_network_latency_relative_window_coefficient(),
-            0.0000001
-        );
-    }
-
-    #[test]
-    fn test_combination_of_all_coefficients_mid_range() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.3) // mid-range
-            .overhead_network_latency_relative_window_coefficient(0.7) // mid-range
+        let p = base_builder(topo.clone())
+            .latency_increase_coefficient(0.3)
+            .overhead_network_latency_relative_window_coefficient(0.7)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "combination of mid-range coefficients should be valid"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.latency_increase_coefficient(), 0.3);
+            .build()
+            .unwrap();
+        assert_eq!(p.latency_increase_coefficient(), 0.3);
         assert_eq!(
-            param.overhead_network_latency_relative_window_coefficient(),
+            p.overhead_network_latency_relative_window_coefficient(),
             0.7
         );
-        assert_eq!(
-            param.packages_measurement_window_size_determining_latency(),
-            10
-        );
-    }
+        assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.8);
 
-    #[test]
-    fn test_packages_measurement_window_with_very_large_counter() {
-        // Create topology with 8-byte counter (max capacity huge)
-        let topo = get_topol(Some(8), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(100000) // very large
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
+        let p = base_builder(topo)
+            .latency_increase_coefficient(1.0)
+            .overhead_network_latency_relative_window_coefficient(0.0000001)
             .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "packages_measurement_window_size_determining_latency with large counter should be \
-             valid"
-        );
-    }
-
-    #[test]
-    fn test_error_message_for_coefficient_greater_than_one() {
-        let topo = get_topol(Some(2), 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(2.0) // >1.0
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err());
+            .build()
+            .unwrap();
+        assert_eq!(p.latency_increase_coefficient(), 1.0);
         assert_eq!(
-            result.err().unwrap(),
-            "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
-             maximum_packet_delay_fback_coefficient must be greater than zero"
+            p.overhead_network_latency_relative_window_coefficient(),
+            0.0000001
         );
     }
 }
@@ -3213,85 +2250,42 @@ mod tests_adaptation_coefficients {
 mod tests_from_group {
     use super::*;
 
-    #[test]
-    fn test_mtu_greater_than_minimal_packet_length() {
-        let topo = get_topol(Some(1), 50, None); // minimal length = 50
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
+    // compact builder with only mtu-related parameters.
+    // all other fields are set to minimal valid values needed to satisfy the constructor.
+    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+        WsConnectParamBuilder::new(topo)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
             .start_ms_latency(50.0)
             .latency_increase_coefficient(0.5)
+            .max_num_attempts_resend_package(3)
+            .packages_measurement_window_size_determining_latency(10)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
             .maximum_packet_delay_absolute_fback(80.0)
+            .maximum_length_udp_queue_packages(100)
+            .maximum_length_fback_queue_packages(20)
+            .maximum_length_queue_unconfirmed_packages(60)
             .max_len_file(None)
-            .build();
+            .instant_feedback_on_packet_loss(false)
+    }
 
-        assert!(result.is_ok(), "mtu > total_minimal_len should be valid");
-        assert_eq!(result.as_ref().unwrap().mtu(), 1500);
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ mtu validation – all checks related to mtu vs total_minimal_len          │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn mtu_greater_than_minimal_succeeds() {
+        let topo = get_topol(Some(1), 50, None);
+        let param = base_builder(topo).mtu(1500).build().unwrap();
+        assert_eq!(param.mtu(), 1500);
     }
 
     #[test]
-    fn test_mtu_significantly_larger_than_minimal_length() {
-        let topo = get_topol(Some(1), 1000, None); // minimal length = 1000
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "mtu should be accepted when larger than total_minimal_len"
-        );
-    }
-
-    #[test]
-    fn test_mtu_equal_to_minimal_packet_length_error() {
-        let topo = get_topol(Some(1), 100, None); // minimal length = 100
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(100)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "mtu == total_minimal_len should error");
+    fn mtu_equal_to_minimal_fails() {
+        let topo = get_topol(Some(1), 100, None);
+        let err = base_builder(topo).mtu(100).build().unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
              pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
              minimum packet length, such a packet contains only protocol service information, mtu \
@@ -3301,30 +2295,11 @@ mod tests_from_group {
     }
 
     #[test]
-    fn test_mtu_less_than_minimal_packet_length_error() {
-        let topo = get_topol(Some(1), 500, None); // minimal length = 500
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(300)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "mtu < total_minimal_len should error");
+    fn mtu_less_than_minimal_fails() {
+        let topo = get_topol(Some(1), 500, None);
+        let err = base_builder(topo).mtu(300).build().unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
              pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
              minimum packet length, such a packet contains only protocol service information, mtu \
@@ -3334,827 +2309,286 @@ mod tests_from_group {
     }
 
     #[test]
-    fn test_mtu_minimum_valid_value() {
-        let topo = get_topol(Some(1), 100, None); // minimal length = 100
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(101) // just 1 more than minimal
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "mtu = total_minimal_len + 1 should be valid"
-        );
-        assert_eq!(result.unwrap().mtu(), 101);
+    fn mtu_boundary_works() {
+        let topo = get_topol(Some(1), 100, None);
+        let param = base_builder(topo).mtu(101).build().unwrap();
+        assert_eq!(param.mtu(), 101);
     }
 
     #[test]
-    fn test_mtu_large_value_valid() {
-        let topo = get_topol(Some(1), 50, None); // minimal length = 50
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(65535)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "large mtu value should be valid");
-        assert_eq!(result.unwrap().mtu(), 65535);
+    fn mtu_large_value_accepted() {
+        let topo = get_topol(Some(1), 50, None);
+        let param = base_builder(topo).mtu(65535).build().unwrap();
+        assert_eq!(param.mtu(), 65535);
     }
 
     #[test]
-    fn test_pack_topology_without_counter_slice_error() {
-        // Create topology without counter (ctr_byte_len = None)
-        let topo = get_topol(None, 50, None);
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "pack_topology without counter_slice should error"
-        );
-        assert_eq!(
-            result.err().unwrap(),
-            "The counter_slice() field in pack_topology is None, but it must be specified!"
-        );
-    }
-
-    #[test]
-    fn test_pack_topology_with_counter_slice_valid() {
-        let topo = get_topol(Some(1), 50, None); // Has counter slice
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "pack_topology with counter_slice should be valid"
-        );
-    }
-
-    #[test]
-    fn test_different_minimal_lengths_with_proportional_mtu() {
-        // Test various minimal lengths with proportional MTUs
-        let test_cases = vec![
-            (10, 100),   // minimal=10, mtu=100 (10x)
-            (100, 1500), // minimal=100, mtu=1500 (15x)
-            (500, 2000), // minimal=500, mtu=2000 (4x)
-        ];
-
-        for (min_len, mtu) in test_cases {
+    fn mtu_with_various_minimal_lengths() {
+        let cases = [(10, 100), (100, 1500), (500, 2000)];
+        for (min_len, mtu) in cases {
             let topo = get_topol(Some(1), min_len, None);
-
-            let result = WsConnectParamBuilder::new(topo.clone())
-                .mtu(mtu)
-                .instant_feedback_on_packet_loss(false)
-                .packages_measurement_window_size_determining_latency(10)
-                .maximum_length_udp_queue_packages(100)
-                .maximum_length_fback_queue_packages(20)
-                .maximum_length_queue_unconfirmed_packages(60)
-                .max_num_attempts_resend_package(3)
-                .max_ms_latency(100.0)
-                .min_ms_latency(10.0)
-                .start_ms_latency(50.0)
-                .latency_increase_coefficient(0.5)
-                .overhead_network_latency_relative_window_coefficient(0.2)
-                .maximum_packet_delay_fback_coefficient(0.8)
-                .maximum_packet_delay_absolute_fback(80.0)
-                .max_len_file(None)
-                .build();
-
-            assert!(
-                result.is_ok(),
-                "mtu={} should be valid for minimal_len={}",
-                mtu,
-                min_len
-            );
-            let param = result.unwrap();
+            let param = base_builder(topo).mtu(mtu).build().unwrap();
             assert_eq!(param.mtu(), mtu);
             assert_eq!(param.pack_topology().total_minimal_len(), min_len);
         }
     }
 
     #[test]
-    fn test_mtu_zero_error_but_not_from_group1() {
-        // Note: mtu=0 would fail the general usize > 0 check, but here we test mtu < minimal_len.
-        // With minimal_len = 50 and mtu = 40, we expect the specific mtu < minimal_len error.
-        let topo = get_topol(Some(1), 50, None);
+    fn mtu_with_minimal_len_one() {
+        let topo = get_topol(Some(1), 1, None);
+        let param = base_builder(topo).mtu(2).build().unwrap();
+        assert_eq!(param.mtu(), 2);
+    }
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(40) // less than minimal_len (50)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_err(), "mtu=40 (<50) should error");
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ counter_slice validation – required for queue parameters                  │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn counter_slice_absent_fails() {
+        let topo = get_topol(None, 50, None);
+        let err = base_builder(topo).mtu(1500).build().unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
-            "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
-             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
-             minimum packet length, such a packet contains only protocol service information, mtu \
-             must be large enough to accommodate the length of the packet's useful data and \
-             service data."
+            err,
+            "The counter_slice() field in pack_topology is None, but it must be specified!"
         );
     }
 
     #[test]
-    fn test_mtu_one_when_minimal_length_zero() {
-        // Edge case: if total_minimal_len were 0, mtu=1 would be valid.
-        // Since get_topol doesn't allow total_min_len=0, we use the smallest possible.
-        let topo = get_topol(Some(1), 1, None); // minimal length = 1
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(2) // just 1 more than minimal
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build();
-
-        assert!(result.is_ok(), "mtu=2 should be valid when minimal_len=1");
-    }
-
-    #[test]
-    fn test_getters_return_correct_values_for_group1() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .mtu(1500)
-            .instant_feedback_on_packet_loss(false)
-            .packages_measurement_window_size_determining_latency(10)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .max_len_file(None)
-            .build()
-            .unwrap();
-
-        // Verify getters return the values we passed
-        assert_eq!(result.mtu(), 1500);
-        assert_eq!(result.pack_topology().total_minimal_len(), 50);
+    fn counter_slice_present_succeeds() {
+        let topo = get_topol(Some(1), 50, None);
+        assert!(base_builder(topo).mtu(1500).build().is_ok());
     }
 }
+
 #[cfg(test)]
 mod tests_mt1 {
     use super::*;
 
-    // Tests rewritten to use the modern WsConnectParamBuilder (2026 style).
-    // The helper create_valid_base_params is removed; all mandatory fields are set
-    // explicitly. Base parameters (mtu, instant_feedback, measurement window, queue
-    // sizes, attempts, latencies, coefficients) are set to the same values as before
-    // (1500, false, 10, 100, 20, 60, 3, 100.0, 10.0, 50.0, 0.5, 0.2, 0.8, 80.0) unless
-    // the test specifically changes a value. The optional field max_len_file is handled
-    // via builder methods.
+    // compact builder tests – only parameters relevant to error detection are varied.
+    // all other fields are set to the minimal valid values needed to construct the base
+    // object.
 
-    #[test]
-    fn test_instant_feedback_flag_true() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(true)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1))
-            .max_len_file(None)
+    // base valid configuration (used as foundation for all tests)
+    fn base_builder(topo: PackTopology) -> WsConnectParamBuilder {
+        WsConnectParamBuilder::new(topo)
             .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
             .max_ms_latency(100.0)
             .min_ms_latency(10.0)
             .start_ms_latency(50.0)
             .latency_increase_coefficient(0.5)
+            .max_num_attempts_resend_package(3)
+            .packages_measurement_window_size_determining_latency(10)
             .overhead_network_latency_relative_window_coefficient(0.2)
             .maximum_packet_delay_fback_coefficient(0.8)
             .maximum_packet_delay_absolute_fback(80.0)
-            .build();
+            .maximum_length_udp_queue_packages(100)
+            .maximum_length_fback_queue_packages(20)
+            .maximum_length_queue_unconfirmed_packages(60)
+            .max_len_file(None)
+            .instant_feedback_on_packet_loss(false)
+    }
 
-        assert!(
-            result.is_ok(),
-            "instant_feedback_on_packet_loss = true should be valid"
-        );
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ ttl behavior – all ttl-related validations                                │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn ttl_absent_is_always_ok() {
+        let topo_with_ttl = get_topol(Some(1), 50, Some(1));
+        let topo_without_ttl = get_topol(Some(1), 50, None);
+
+        // ttl not set → always valid, regardless of topology
+        assert!(base_builder(topo_with_ttl.clone()).build().is_ok());
+        assert!(base_builder(topo_without_ttl).build().is_ok());
         assert_eq!(
-            result.as_ref().unwrap().instant_feedback_on_packet_loss(),
-            true
+            base_builder(topo_with_ttl)
+                .build()
+                .unwrap()
+                .ttl_max_start_cost(),
+            None
         );
     }
 
     #[test]
-    fn test_instant_feedback_flag_false1() {
-        let topo = get_topol(Some(1), 50, Some(1));
+    fn ttl_present_requires_topology_ttl() {
+        let topo_with_ttl = get_topol(Some(1), 50, Some(1));
+        let topo_without_ttl = get_topol(Some(1), 50, None);
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
+        // ttl specified → must have ttl in topology
+        assert!(
+            base_builder(topo_with_ttl.clone())
+                .ttl_max_start_cost((255, 128, -1))
+                .build()
+                .is_ok()
+        );
+
+        let err = base_builder(topo_without_ttl)
             .ttl_max_start_cost((255, 128, -1))
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "instant_feedback_on_packet_loss = false should be valid"
-        );
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.as_ref().unwrap().instant_feedback_on_packet_loss(),
-            false
-        );
-    }
-
-    #[test]
-    fn test_ttl_none_when_topology_has_ttl1() {
-        let topo = get_topol(Some(1), 50, Some(1)); // topology has TTL
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build(); // ttl left at default (None)
-
-        assert!(
-            result.is_ok(),
-            "ttl_max_start_cost = None should be valid when topology has TTL"
-        );
-        assert_eq!(result.unwrap().ttl_max_start_cost(), None);
-    }
-
-    #[test]
-    fn test_ttl_none_when_topology_no_ttl1() {
-        let topo = get_topol(Some(1), 50, None); // topology has NO TTL
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "ttl_max_start_cost = None should be valid when topology has no TTL"
-        );
-    }
-
-    #[test]
-    fn test_ttl_some_when_topology_has_ttl_valid_values1() {
-        let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1))
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(
-            result.is_ok(),
-            "valid ttl_max_start_cost should be accepted when topology has TTL"
-        );
-        assert_eq!(result.unwrap().ttl_max_start_cost(), Some((255, 128, -1)));
-    }
-
-    #[test]
-    fn test_ttl_some_when_topology_no_ttl_error1() {
-        let topo = get_topol(Some(1), 50, None); // topology has NO TTL
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1)) // ttl specified
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(
-            result.is_err(),
-            "ttl_max_start_cost = Some should error when topology has no TTL"
-        );
-        assert_eq!(
-            result.err().unwrap(),
+            err,
             "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field \
              is None."
         );
     }
 
     #[test]
-    fn test_ttl_start_greater_than_max_error1() {
+    fn ttl_max_vs_start_ordering() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((100, 200, -1)) // start > max
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_err(), "ttl start > max should error");
+        // start > max → error
+        let err = base_builder(topo.clone())
+            .ttl_max_start_cost((100, 200, -1))
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
              value. For more information, see the description of this variable at the beginning \
              of the file."
         );
-    }
 
-    #[test]
-    fn test_ttl_start_equal_to_max_valid() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 255, -1)) // start == max
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_ok(), "ttl start == max should be valid");
-        assert_eq!(result.unwrap().ttl_max_start_cost(), Some((255, 255, -1)));
-    }
-
-    #[test]
-    fn test_ttl_max_zero_error() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((0, 0, -1)) // max = 0
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_err(), "ttl max = 0 should error");
-        assert_eq!(
-            result.err().unwrap(),
-            "ttl_max_start_cost.0 must be greater than zero. For more information, see the \
-             description of this variable at the beginning of the file."
+        // start == max → allowed (code uses <, not <=)
+        assert!(
+            base_builder(topo.clone())
+                .ttl_max_start_cost((255, 255, -1))
+                .build()
+                .is_ok()
         );
     }
 
     #[test]
-    fn test_ttl_start_zero_error() {
+    fn ttl_zero_values_rejected() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((254, 0, -1)) // start = 0
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_err(), "ttl start = 0 should error");
+        // max = 0 → error
+        let err = base_builder(topo.clone())
+            .ttl_max_start_cost((0, 0, -1))
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
+            "ttl_max_start_cost.0 must be greater than zero. For more information, see the \
+             description of this variable at the beginning of the file."
+        );
+
+        // start = 0 → error
+        let err = base_builder(topo.clone())
+            .ttl_max_start_cost((254, 0, -1))
+            .build()
+            .unwrap_err();
+        assert_eq!(
+            err,
             "ttl_max_start_cost.1 must be greater than zero. For more information, see the \
              description of this variable at the beginning of the file."
         );
     }
 
     #[test]
-    fn test_ttl_start_exceeds_capacity_error() {
-        let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
+    fn ttl_start_exceeds_capacity() {
+        let topo = get_topol(Some(1), 50, Some(1)); // 1‑byte ttl → max 255
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((300, 256, -1)) // start = 256 exceeds 1-byte capacity
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_err(), "ttl start exceeds capacity should error");
+        let err = base_builder(topo)
+            .ttl_max_start_cost((300, 256, -1))
+            .build()
+            .unwrap_err();
         assert_eq!(
-            result.err().unwrap(),
+            err,
             "ttl_max_start_cost.1 is greater than the length that can be accommodated in the \
              pack_topology field."
         );
     }
 
     #[test]
-    fn test_ttl_start_at_capacity_non_boundary_valid() {
-        let topo = get_topol(Some(1), 50, Some(1)); // 1 byte TTL, max capacity = 255
+    fn ttl_cost_variants_accepted() {
+        let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((200, 100, -1000))
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
+        // positive, zero, negative – all allowed
         assert!(
-            result.is_ok(),
-            "ttl start at capacity boundary should be valid"
+            base_builder(topo.clone())
+                .ttl_max_start_cost((255, 128, 1))
+                .build()
+                .is_ok()
+        );
+        assert!(
+            base_builder(topo.clone())
+                .ttl_max_start_cost((255, 128, 0))
+                .build()
+                .is_ok()
+        );
+        assert!(
+            base_builder(topo.clone())
+                .ttl_max_start_cost((255, 128, -1))
+                .build()
+                .is_ok()
         );
     }
 
     #[test]
-    fn test_ttl_cost_positive_valid() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, 1)) // cost = +1
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_ok(), "ttl cost can be positive");
-        assert_eq!(result.unwrap().ttl_max_start_cost(), Some((255, 128, 1)));
-    }
-
-    #[test]
-    fn test_ttl_cost_zero_valid() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, 0)) // cost = 0
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_ok(), "ttl cost = 0 should be valid");
-        assert_eq!(result.unwrap().ttl_max_start_cost(), Some((255, 128, 0)));
-    }
-
-    #[test]
-    fn test_ttl_cost_negative_valid() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1)) // cost = -1
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_ok(), "ttl cost negative should be valid");
-    }
-
-    #[test]
-    fn test_ttl_with_larger_byte_length() {
-        // Test with 2-byte TTL field (capacity = 65535)
+    fn ttl_with_larger_byte_capacity() {
+        // 2‑byte ttl field → capacity up to 65535
         let topo = get_topol(Some(1), 50, Some(2));
+        assert!(
+            base_builder(topo)
+                .ttl_max_start_cost((65535, 32768, -1))
+                .build()
+                .is_ok()
+        );
+    }
 
-        let result = WsConnectParamBuilder::new(topo.clone())
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ instant_feedback – boolean field, no extra validation                     │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn instant_feedback_accepts_both_values() {
+        let topo = get_topol(Some(1), 50, Some(1));
+
+        let true_val = base_builder(topo.clone())
+            .instant_feedback_on_packet_loss(true)
+            .build()
+            .unwrap();
+        assert!(true_val.instant_feedback_on_packet_loss());
+
+        let false_val = base_builder(topo)
             .instant_feedback_on_packet_loss(false)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((65535, 32768, -1)) // max capacity for 2 bytes
-            .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(result.is_ok(), "ttl with 2-byte field should work");
+            .build()
+            .unwrap();
+        assert!(!false_val.instant_feedback_on_packet_loss());
     }
 
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ max_len_file – optional field, no validation                              │
+    // └────────────────────────────────────────────────────────────────────────────┘
     #[test]
-    fn test_ttl_instant_feedback_combination() {
+    fn max_len_file_accepts_none_and_some() {
         let topo = get_topol(Some(1), 50, Some(1));
 
-        let result = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(true)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1))
+        let none_val = base_builder(topo.clone())
             .max_len_file(None)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
+            .build()
+            .unwrap();
+        assert_eq!(none_val.max_len_file(), None);
 
-        assert!(
-            result.is_ok(),
-            "combination of ttl and instant_feedback should be valid"
-        );
-        let param = result.unwrap();
-        assert_eq!(param.instant_feedback_on_packet_loss(), true);
+        let some_val = base_builder(topo).max_len_file_value(1000).build().unwrap();
+        assert_eq!(some_val.max_len_file(), Some(1000));
+    }
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ combined scenario – both fields used together                             │
+    // └────────────────────────────────────────────────────────────────────────────┘
+    #[test]
+    fn ttl_and_instant_feedback_can_be_combined() {
+        let topo = get_topol(Some(1), 50, Some(1));
+
+        let param = base_builder(topo)
+            .instant_feedback_on_packet_loss(true)
+            .ttl_max_start_cost((255, 128, -1))
+            .max_len_file_value(2048)
+            .build()
+            .unwrap();
+
+        assert!(param.instant_feedback_on_packet_loss());
         assert_eq!(param.ttl_max_start_cost(), Some((255, 128, -1)));
-    }
-
-    #[test]
-    fn max_len_file() {
-        let topo = get_topol(Some(1), 50, Some(1));
-
-        // Test with max_len_file = None (default overridden to None)
-        let result1 = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(true)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1))
-            .max_len_file(None) // explicitly set to None
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        // Test with max_len_file = Some(1000)
-        let result1000 = WsConnectParamBuilder::new(topo.clone())
-            .instant_feedback_on_packet_loss(true)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_num_attempts_resend_package(3)
-            .ttl_max_start_cost((255, 128, -1))
-            .max_len_file_value(1000) // sets Some(1000)
-            .mtu(1500)
-            .packages_measurement_window_size_determining_latency(10)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .build();
-
-        assert!(
-            result1.is_ok(),
-            "combination of ttl and instant_feedback should be valid"
-        );
-        assert!(
-            result1000.is_ok(),
-            "combination of ttl and instant_feedback should be valid"
-        );
-        let param1 = result1.unwrap();
-        let param1000 = result1000.unwrap();
-        assert_eq!(param1.max_len_file(), None);
-        assert_eq!(param1000.max_len_file(), Some(1000));
+        assert_eq!(param.max_len_file(), Some(2048));
     }
 }
