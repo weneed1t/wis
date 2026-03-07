@@ -24,7 +24,9 @@ pub struct WsConnectParam {
     percent_fake_fback_packets: Option<f64>,
     percent_len_random_coefficient: Option<f64>,
     instant_feedback_on_packet_loss: bool,
+    ctr_max_capacity_real: u64,
     max_len_file: Option<usize>,
+    intermediate_questionable_packages_queue: Option<usize>,
 }
 
 impl WsConnectParam {
@@ -51,6 +53,7 @@ impl WsConnectParam {
         percent_fake_fback_packets: Option<f64>,
         percent_len_random_coefficient: Option<f64>,
         max_len_file: Option<usize>,
+        intermediate_questionable_packages_queue: Option<usize>,
     ) -> Result<Self, &'static str> {
         if pack_topology.total_minimal_len() >= mtu {
             return Err(
@@ -123,8 +126,7 @@ impl WsConnectParam {
                 );
             }
         }
-
-        {
+        let ctr_max_capacity_real = {
             let ctr_max_capacity = wutils::len_byte_maximal_capacity_check(
                 pack_topology
                     .counter_slice()
@@ -179,7 +181,8 @@ impl WsConnectParam {
                      capacity in pack_topology.counter_slice().",
                 );
             }
-        }
+            ctr_max_capacity_real
+        };
 
         if maximum_packet_delay_absolute_fback > max_ms_latency {
             return Err(
@@ -249,6 +252,29 @@ impl WsConnectParam {
             return Err("percent_len_random_coefficient must be in the range from (0.0 to 1.0]");
         }
 
+        if let Some(xxx) = intermediate_questionable_packages_queue {
+            if xxx == 0 {
+                return Err(
+                    "intermediate_questionable_packages_queue is Some(0), but Some(the value must \
+                     be greater than zero) ",
+                );
+            }
+
+            if xxx > u64::MAX as usize {
+                return Err(
+                    "Some( intermediate_questionable_packages_queue) > u64::MAX as usize, Some( \
+                     intermediate_questionable_packages_queue) capacity exceeds system's u64 limit",
+                );
+            }
+
+            if ctr_max_capacity_real < xxx as u64 {
+                return Err("Some(intermediate_questionable_packages_queue) > \
+                            ctr_max_capacity_real, The maximum value that the counter field in \
+                            the packet topology can hold must be GREATER than \
+                            intermediate_questionable_packages_queue.");
+            }
+        }
+
         Ok(Self {
             pack_topology: pack_topology.clone(), //
             /**/
@@ -273,10 +299,11 @@ impl WsConnectParam {
             /**/
             percent_fake_data_packets,  //
             percent_fake_fback_packets, //
-
+            ctr_max_capacity_real,
             instant_feedback_on_packet_loss,
             percent_len_random_coefficient,
             max_len_file,
+            intermediate_questionable_packages_queue,
         })
     }
 }
@@ -293,6 +320,20 @@ impl WsConnectParam {
 
     pub fn max_ms_latency(&self) -> f64 {
         self.max_ms_latency
+    }
+
+    pub fn intermediate_questionable_packages_queue(&self) -> Option<usize> {
+        self.intermediate_questionable_packages_queue
+    }
+    ///  ctr_max_capacity_real shows how many unique values</br> the counter can hold
+    /// without</br>  collisions, needed for the upper limit of size,</br>
+    ///  maximum_length_udp_queue_packages,</br>
+    ///  maximum_length_queue_unconfirmed_packages,</br>
+    ///  maximum_length_fback_queue_packages,</br>
+    ///  max_num_attempts_resend_package,</br>
+    ///  intermediate_questionable_packages_queue</br>
+    pub fn ctr_max_capacity_real(&self) -> u64 {
+        self.ctr_max_capacity_real
     }
 
     pub fn min_ms_latency(&self) -> f64 {
@@ -394,6 +435,7 @@ pub struct WsConnectParamBuilder {
     percent_fake_data_packets: Option<Option<f64>>,
     percent_fake_fback_packets: Option<Option<f64>>,
     percent_len_random_coefficient: Option<Option<f64>>,
+    intermediate_questionable_packages_queue: Option<usize>,
     max_len_file: Option<Option<usize>>, // default is Some(10*1024*1024)
 }
 
@@ -425,6 +467,7 @@ impl WsConnectParamBuilder {
             percent_fake_fback_packets: Some(None),
             percent_len_random_coefficient: Some(None),
             max_len_file: Some(Some(10 * 1024 * 1024)), // default Some(...)
+            intermediate_questionable_packages_queue: None,
         }
     }
 
@@ -660,6 +703,43 @@ impl WsConnectParamBuilder {
         self
     }
 
+    // Represents a queue for holding packets that cannot yet be decrypted due to key
+    // rotation. This type enforces the invariant that if the queue exists, its internal
+    // length must be greater than zero. The queue size is configured by the
+    // DoubtfulPacketsFounder during initialization.
+
+    /// Handles network instability scenarios where packets may be duplicated, reordered,
+    /// or lost. Specifically manages the transition between two encryption keys
+    /// during the connection handshake.
+    ///
+    /// Connection Lifecycle:
+    /// 1. Initial Connection: Established using the first symmetric key (Key #1).
+    /// 2. Key Exchange: Immediately after connection, an asymmetric procedure generates
+    ///    the second secret key (Key #2).
+    /// 3. Rotation: All subsequent packets (counter > threshold, e.g., 20) are encrypted
+    ///    with Key #2.
+    ///
+    /// Reordering Scenario:
+    /// In unstable networks, packets encrypted with Key #2 (e.g., counters 30, 50) may
+    /// arrive before the final batch of packets encrypted with Key #1 (e.g., counters
+    /// 1-20).
+    ///
+    /// Queue Logic:
+    /// - If this queue were empty (or null), late-arriving packets encrypted with Key #1
+    ///   would be dropped because the system would have already switched to Key #2,
+    ///   causing unnecessary retransmissions.
+    /// - Instead, packets with counters exceeding the current key's range are stored here
+    ///   temporarily.
+    /// - Once Key #2 is fully generated and active, this queue is processed:
+    ///   * Stored packets are decrypted using the appropriate key.
+    ///   * The queue is completely cleared to free memory.
+    pub fn intermediate_questionable_packages_queue(
+        mut self,
+        intermediate_questionable_packages_queue: Option<usize>,
+    ) -> Self {
+        self.intermediate_questionable_packages_queue = intermediate_questionable_packages_queue;
+        self
+    }
     // Special handling for max_len_file (default is Some(...))
     pub fn max_len_file(mut self, value: Option<usize>) -> Self {
         self.max_len_file = Some(value);
@@ -696,6 +776,9 @@ impl WsConnectParamBuilder {
         let percent_len_random_coefficient = self.percent_len_random_coefficient.unwrap_or(None);
         let max_len_file = self.max_len_file.unwrap_or(Some(10 * 1024 * 1024)); // final fallback
 
+        let intermediate_questionable_packages_queue =
+            self.intermediate_questionable_packages_queue;
+
         // Now call the original constructor
         WsConnectParam::new(
             &self.pack_topology,
@@ -718,6 +801,7 @@ impl WsConnectParamBuilder {
             percent_fake_fback_packets,
             percent_len_random_coefficient,
             max_len_file,
+            intermediate_questionable_packages_queue,
         )
     }
 }
