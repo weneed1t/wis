@@ -397,14 +397,19 @@ pub mod recv_queue {
         pub fn how_items_in_queue(&self) -> usize {
             self.in_queue
         }
+        ///last_ctr_ge returns the last counter that WAS set in get_queue
         pub fn last_ctr_get(&self) -> Option<u64> {
             self.last_give_ctr
         }
-
+        //get_largest_ctr returns the largest counter currently in the queue
         pub fn get_largest_ctr(&self) -> Option<u64> {
             self.largest_ctr
         }
-
+        ///gap_in_queue returns true if there is a gap in the queue,<br>
+        /// for example, if the queue contains packets:<br>
+        /// 11, 12, 13, and 15.<br>
+        /// If packet number 14 is missing, then there is a gap.<br>
+        /// if there are no packets in the queue, false is returned
         pub fn gap_in_queue(&self) -> bool {
             if self.in_queue > u64::MAX as usize {
                 panic!(
@@ -1498,13 +1503,29 @@ pub mod recv_queue {
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(8).unwrap();
             let eleme = 0.0;
             {
-                assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //1
-                assert_eq!(xx.gap_in_queue(), true);
-                assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //2
-                assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
-                assert_eq!(xx.gap_in_queue(), true);
-                assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
-                assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //5
+                {
+                    assert_eq!(xx.last_ctr_get(), None);
+                    assert_eq!(xx.how_items_in_queue(), 0);
+                    assert_eq!(xx.get_largest_ctr(), None);
+                    //
+                    assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //1
+                    assert_eq!(xx.gap_in_queue(), true);
+                    assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //2
+                    //
+                    assert_eq!(xx.last_ctr_get(), None);
+                    assert_eq!(xx.how_items_in_queue(), 2);
+                    assert_eq!(xx.get_largest_ctr(), Some(4));
+                    //
+                    assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
+                    assert_eq!(xx.gap_in_queue(), true);
+                    assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
+                    assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //5
+                    //
+                    assert_eq!(xx.last_ctr_get(), None);
+                    assert_eq!(xx.how_items_in_queue(), 5);
+                    assert_eq!(xx.get_largest_ctr(), Some(5));
+                    //
+                }
                 assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //6
                 assert_eq!(xx.insert(7, &eleme), WSQueueState::SuccessfulInsertion); //7
                 assert_eq!(xx.insert(8, &eleme), WSQueueState::ElemIdIsBig); //8
@@ -1512,6 +1533,10 @@ pub mod recv_queue {
                 assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //10
                 assert_eq!(xx.gap_in_queue(), false);
                 assert_eq!(xx.in_queue, 8);
+                //
+                assert_eq!(xx.last_ctr_get(), None);
+                assert_eq!(xx.how_items_in_queue(), 8);
+                assert_eq!(xx.get_largest_ctr(), Some(7));
             }
             assert_eq!(
                 xx.get_queue(),
@@ -1536,12 +1561,20 @@ pub mod recv_queue {
                 assert_eq!(xx.insert(12, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.gap_in_queue(), true);
                 assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
-
+                //
+                assert_eq!(xx.last_ctr_get(), Some(7));
+                assert_eq!(xx.how_items_in_queue(), 3);
+                assert_eq!(xx.get_largest_ctr(), Some(12));
+                //
                 assert_eq!(xx.insert(10, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.insert(13, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
                 assert_eq!(xx.gap_in_queue(), true);
-
+                //
+                assert_eq!(xx.last_ctr_get(), Some(7));
+                assert_eq!(xx.how_items_in_queue(), 5);
+                assert_eq!(xx.get_largest_ctr(), Some(13));
+                //
                 assert_eq!(xx.insert(8, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(
                     xx.get_queue(),
@@ -1563,6 +1596,12 @@ pub mod recv_queue {
                 assert_eq!(xx.insert(22, &eleme), WSQueueState::ElemIdIsBig);
                 assert_eq!(xx.insert(21, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.insert(2, &eleme), WSQueueState::ElemIdIsSmall);
+
+                //
+                assert_eq!(xx.last_ctr_get(), Some(13));
+                assert_eq!(xx.how_items_in_queue(), 1);
+                assert_eq!(xx.get_largest_ctr(), Some(21));
+                //
                 assert_eq!(xx.insert(14, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.get_queue(), (vec![(14, 0.0)]).into_boxed_slice());
 

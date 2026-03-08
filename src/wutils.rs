@@ -798,4 +798,36 @@ mod tests_f32 {
         }
     }
     */
+    pub fn ema(state: &mut (f64, f64), alpha: f64, new_value: f64) -> f64 {
+        let (prev_avg, count) = state;
+
+        if *count == 0.0 {
+            // first value - initialize
+            *prev_avg = new_value;
+            *count = 1.0;
+        } else {
+            // EMA formula: avg = alpha * new_value + (1 - alpha) * prev_avg
+            *prev_avg = alpha * new_value + (1.0 - alpha) * *prev_avg;
+            *count += 1.0;
+        }
+
+        *prev_avg
+    }
+
+    #[test]
+    fn n2() {
+        // инициализируем состояние: (предыдущее среднее, счётчик)
+        let mut state = (0.0, 0.0);
+        let alpha = 0.3; // коэффициент сглаживания (0.0 < alpha < 1.0)
+
+        let values = [0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0];
+
+        let a: f64 = values.iter().sum();
+
+        for &v in &values {
+            let ema = ema(&mut state, alpha, v);
+            println!("value: {:4}, ema: {:.2}", v, ema);
+        }
+        println!("value: {:4}, ema: {:.2}", a / values.len() as f64, 0);
+    }
 }
