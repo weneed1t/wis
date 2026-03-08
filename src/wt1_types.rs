@@ -256,7 +256,7 @@ pub trait Thrasher: Sized {
 
 pub trait Cfcser: Sized {
     fn new(_key: &[u8]) -> Result<Self, &'static str>;
-    fn gen_crc(&mut self, cfc_field: &mut [u8], payload: &[u8]) -> Result<(), &'static str>;
+    fn gen_crc(&mut self, payload: &[u8], cfc_field: &mut [u8]) -> Result<(), &'static str>;
 }
 
 pub trait Randomer: Sized {
@@ -296,7 +296,7 @@ impl Cfcser for DumpCfcser {
         );
         //Ok(Self {})
     }
-    fn gen_crc(&mut self, _cfc_field: &mut [u8], _payload: &[u8]) -> Result<(), &'static str> {
+    fn gen_crc(&mut self, _payload: &[u8], _cfc_field: &mut [u8]) -> Result<(), &'static str> {
         panic!(
             "This panic is called from DumpCfcser because it is a stub class,
             none of its methods should be called in normal code and this class only
@@ -590,7 +590,7 @@ mod tests_dumps_nonser_cfcser {
         let mut stub = DumpCfcser {};
         let mut cfc_field = [0u8; 4];
         let payload = [1, 2, 3];
-        stub.gen_crc(&mut cfc_field, &payload).unwrap();
+        stub.gen_crc(&payload, &mut cfc_field).unwrap();
     }
 
     #[test]

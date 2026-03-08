@@ -831,3 +831,31 @@ mod tests_f32 {
         println!("value: {:4}, ema: {:.2}", a / values.len() as f64, 0);
     }
 }
+
+pub struct Ema {
+    prev_avg: f64,
+    alpha: f64,
+    is_non_first: bool,
+}
+
+impl Ema {
+    pub fn new(alpha: f64) -> Self {
+        Self {
+            prev_avg: 0.0,
+            alpha,
+            is_non_first: true,
+        }
+    }
+    pub fn next(&mut self, new_value: f64) -> f64 {
+        if self.is_non_first {
+            // first value - initialize
+            self.prev_avg = new_value;
+            self.is_non_first = false;
+        } else {
+            // EMA formula: avg = alpha * new_value + (1 - alpha) * prev_avg
+            self.prev_avg = self.alpha * new_value + (1.0 - self.alpha) * self.prev_avg;
+        }
+
+        self.prev_avg
+    }
+}

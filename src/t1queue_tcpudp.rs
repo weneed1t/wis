@@ -9,6 +9,7 @@ pub mod recv_queue {
 
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+    use crate::wt1_types::Cfcser;
     use crate::{t1fields, wutils};
 
     #[cfg_attr(test, derive(Debug))]
@@ -43,12 +44,12 @@ pub mod recv_queue {
         }
     }
     #[derive(Clone)]
-    pub struct WSTcpLike<'a> {
+    pub struct WSTcpLike<'a, TCfcser: Cfcser> {
         elems_in_buf: usize,
         u_buf: Box<[u8]>,
         pack_topology: &'a PackTopology,
         mtu: usize,
-        crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
+        cfc_gener: Option<TCfcser>,
     }
     ///TCP queue, already directly related to conversion into packets from a TCP data
     /// stream,  since such data exchange protocols do not divide data into packets at
@@ -68,11 +69,11 @@ pub mod recv_queue {
     /// (100 bytes long) 2(150 bytes long),  after which it will wait to receive the
     /// remaining part of packet number 3 (10 bytes),  and then return packet number 3
     /// (50 bytes long).
-    impl<'a> WSTcpLike<'a> {
+    impl<'a, TCfcser: Cfcser> WSTcpLike<'a, TCfcser> {
         pub fn new(
             mtu: usize,
             pack_topology: &'a PackTopology,
-            crcfn: Option<fn(&[u8], &mut [u8]) -> Result<(), &'static str>>,
+            cfc_seed: Option<&[u8]>,
         ) -> Result<Self, WSQueueErr> {
             if pack_topology.len_slice().is_none() {
                 return Err(WSQueueErr::Critical("pack_topology.len_slice() is none"));
@@ -83,8 +84,180 @@ pub mod recv_queue {
                 u_buf: vec![0; mtu].into_boxed_slice(),
                 pack_topology,
                 mtu,
-                crcfn,
+                cfc_gener: if pack_topology.head_crc_slice().is_some() {
+                    Some(
+                        TCfcser::new(cfc_seed.ok_or(WSQueueErr::Critical(
+                            "cfc_seed is none but \
+                             connect_param.pack_topology().head_crc_slice().is_some() == true",
+                        ))?)
+                        .map_err(WSQueueErr::Critical)?,
+                    )
+                } else {
+                    None
+                },
             })
+        }
+
+        /// check. choosing the shorter length.
+        /// since there are two stores, 1 is the amount of free space in the buffer,
+        /// 2 is the number of elements that need to be processed in data[].
+        /// a lower value is selected and as many elements are copied from data to the
+        /// buffer. elems_in_buf means how many elements are in
+        /// the buffer and u_buf.len()-elems_in_buf means how much free space is in the
+        /// buffer. data.len()-pos_in_data means how many elements are left
+        /// in the data. pos_in_data and elems_in_buf are offsets for u_buf
+        /// and data[], respectively.
+        fn check_choosing_shorter_length(
+            &self,
+            data: &[u8],
+            pos_in_data: &usize,
+        ) -> Result<usize, WSQueueErr> {
+            let buf_void =
+                self.u_buf
+                    .len()
+                    .checked_sub(self.elems_in_buf)
+                    .ok_or(WSQueueErr::Critical(
+                        "err in u_buf.len() checked_sub elems_in_buf <0",
+                    ))?;
+
+            let data_elems = data
+                .len()
+                .checked_sub(*pos_in_data)
+                .ok_or(WSQueueErr::Critical(
+                    "err data.len() checked_sub pos_in_data >0",
+                ))?;
+
+            Ok(if buf_void < data_elems {
+                buf_void
+            } else {
+                data_elems
+            })
+        }
+
+        ///if the package has a crc signature of the head data,
+        /// then it must be checked. if the data is intact, add it to ret_paks
+        fn read_fields(
+            &mut self,
+            ptr_to_start: &mut usize,
+            elem_in_buf_quque: &usize,
+            old_ret_pos: &mut usize,
+            ret_paks: &mut Vec<Box<[u8]>>,
+        ) -> Result<bool, WSQueueErr> {
+            //if the package has a crc signature of the head data,
+            // then it must be checked. if the data is intact, add it to ret_paks
+            //if the package has a crc signature of the head data,
+            // then it must be checked. if the data is intact, add it to ret_paks
+
+            if self.pack_topology.head_crc_slice().is_some() {
+                let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
+                    let cfc = self.cfc_gener.as_mut().ok_or("cfc_gener is None")?;
+                    cfc.gen_crc(da1ta, out)?;
+                    Ok(())
+                };
+
+                if !t1fields::set_get_head_crc(
+                    false,
+                    &mut self.u_buf[*ptr_to_start..],
+                    self.pack_topology,
+                    &mut lbo,
+                )
+                .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
+                {
+                    return Err(WSQueueErr::Critical("package is damaged"));
+                }
+            }
+
+            //getting the length of the packet from the length field in the packet.
+            let len_of_curent_pack =
+                t1fields::get_len(&self.u_buf[*ptr_to_start..], self.pack_topology)
+                    .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
+            //if the length value in the length field is greater than MTU,
+            // then the packet is corrupted, an error is caused.
+            if len_of_curent_pack > self.mtu {
+                return Err(WSQueueErr::Critical("len_of_curent_pack > mtu"));
+            }
+            //if the value of the length field is correct,
+            //but in the raw data buffer it is less than the length from the length
+            // field, then the packet has not arrived in its
+            // entirety, and you need to wait until the packet
+            // arrives in its entirety.
+            if *elem_in_buf_quque >= len_of_curent_pack {
+                //current package is a full in buf
+                *ptr_to_start = ptr_to_start
+                    .checked_add(len_of_curent_pack)
+                    .expect("err ptr_to_start + len_of_curent_pack");
+            } else {
+                return Ok(false);
+            }
+            let mut boxed_slice = vec![
+                0u8;
+                ptr_to_start
+                    .checked_sub(*old_ret_pos)
+                    .expect("err ptr_to_start - old_ret_pos")
+            ]
+            .into_boxed_slice();
+            boxed_slice.copy_from_slice(&self.u_buf[*old_ret_pos..*ptr_to_start]);
+            ret_paks.push(boxed_slice);
+
+            *old_ret_pos = *ptr_to_start;
+            //
+
+            Ok(true)
+        }
+
+        fn updating_and_copying(
+            &mut self,
+            data: &[u8],
+            pos_in_data: &mut usize,
+            copy_elems_to_buf: &usize,
+        ) -> Result<(), WSQueueErr> {
+            //copying copy_elems_to_buf from data to a buffer using offsets
+            self.u_buf[self.elems_in_buf
+                ..self
+                    .elems_in_buf
+                    .checked_add(*copy_elems_to_buf)
+                    .expect("err in elems_in_buf + copy_elems_to_buf")]
+                .copy_from_slice(
+                    &data[*pos_in_data
+                        ..pos_in_data
+                            .checked_add(*copy_elems_to_buf)
+                            .expect("err in pos_in_data + copy_elems_to_buf")],
+                );
+
+            //Updating offsets to copy_elems_to_buf value
+            self.elems_in_buf =
+                self.elems_in_buf
+                    .checked_add(*copy_elems_to_buf)
+                    .ok_or(WSQueueErr::Critical(
+                        "err elems_in_buf add= copy_elems_to_buf",
+                    ))?;
+            *pos_in_data =
+                pos_in_data
+                    .checked_add(*copy_elems_to_buf)
+                    .ok_or(WSQueueErr::Critical(
+                        "err in pos_in_data + copy_elems_to_buf",
+                    ))?;
+
+            Ok(())
+        }
+
+        fn ender(&mut self, ptr_to_start: &usize) -> Result<(), WSQueueErr> {
+            //shifting elements that have already been processed and added to ret_paks
+            if self.elems_in_buf > self.u_buf.len() {
+                panic!("is critical logic error: self.elems_in_buf >self.u_buf.len()")
+            }
+
+            if *ptr_to_start > 0 && self.elems_in_buf > *ptr_to_start {
+                self.u_buf.copy_within(*ptr_to_start..self.elems_in_buf, 0);
+            }
+
+            //position changes so that the beginning is there, and the last raw element
+            self.elems_in_buf = self
+                .elems_in_buf
+                .checked_sub(*ptr_to_start)
+                .ok_or(WSQueueErr::Critical("err elems_in_buf sub= ptr_to_start"))?;
+
+            Ok(())
         }
 
         pub fn split_byte_stream_into_packages(
@@ -101,60 +274,12 @@ pub mod recv_queue {
             let mut pos_in_data = 0;
 
             while pos_in_data < data.len() {
-                // check. choosing the shorter length.
-                // since there are two stores, 1 is the amount of free space in the buffer,
-                // 2 is the number of elements that need to be processed in data[].
-                // a lower value is selected and as many elements are copied from data to the
-                // buffer. elems_in_buf means how many elements are in
-                // the buffer and u_buf.len()-elems_in_buf means how much free space is in the
-                // buffer. data.len()-pos_in_data means how many elements are left
-                // in the data. pos_in_data and elems_in_buf are offsets for u_buf
-                // and data[], respectively.
-                let copy_elems_to_buf = {
-                    let buf_void = self.u_buf.len().checked_sub(self.elems_in_buf).ok_or(
-                        WSQueueErr::Critical("err in u_buf.len() checked_sub elems_in_buf <0"),
-                    )?;
-
-                    let data_elems =
-                        data.len()
-                            .checked_sub(pos_in_data)
-                            .ok_or(WSQueueErr::Critical(
-                                "err data.len() checked_sub pos_in_data >0",
-                            ))?;
-
-                    if buf_void < data_elems {
-                        buf_void
-                    } else {
-                        data_elems
-                    }
-                };
+                let copy_elems_to_buf = self.check_choosing_shorter_length(data, &pos_in_data)?;
                 //if the elements in data[] have run out, then exit the loop
                 if copy_elems_to_buf == 0 {
                     break;
                 }
-                //copying copy_elems_to_buf from data to a buffer using offsets
-                self.u_buf[self.elems_in_buf
-                    ..self
-                        .elems_in_buf
-                        .checked_add(copy_elems_to_buf)
-                        .expect("err in elems_in_buf + copy_elems_to_buf")]
-                    .copy_from_slice(
-                        &data[pos_in_data
-                            ..pos_in_data
-                                .checked_add(copy_elems_to_buf)
-                                .expect("err in pos_in_data + copy_elems_to_buf")],
-                    );
-
-                //Updating offsets to copy_elems_to_buf value
-                self.elems_in_buf = self.elems_in_buf.checked_add(copy_elems_to_buf).ok_or(
-                    WSQueueErr::Critical("err elems_in_buf add= copy_elems_to_buf"),
-                )?;
-                pos_in_data =
-                    pos_in_data
-                        .checked_add(copy_elems_to_buf)
-                        .ok_or(WSQueueErr::Critical(
-                            "err in pos_in_data + copy_elems_to_buf",
-                        ))?;
+                self.updating_and_copying(data, &mut pos_in_data, &copy_elems_to_buf)?;
 
                 let mut ptr_to_start: usize = 0;
                 let mut old_ret_pos: usize = 0;
@@ -170,69 +295,19 @@ pub mod recv_queue {
                     if elem_in_buf_quque >= min_len {
                         //if the package has a crc signature of the head data,
                         // then it must be checked. if the data is intact, add it to ret_paks
-                        if self.pack_topology.head_crc_slice().is_some()
-                            && !t1fields::set_get_head_crc(
-                                false,
-                                &mut self.u_buf[ptr_to_start..],
-                                self.pack_topology,
-                                self.crcfn.ok_or(WSQueueErr::Critical("crcfn is none"))?,
-                            )
-                            .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
-                        {
-                            return Err(WSQueueErr::Critical("package is damaged"));
-                        }
-
-                        //getting the length of the packet from the length field in the packet.
-                        let len_of_curent_pack =
-                            t1fields::get_len(&self.u_buf[ptr_to_start..], self.pack_topology)
-                                .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
-                        //if the length value in the length field is greater than MTU,
-                        // then the packet is corrupted, an error is caused.
-                        if len_of_curent_pack > self.mtu {
-                            return Err(WSQueueErr::Critical("len_of_curent_pack > mtu"));
-                        }
-                        //if the value of the length field is correct,
-                        //but in the raw data buffer it is less than the length from the length
-                        // field, then the packet has not arrived in its
-                        // entirety, and you need to wait until the packet
-                        // arrives in its entirety.
-                        if elem_in_buf_quque >= len_of_curent_pack {
-                            //current package is a full in buf
-                            ptr_to_start = ptr_to_start
-                                .checked_add(len_of_curent_pack)
-                                .expect("err ptr_to_start + len_of_curent_pack");
-                        } else {
+                        if !self.read_fields(
+                            &mut ptr_to_start,
+                            &elem_in_buf_quque,
+                            &mut old_ret_pos,
+                            &mut ret_paks,
+                        )? {
                             break;
                         }
-                        let mut boxed_slice = vec![
-                            0u8;
-                            ptr_to_start
-                                .checked_sub(old_ret_pos)
-                                .expect("err ptr_to_start - old_ret_pos")
-                        ]
-                        .into_boxed_slice();
-                        boxed_slice.copy_from_slice(&self.u_buf[old_ret_pos..ptr_to_start]);
-                        ret_paks.push(boxed_slice);
-
-                        old_ret_pos = ptr_to_start;
                     } else {
                         break;
                     };
                 }
-                //shifting elements that have already been processed and added to ret_paks
-                if self.elems_in_buf > self.u_buf.len() {
-                    panic!("is critical logic error: self.elems_in_buf >self.u_buf.len()")
-                }
-
-                if ptr_to_start > 0 && self.elems_in_buf > ptr_to_start {
-                    self.u_buf.copy_within(ptr_to_start..self.elems_in_buf, 0);
-                }
-
-                //position changes so that the beginning is there, and the last raw element
-                self.elems_in_buf = self
-                    .elems_in_buf
-                    .checked_sub(ptr_to_start)
-                    .ok_or(WSQueueErr::Critical("err elems_in_buf sub= ptr_to_start"))?;
+                self.ender(&ptr_to_start)?;
             }
 
             Ok(ret_paks.into_boxed_slice())
@@ -1299,6 +1374,21 @@ pub mod recv_queue {
         use crate::t0pology::{PackTopology, PakFields};
         use crate::t1fields;
 
+        struct Cfcstuct {}
+
+        impl Cfcser for Cfcstuct {
+            fn new(_key: &[u8]) -> Result<Self, &'static str> {
+                Ok(Self {})
+            }
+            fn gen_crc(
+                &mut self,
+                payload: &[u8],
+                cfc_field: &mut [u8],
+            ) -> Result<(), &'static str> {
+                dummy_crc_gen(payload, cfc_field)
+            }
+        }
+
         fn datas() -> (Vec<Vec<u8>>, Vec<u8>, Vec<usize>, Box<[u8]>, PackTopology) {
             let packet_specs = (0..100_000u64)
                 .map(|x| {
@@ -1349,7 +1439,9 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp = WSTcpLike::new(41, &datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+                WSTcpLike::new(41, &datas_x.4, Some(&[0])).unwrap();
+
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
                 let data = if s + index < datas_x.1.len() {
@@ -1377,7 +1469,8 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp = WSTcpLike::new(39, &datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+                WSTcpLike::new(39, &datas_x.4, Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
@@ -1413,7 +1506,8 @@ pub mod recv_queue {
 
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
-            let mut w_tcp = WSTcpLike::new(39, &datas_x.4, Some(dummy_crc_gen)).unwrap();
+            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+                WSTcpLike::new(39, &datas_x.4, Some(&[0])).unwrap();
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
                 let mut data = if s + index < datas_x.1.len() {

@@ -1,7 +1,7 @@
 use crate::t1queue_tcpudp::recv_queue::{WSQueueErr, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::wt1_types::{EncWis, MyRole /* , Cfcser, Noncer ,WTypeErr */, PackErr, Thrasher};
+use crate::wt1_types::{EncWis, MyRole /* , Cfcser, WTypeErr */, Noncer, PackErr, Thrasher};
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
@@ -14,9 +14,9 @@ pub struct Identified {
 }
 
 pub struct WsConnection<
-    TThrasher: Thrasher,
     //TCfcser: Cfcser,
-    //Tnoncer: Noncer,
+    Tnoncer: Noncer,
+    TThrasher: Thrasher,
     Tudp: Clone,
     Twait: Clone,
     Tencrypt: EncWis,
@@ -33,7 +33,7 @@ pub struct WsConnection<
     connect_param: WsConnectParam,
     enrypaaa: bool,
     is_active: bool,
-    //nonce_gener: Option<Tnoncer>,
+    nonce_gener: Option<Tnoncer>,
     //cfc_gener: Option<TCfcser>,
     user_field: Option<TThrasher>,
     measurement_window_latency: f64,
@@ -43,18 +43,20 @@ pub struct WsConnection<
 }
 
 impl<
-    /* TCfcser: Cfcser, Tnoncer: Noncer, */ TThrasher: Thrasher,
+    /* TCfcser: Cfcser, */
+    Tnoncer: Noncer,
+    TThrasher: Thrasher,
     Tudp: Clone,
     Twait: Clone,
     Tencrypt: EncWis,
-> WsConnection</* TCfcser, Tnoncer, */ TThrasher, Tudp, Twait, Tencrypt>
+> WsConnection</* TCfcser, */ Tnoncer, TThrasher, Tudp, Twait, Tencrypt>
 {
     pub fn new(
         connect_param: &WsConnectParam,
         default_enc_key: &[u8],
         my_role: MyRole,
         my_identified: Identified,
-        //nonce_seed: Option<&[u8]>,
+        nonce_seed: Option<&[u8]>,
         user_field_seed: Option<&[u8]>,
         //cfc_seed: Option<&[u8]>,
     ) -> Result<Self, WSQueueErr> {
@@ -87,7 +89,7 @@ impl<
             enrypaaa: true,
             is_active: true,
             intermediate_questionable_packages_queue: None,
-            /*
+
             nonce_gener: if connect_param.pack_topology().nonce_slice().is_some() {
                 Some(
                     Tnoncer::new(nonce_seed.ok_or(WSQueueErr::Critical(
@@ -98,19 +100,19 @@ impl<
                 )
             } else {
                 None
-            },
-            cfc_gener: if connect_param.pack_topology().head_crc_slice().is_some() {
-                Some(
-                    TCfcser::new(cfc_seed.ok_or(WSQueueErr::Critical(
-                        "cfc_seed is none but \
-                         connect_param.pack_topology().head_crc_slice().is_some() == true",
-                    ))?)
-                    .map_err(WSQueueErr::Critical)?,
-                )
-            } else {
-                None
-            },
-            */
+            }, /*
+               cfc_gener: if connect_param.pack_topology().head_crc_slice().is_some() {
+                   Some(
+                       TCfcser::new(cfc_seed.ok_or(WSQueueErr::Critical(
+                           "cfc_seed is none but \
+                            connect_param.pack_topology().head_crc_slice().is_some() == true",
+                       ))?)
+                       .map_err(WSQueueErr::Critical)?,
+                   )
+               } else {
+                   None
+               },
+               */
             user_field: if connect_param
                 .pack_topology()
                 .trash_content_slice()

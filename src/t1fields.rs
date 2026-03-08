@@ -24,12 +24,15 @@ use crate::{t0pology, wutils};
 /// #if create_new_crc_summ == false, the crc value does not change and
 /// #repeated checking with incorrect chc will give Ok(false).
 /// #this change was accepted during the discussion about dangerous behavior
-pub fn set_get_head_crc(
+pub fn set_get_head_crc<F>(
     create_new_crc_summ: bool,
     pack: &mut [u8],
     topology: &PackTopology,
-    crcfn: fn(&[u8], &mut [u8]) -> Result<(), &'static str>,
-) -> Result<bool, WTypeErr> {
+    mut crcfn: F,
+) -> Result<bool, WTypeErr>
+where
+    F: FnMut(&[u8], &mut [u8]) -> Result<(), &'static str>,
+{
     if let Some((start, end, len)) = topology.head_crc_slice() {
         if len > t0pology::MAXIMAL_CRC_LEN {
             return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
