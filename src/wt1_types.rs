@@ -262,6 +262,7 @@ pub trait Cfcser: Sized {
 pub trait Randomer: Sized {
     fn new(_key: &[u8]) -> Result<Self, &'static str>;
     fn gen_rand_u64(&mut self) -> u64;
+    fn gen_rand_u32(&mut self) -> u32;
 }
 
 pub struct DumpNonser {}
@@ -324,6 +325,33 @@ impl Thrasher for DumpThrasher {
             serves to indicate it as None in variable:Option<Thrasher> = None;"
         );
         //Ok(())
+    }
+}
+pub struct DumpRandomer {}
+
+impl Randomer for DumpRandomer {
+    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+        panic!(
+            "This panic is called from DumpRandomer because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpRandomer> = None;"
+        );
+        //Ok(Self {})
+    }
+    fn gen_rand_u32(&mut self) -> u32 {
+        panic!(
+            "This panic is called from DumpRandomer because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpRandomer> = None;"
+        );
+    }
+
+    fn gen_rand_u64(&mut self) -> u64 {
+        panic!(
+            "This panic is called from DumpNonser because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpNonser> = None;"
+        );
     }
 }
 

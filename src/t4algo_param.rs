@@ -27,6 +27,7 @@ pub struct WsConnectParam {
     ctr_max_capacity_real: u64,
     max_len_file: Option<usize>,
     intermediate_questionable_packages_queue: Option<usize>,
+    need_use_random: bool,
 }
 
 impl WsConnectParam {
@@ -304,6 +305,9 @@ impl WsConnectParam {
             percent_len_random_coefficient,
             max_len_file,
             intermediate_questionable_packages_queue,
+            need_use_random: (percent_fake_data_packets.is_some()
+                || percent_fake_fback_packets.is_some()
+                || percent_len_random_coefficient.is_some()),
         })
     }
 }
@@ -336,6 +340,9 @@ impl WsConnectParam {
         self.ctr_max_capacity_real
     }
 
+    pub fn need_init_random(&self) -> bool {
+        self.need_use_random
+    }
     pub fn min_ms_latency(&self) -> f64 {
         self.min_ms_latency
     }
@@ -432,9 +439,9 @@ pub struct WsConnectParamBuilder {
     // Optional fields (default = None)
     ttl_max_start_cost: Option<Option<(u64, u64, i64)>>, /* double Option trick to distinguish
                                                           * unset vs None */
-    percent_fake_data_packets: Option<Option<f64>>,
-    percent_fake_fback_packets: Option<Option<f64>>,
-    percent_len_random_coefficient: Option<Option<f64>>,
+    percent_fake_data_packets: Option<f64>,
+    percent_fake_fback_packets: Option<f64>,
+    percent_len_random_coefficient: Option<f64>,
     intermediate_questionable_packages_queue: Option<usize>,
     max_len_file: Option<Option<usize>>, // default is Some(10*1024*1024)
 }
@@ -463,9 +470,9 @@ impl WsConnectParamBuilder {
             // Optional fields: inner None = not set by user, outer Option = final value (default
             // None)
             ttl_max_start_cost: Some(None),
-            percent_fake_data_packets: Some(None),
-            percent_fake_fback_packets: Some(None),
-            percent_len_random_coefficient: Some(None),
+            percent_fake_data_packets: None,
+            percent_fake_fback_packets: None,
+            percent_len_random_coefficient: None,
             max_len_file: Some(Some(10 * 1024 * 1024)), // default Some(...)
             intermediate_questionable_packages_queue: None,
         }
@@ -678,15 +685,15 @@ impl WsConnectParamBuilder {
     /// traffic censorship  tools to detect them. When creating a useful data packet,
     /// there is a chance that a packet of  junk data will appear with the
     /// percent_fake_data_packets value.
-    pub fn percent_fake_data_packets(mut self, value: f64) -> Self {
-        self.percent_fake_data_packets = Some(Some(value));
+    pub fn percent_fake_data_packets(mut self, value: Option<f64>) -> Self {
+        self.percent_fake_data_packets = value;
         self
     }
     //
     ///see description percent_fake_data_packets^^^
     /// similar behavior for fback-type packets
-    pub fn percent_fake_fback_packets(mut self, value: f64) -> Self {
-        self.percent_fake_fback_packets = Some(Some(value));
+    pub fn percent_fake_fback_packets(mut self, value: Option<f64>) -> Self {
+        self.percent_fake_fback_packets = value;
         self
     }
     ///percent_len_random_coefficient is needed to randomize the length to which packets
@@ -698,8 +705,8 @@ impl WsConnectParamBuilder {
     /// Some(1.0>= x > 0.0) is,<br>  for example, 0.3, then the packet length will not
     /// be 100 bytes,<br>  but 100-20 (MTU - minimum packet size) * 0.3 = 24.<br>
     ///  Each packet will have a length from MTU - 24 to MTU.<br>
-    pub fn percent_len_random_coefficient(mut self, value: f64) -> Self {
-        self.percent_len_random_coefficient = Some(Some(value));
+    pub fn percent_len_random_coefficient(mut self, value: Option<f64>) -> Self {
+        self.percent_len_random_coefficient = value;
         self
     }
 
@@ -771,9 +778,7 @@ impl WsConnectParamBuilder {
         // Unpack optional fields: if the user never called the setter, we keep the default (None
         // or Some(...))
         let ttl_max_start_cost = self.ttl_max_start_cost.unwrap_or(None);
-        let percent_fake_data_packets = self.percent_fake_data_packets.unwrap_or(None);
-        let percent_fake_fback_packets = self.percent_fake_fback_packets.unwrap_or(None);
-        let percent_len_random_coefficient = self.percent_len_random_coefficient.unwrap_or(None);
+
         let max_len_file = self.max_len_file.unwrap_or(Some(10 * 1024 * 1024)); // final fallback
 
         let intermediate_questionable_packages_queue =
@@ -797,9 +802,9 @@ impl WsConnectParamBuilder {
             self.maximum_packet_delay_fback_coefficient,
             self.maximum_packet_delay_absolute_fback,
             ttl_max_start_cost,
-            percent_fake_data_packets,
-            percent_fake_fback_packets,
-            percent_len_random_coefficient,
+            self.percent_fake_data_packets,
+            self.percent_fake_fback_packets,
+            self.percent_len_random_coefficient,
             max_len_file,
             intermediate_questionable_packages_queue,
         )
@@ -1250,7 +1255,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(0.5)
+            .percent_fake_data_packets(Some(0.5))
             .max_len_file(None)
             .build();
 
@@ -1270,7 +1275,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(1.0)
+            .percent_fake_data_packets(Some(1.0))
             .max_len_file(None)
             .build();
 
@@ -1290,7 +1295,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(0.0) // invalid
+            .percent_fake_data_packets(Some(0.0)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1313,7 +1318,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(-0.1) // invalid
+            .percent_fake_data_packets(Some(-0.1)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1336,7 +1341,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(1.1) // invalid
+            .percent_fake_data_packets(Some(1.1)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1359,7 +1364,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(f64::NAN) // invalid
+            .percent_fake_data_packets(Some(f64::NAN)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1382,7 +1387,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(f64::INFINITY) // invalid
+            .percent_fake_data_packets(Some(f64::INFINITY)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1405,7 +1410,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_fback_packets(0.3)
+            .percent_fake_fback_packets(Some(0.3))
             .max_len_file(None)
             .build();
 
@@ -1425,7 +1430,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_fback_packets(0.0) // invalid
+            .percent_fake_fback_packets(Some(0.0)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1448,7 +1453,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_len_random_coefficient(0.7)
+            .percent_len_random_coefficient(Some(0.7))
             .max_len_file(None)
             .build();
 
@@ -1468,7 +1473,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_len_random_coefficient(0.0) // invalid
+            .percent_len_random_coefficient(Some(0.0)) // invalid
             .max_len_file(None)
             .build();
 
@@ -1491,9 +1496,9 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(0.1)
-            .percent_fake_fback_packets(0.05)
-            .percent_len_random_coefficient(0.4)
+            .percent_fake_data_packets(Some(0.1))
+            .percent_fake_fback_packets(Some(0.05))
+            .percent_len_random_coefficient(Some(0.4))
             .max_len_file(None)
             .build();
 
@@ -1516,7 +1521,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_fake_data_packets(0.000001) // very small but positive
+            .percent_fake_data_packets(Some(0.000001)) // very small but positive
             .max_len_file(None)
             .build();
 
@@ -1536,7 +1541,7 @@ mod tests_percent {
             .maximum_length_fback_queue_packages(20)
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
-            .percent_len_random_coefficient(1.0) // boundary
+            .percent_len_random_coefficient(Some(1.0)) // boundary
             .max_len_file(None)
             .build();
 
@@ -1557,9 +1562,9 @@ mod tests_percent {
             .maximum_length_queue_unconfirmed_packages(60)
             .max_num_attempts_resend_package(3)
             .ttl_max_start_cost((255, 128, -1))
-            .percent_fake_data_packets(0.2)
-            .percent_fake_fback_packets(0.1)
-            .percent_len_random_coefficient(0.5)
+            .percent_fake_data_packets(Some(0.2))
+            .percent_fake_fback_packets(Some(0.1))
+            .percent_len_random_coefficient(Some(0.5))
             .max_len_file(None)
             .build();
 
@@ -2759,5 +2764,37 @@ mod tests_mt1 {
              value that the counter field in the packet topology can hold must be GREATER than \
              intermediate_questionable_packages_queue."
         );
+    }
+
+    #[test]
+    fn need_use_random() {
+        let topo = get_topol(Some(1), 50, Some(1));
+
+        for x1 in [Some(0.3), None] {
+            for x2 in [Some(0.3), None] {
+                for x3 in [Some(0.3), None] {
+                    let param_normal = base_builder(&topo)
+                        .instant_feedback_on_packet_loss(true)
+                        .ttl_max_start_cost((255, 128, -1))
+                        .max_len_file_value(2048)
+                        .percent_fake_data_packets(x1)
+                        .percent_fake_fback_packets(x2)
+                        .percent_len_random_coefficient(x3)
+                        .build()
+                        .unwrap();
+                    println!(
+                        "{} {} {} {}",
+                        param_normal.need_init_random(),
+                        x1.is_some(),
+                        x2.is_some(),
+                        x3.is_some()
+                    );
+                    assert_eq!(
+                        param_normal.need_init_random(),
+                        (x1.is_some() || x2.is_some() || x3.is_some())
+                    );
+                }
+            }
+        }
     }
 }

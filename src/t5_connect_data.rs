@@ -1,7 +1,10 @@
 use crate::t1queue_tcpudp::recv_queue::{WSQueueErr, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::wt1_types::{EncWis, MyRole /* , Cfcser, WTypeErr */, Noncer, PackErr, Thrasher};
+use crate::wt1_types::{
+    EncWis, MyRole, /* , Cfcser, WTypeErr */
+    Noncer, PackErr, Randomer, Thrasher,
+};
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
@@ -20,6 +23,7 @@ pub struct WsConnection<
     Tudp: Clone,
     Twait: Clone,
     Tencrypt: EncWis,
+    TRandomer: Randomer,
 > {
     file_proc: WSFileSplitter,
     udp_queue: WSUdpLike<Tudp>,
@@ -36,6 +40,7 @@ pub struct WsConnection<
     nonce_gener: Option<Tnoncer>,
     //cfc_gener: Option<TCfcser>,
     user_field: Option<TThrasher>,
+    random_gener: Option<TRandomer>,
     measurement_window_latency: f64,
     my_role: MyRole,
     my_identified: Identified,
@@ -49,7 +54,8 @@ impl<
     Tudp: Clone,
     Twait: Clone,
     Tencrypt: EncWis,
-> WsConnection</* TCfcser, */ Tnoncer, TThrasher, Tudp, Twait, Tencrypt>
+    TRandomer: Randomer,
+> WsConnection</* TCfcser, */ Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer>
 {
     pub fn new(
         connect_param: &WsConnectParam,
@@ -57,6 +63,7 @@ impl<
         my_role: MyRole,
         my_identified: Identified,
         nonce_seed: Option<&[u8]>,
+        random_seed: Option<&[u8]>,
         user_field_seed: Option<&[u8]>,
         //cfc_seed: Option<&[u8]>,
     ) -> Result<Self, WSQueueErr> {
@@ -123,6 +130,17 @@ impl<
                         "user_field_seed is none but \
                          connect_param.pack_topology().trash_content_slice().is_some() == true, \
                          `trash_content_slice() is user_field` ",
+                    ))?)
+                    .map_err(WSQueueErr::Critical)?,
+                )
+            } else {
+                None
+            },
+            random_gener: if connect_param.pack_topology().head_crc_slice().is_some() {
+                Some(
+                    TRandomer::new(random_seed.ok_or(WSQueueErr::Critical(
+                        "cfc_seed is none but \
+                         connect_param.pack_topology().head_crc_slice().is_some() == true",
                     ))?)
                     .map_err(WSQueueErr::Critical)?,
                 )
