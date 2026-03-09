@@ -1,9 +1,9 @@
-use crate::t1queue_tcpudp::recv_queue::{WSQueueErr, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
+use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
 use crate::wt1_types::{
     EncWis, MyRole, /* , Cfcser, WTypeErr */
-    Noncer, PackErr, Randomer, Thrasher,
+    Noncer, PackErr, Randomer, Thrasher, WSQueueErr,
 };
 pub struct Ids {
     pub id_sender: u64,
@@ -43,8 +43,8 @@ pub struct WsConnection<
     random_gener: Option<TRandomer>,
     measurement_window_latency: f64,
     my_role: MyRole,
-    my_identified: Identified,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
+    identified: Identified,
 }
 
 impl<
@@ -61,12 +61,29 @@ impl<
         connect_param: &WsConnectParam,
         default_enc_key: &[u8],
         my_role: MyRole,
-        my_identified: Identified,
         nonce_seed: Option<&[u8]>,
         random_seed: Option<&[u8]>,
         user_field_seed: Option<&[u8]>,
-        //cfc_seed: Option<&[u8]>,
+        identified: Identified, //cfc_seed: Option<&[u8]>,
     ) -> Result<Self, WSQueueErr> {
+        if connect_param.pack_topology().idconn_slice().is_some() && identified.id_conn.is_none() {
+            return Err(WSQueueErr::Critical(
+                "connect_param.pack_topology().idconn_slice().is_some() == true but \
+                 identified.id_conn.is_none() == false, you need to set a value for \
+                 identified.id_conn",
+            ));
+        }
+
+        if connect_param.pack_topology().id_of_sender_slice().is_some()
+            && identified.my_s_r_id.is_none()
+        {
+            return Err(WSQueueErr::Critical(
+                "connect_param.pack_topology().id_of_sender_slice().is_some() == true but \
+                 identified.my_s_r_id.is_none() == false, you need to set a value for \
+                 identified.my_s_r_id",
+            ));
+        }
+
         Ok(Self {
             file_proc: WSFileSplitter::new(connect_param.max_len_file())
                 .map_err(WSQueueErr::Critical)?,
@@ -146,9 +163,9 @@ impl<
             } else {
                 None
             },
-            my_identified,
             my_role,
             measurement_window_latency: connect_param.start_ms_latency(),
+            identified,
         })
     }
 
@@ -166,4 +183,50 @@ impl<
     pub fn recv_pack() {}
 
     pub fn send_fake_pack() {}
+}
+
+// getters for wsconnection - separate impl for clarity
+impl<
+    Tnoncer: Noncer,
+    TThrasher: Thrasher,
+    Tudp: Clone,
+    Twait: Clone,
+    Tencrypt: EncWis,
+    TRandomer: Randomer,
+> WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer>
+{
+    pub fn is_active(&self) -> bool {
+        self.is_active
+    }
+
+    pub fn my_role(&self) -> MyRole {
+        self.my_role.clone()
+    }
+
+    pub fn network_latency(&self) -> f64 {
+        self.network_latency
+    }
+
+    pub fn network_stability(&self) -> f64 {
+        self.network_stability
+    }
+
+    pub fn ctr_data(&self) -> u64 {
+        self.ctr_data
+    }
+
+    pub fn ctr_fback(&self) -> u64 {
+        self.ctr_fback
+    }
+
+    pub fn connect_param(&self) -> &WsConnectParam {
+        &self.connect_param
+    }
+
+    pub fn identified(&self) -> &Identified {
+        &self.identified
+    }
+    pub fn measurement_window_latency(&self) -> &f64 {
+        &self.measurement_window_latency
+    }
 }

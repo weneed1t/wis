@@ -9,40 +9,9 @@ pub mod recv_queue {
 
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
-    use crate::wt1_types::Cfcser;
+    use crate::wt1_types::{Cfcser, WSQueueErr};
     use crate::{EXPCP, t1fields, wutils};
 
-    #[cfg_attr(test, derive(Debug))]
-    pub enum WSQueueErr {
-        NonCritical(&'static str),
-        Critical(&'static str),
-    }
-
-    impl WSQueueErr {
-        pub fn is_critical(&self) -> bool {
-            match self {
-                Self::Critical(_) => true,
-                Self::NonCritical(_) => false,
-            }
-        }
-
-        pub fn is_non_critical(&self) -> bool {
-            match self {
-                Self::Critical(_) => false,
-                Self::NonCritical(_) => true,
-            }
-        }
-    }
-
-    impl PartialEq for WSQueueErr {
-        fn eq(&self, other: &Self) -> bool {
-            match (self, other) {
-                (Self::NonCritical(x), Self::NonCritical(y)) => x == y,
-                (Self::Critical(x), Self::Critical(y)) => x == y,
-                _ => false,
-            }
-        }
-    }
     #[derive(Clone)]
     pub struct WSTcpLike<'a, TCfcser: Cfcser> {
         elems_in_buf: usize,

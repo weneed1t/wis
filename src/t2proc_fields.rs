@@ -89,7 +89,7 @@ pub fn recv_pack<
             crcfn.EXPCP!("topology: &PackTopology has a field but crcfn == None"),
         )?
     {
-        return Err(wt1_types::WTypeErr::NoneFieldErr("crc summ does not match"));
+        return Err(wt1_types::WTypeErr::CompileErr("crc summ does not match"));
     };
 
     let pack = if topology.len_slice().is_some() {

@@ -1,5 +1,6 @@
 use crate::EXPCP;
 
+/*
 pub enum WNotification {
     CriticalErrorKillConnect(&'static str),
     WarningNonCirtical(&'static str),
@@ -16,7 +17,7 @@ impl PartialEq for WNotification {
         )
     }
 }
-
+*/
 pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() must be between 1 and 8");

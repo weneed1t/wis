@@ -14,9 +14,41 @@ pub enum PackErr {
 #[derive(Debug, Clone)]
 pub enum WTypeErr {
     LenSizeErr(&'static str),
-    NoneFieldErr(&'static str),
+    CompileErr(&'static str),
     PackageDamaged(&'static str),
     WorkTimeErr(&'static str),
+}
+
+#[cfg_attr(test, derive(Debug))]
+pub enum WSQueueErr {
+    NonCritical(&'static str),
+    Critical(&'static str),
+}
+
+impl WSQueueErr {
+    pub fn is_critical(&self) -> bool {
+        match self {
+            Self::Critical(_) => true,
+            Self::NonCritical(_) => false,
+        }
+    }
+
+    pub fn is_non_critical(&self) -> bool {
+        match self {
+            Self::Critical(_) => false,
+            Self::NonCritical(_) => true,
+        }
+    }
+}
+
+impl PartialEq for WSQueueErr {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::NonCritical(x), Self::NonCritical(y)) => x == y,
+            (Self::Critical(x), Self::Critical(y)) => x == y,
+            _ => false,
+        }
+    }
 }
 
 impl PartialEq for PackErr {
@@ -41,7 +73,7 @@ impl WTypeErr {
 
     pub fn is_none_field(&self) -> bool {
         match self {
-            Self::NoneFieldErr(_) => true,
+            Self::CompileErr(_) => true,
             _ => false,
         }
     }
@@ -56,7 +88,7 @@ impl WTypeErr {
     pub fn err_to_str(&self) -> &'static str {
         match self {
             Self::LenSizeErr(x) => x,
-            Self::NoneFieldErr(x) => x,
+            Self::CompileErr(x) => x,
             Self::PackageDamaged(x) => x,
             Self::WorkTimeErr(x) => x,
         }
@@ -67,7 +99,7 @@ impl PartialEq for WTypeErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::LenSizeErr(x), Self::LenSizeErr(y)) => x == y,
-            (Self::NoneFieldErr(x), Self::NoneFieldErr(y)) => x == y,
+            (Self::CompileErr(x), Self::CompileErr(y)) => x == y,
             (Self::PackageDamaged(x), Self::PackageDamaged(y)) => x == y,
             (Self::WorkTimeErr(x), Self::WorkTimeErr(y)) => x == y,
             _ => false,
@@ -279,6 +311,10 @@ pub struct DumpThrasher {
 pub struct DumpRandomer {
     pub t: u64,
 }
+
+pub struct DumpEnc {
+    pub t: u64,
+}
 //#############################################################3
 
 impl Noncer for DumpNonser {
@@ -426,6 +462,83 @@ impl Randomer for DumpRandomer {
             let mut x = [0];
             bpg(&mut self.t, &mut x);
             self.t
+        }
+    }
+}
+
+impl EncWis for DumpEnc {
+    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpRandomer because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpRandomer> = None;"
+            );
+        }
+        #[cfg(test)]
+        {
+            Ok(Self {
+                t: _key.iter().map(|&x| x as u64).sum(),
+            })
+        }
+    }
+
+    fn encrypt(
+        &self,
+        non_enc_head: &[u8],
+        enc_payload: &mut [u8],
+        auth_tag: &mut [u8],
+        nonce_countr: u64,
+        nonce: Option<&[u8]>,
+    ) -> Result<(), &'static str> {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpRandomer because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpRandomer> = None;"
+            );
+        }
+        #[cfg(test)]
+        {
+            let mut t = self.t;
+            bpg(&mut t, enc_payload);
+            let mut hat = vec![];
+            hat.append(&mut non_enc_head.to_vec());
+            hat.append(&mut enc_payload.to_vec());
+
+            let mut xh = &mut nonce.clone().unwrap_or(vec![0, 1, 2, 3, 4, 5, 6, 7u8]);
+
+            //  hat.append(&mut );
+            hat.append(&mut non_enc_head.to_vec());
+
+            Ok(())
+        }
+    }
+
+    fn decrypt(
+        &self,
+        non_enc_head: &[u8],
+        enc_payload: &mut [u8],
+        auth_tag: &mut [u8],
+        nonce_countr: u64,
+        nonce: Option<&[u8]>,
+    ) -> Result<StatusDecrypt, &'static str> {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpRandomer because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpRandomer> = None;"
+            );
+        }
+        #[cfg(test)]
+        {
+            let mut t = self.t;
+            bpg(&mut t, enc_payload);
+
+            Ok(())
         }
     }
 }

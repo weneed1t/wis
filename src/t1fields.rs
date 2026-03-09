@@ -62,7 +62,7 @@ where
         return Ok(temp_new[..len] == temp_old[..len]);
     }
 
-    Err(WTypeErr::NoneFieldErr("head_crc_slice not in PackTopology"))
+    Err(WTypeErr::CompileErr("head_crc_slice not in PackTopology"))
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
@@ -124,7 +124,7 @@ pub fn set_ttl(
 
         return Ok(temp);
     }
-    Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
 }
 
 ///
@@ -141,7 +141,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         }
         return wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
     }
-    Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
 }
 
 /// set_len sets the packet length field in the header based on the actual size of the
@@ -156,7 +156,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
 pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
     let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::CompileErr(" topology.len_slice() is none"))?;
 
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -189,7 +189,7 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
 pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> {
     let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::CompileErr(" topology.len_slice() is none"))?;
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
@@ -229,7 +229,7 @@ pub fn set_id_conn(
         return Ok(());
     }
 
-    Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
+    Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
 }
 
 /// get_id_conn extracts the connection id and sender role from the packet header
@@ -247,7 +247,7 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
         let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
         return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
-    Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
+    Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
 }
 
 /// set_id_sender_and_recv sets both sender and receiver identifiers in the packet header
@@ -284,7 +284,7 @@ pub fn set_id_sender_and_recv(
         return Ok(());
     }
 
-    Err(WTypeErr::NoneFieldErr(
+    Err(WTypeErr::CompileErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -312,7 +312,7 @@ pub fn get_id_sender_and_recv(
             wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
         ));
     }
-    Err(WTypeErr::NoneFieldErr(
+    Err(WTypeErr::CompileErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -345,7 +345,7 @@ pub fn set_counter(
 
         return Ok((pack_ctr, max_cap));
     }
-    Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
+    Err(WTypeErr::CompileErr("topology.counter_slice() is none"))
 }
 
 /// set_counter writes the packet counter value into the header with a control bit
@@ -418,7 +418,7 @@ pub fn get_counter(
             my_type,
         ));
     }
-    Err(WTypeErr::NoneFieldErr("topology.counter_slice() is none"))
+    Err(WTypeErr::CompileErr("topology.counter_slice() is none"))
 }
 
 /// set_user_field generates and fills the user-defined field (aka "trash field") in the
@@ -450,7 +450,7 @@ pub fn set_user_field(
         return Ok(());
     }
 
-    Err(WTypeErr::NoneFieldErr("user_field not in PackTopology"))
+    Err(WTypeErr::CompileErr("user_field not in PackTopology"))
 }
 
 /// crypt performs encryption or decryption of the packet payload and computes
@@ -525,7 +525,7 @@ where
         let (n, c) = (
             if let Some(x) = topology.nonce_slice() {
                 nonce_gener
-                    .ok_or(WTypeErr::NoneFieldErr("nonce_gener required"))?
+                    .ok_or(WTypeErr::CompileErr("nonce_gener required"))?
                     .set_nonce(&mut pack[x.0..x.1])
                     .map_err(WTypeErr::WorkTimeErr)?;
                 1
@@ -534,7 +534,7 @@ where
             },
             if topology.counter_slice().is_some() {
                 if countr.is_none() {
-                    return Err(WTypeErr::NoneFieldErr("counter_field required"));
+                    return Err(WTypeErr::CompileErr("counter_field required"));
                 }
                 1
             } else {
@@ -542,7 +542,7 @@ where
             },
         );
         if 0 == n + c {
-            return Err(WTypeErr::NoneFieldErr(
+            return Err(WTypeErr::CompileErr(
                 "Incorrect combination, the packet must have either a counter field, a nonce \
                  field, or a nonce field + a counter field. This topology has neither a counter \
                  field nor a nonce field.",
@@ -723,7 +723,7 @@ mod tests {
 
             assert_eq!(
                 set_get_head_crc(false, &mut bb, &result_non_crc, dummy_crc_gen),
-                Err(WTypeErr::NoneFieldErr("head_crc_slice not in PackTopology"))
+                Err(WTypeErr::CompileErr("head_crc_slice not in PackTopology"))
             );
         }
     }
@@ -788,7 +788,7 @@ mod tests {
         );
         assert_eq!(
             set_ttl(&mut bb, &result_no_ttl, 1000, 90000, false),
-            Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
         );
         assert_eq!(
             set_ttl(&mut bb[..9], &result, 1000, 90000, false),
@@ -801,7 +801,7 @@ mod tests {
         );
         assert_eq!(
             get_ttl(&bb, &result_no_ttl),
-            Err(WTypeErr::NoneFieldErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
         );
 
         assert_eq!(
@@ -1041,7 +1041,7 @@ mod tests {
         );
         assert_eq!(
             set_len(&mut bb, &result_non_len, 435,),
-            Err(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))
+            Err(WTypeErr::CompileErr(" topology.len_slice() is none"))
         );
 
         assert_eq!(
@@ -1050,7 +1050,7 @@ mod tests {
         );
         assert_eq!(
             get_len(&bb, &result_non_len),
-            Err(WTypeErr::NoneFieldErr(" topology.len_slice() is none"))
+            Err(WTypeErr::CompileErr(" topology.len_slice() is none"))
         );
     }
 
@@ -1105,7 +1105,7 @@ mod tests {
 
         assert_eq!(
             set_user_field(&mut bb3, &result1, 987, 765, dummy_usf),
-            Err(WTypeErr::NoneFieldErr("user_field not in PackTopology"))
+            Err(WTypeErr::CompileErr("user_field not in PackTopology"))
         );
         assert_eq!(
             set_user_field(&mut bb4[..10], &result, 12213, 987, dummy_usf),
@@ -1240,7 +1240,7 @@ mod tests {
 
         assert_eq!(
             get_id_conn(&bb, &result2),
-            Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
+            Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
         );
         assert_eq!(
             get_id_conn(&bb[0..3], &result1),
@@ -1259,7 +1259,7 @@ mod tests {
         );
         assert_eq!(
             set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator),
-            Err(WTypeErr::NoneFieldErr("topology.idconn_slice is None"))
+            Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
         );
     }
 
@@ -1307,7 +1307,7 @@ mod tests {
 
         assert_eq!(
             get_id_sender_and_recv(&bb, &result2),
-            Err(WTypeErr::NoneFieldErr(
+            Err(WTypeErr::CompileErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
@@ -1317,7 +1317,7 @@ mod tests {
         );
         assert_eq!(
             set_id_sender_and_recv(&mut bb, &result2, 987, 123),
-            Err(WTypeErr::NoneFieldErr(
+            Err(WTypeErr::CompileErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
