@@ -5,6 +5,8 @@ const FILE_HEAD_LEN: usize = 9;
 use std::cmp::min;
 use std::rc::Rc;
 
+use crate::EXPCP;
+
 #[derive(Debug, PartialEq, Clone)]
 struct DataDrain {
     ptr_in_head: usize,
@@ -153,9 +155,10 @@ impl WSFileSplitter {
                 rfile.0.ptr_in_body += min_len;
             }
             //rfile.0.len_of_head - rfile.0.ptr_in_head + (file.1.len() -rfile.0.ptr_in_body )
-            how_much_left = self.remaining_len_of_send_file().expect(
+            how_much_left = EXPCP!(
+                self.remaining_len_of_send_file(),
                 "impossible state, if &mut self.send_file == Some() then \
-                 self.remaining_len_of_rc_file() must also return Some(usize)",
+                 self.remaining_len_of_rc_file() must also return Some(usize)"
             );
         } else {
             //If the file does not exist,
@@ -277,11 +280,11 @@ impl WSFileSplitter {
                 //if there is no body (payload)
                 if recv_me.1.is_none() {
                     //calculation of payload length
-                    let len_vec =
-                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]).expect(
-                            "impossible state Slice lengths and boundaries are static, verified \
-                             at compile time, and do not change dynamically.",
-                        );
+                    let len_vec = EXPCP!(
+                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]),
+                        "impossible state Slice lengths and boundaries are static, verified at \
+                         compile time, and do not change dynamically."
+                    );
 
                     if len_vec > usize::MAX as u64 {
                         panic!(
@@ -337,21 +340,18 @@ impl WSFileSplitter {
                 //if the file is full and completely filled
 
                 //The file's payload is added to the array that needs to be returned.
-                reta.push(
-                    self.recv_data
-                        .take()
-                        .expect(
-                            "Panicking is an impossible state because this code is executed only \
-                             when self.recv_data is Some.",
-                        )
-                        .1
-                        .expect(
-                            "Panic is an impossible state because this code only executes when \
-                             self.recv_data is Some() and it has Some() vector and it's only \
-                             called when the file is completely received, at this point the file \
-                             should be longer than 0",
-                        ),
-                );
+                reta.push(EXPCP!(
+                    EXPCP!(
+                        self.recv_data.take(),
+                        "Panicking is an impossible state because this code is executed only when \
+                         self.recv_data is Some."
+                    )
+                    .1,
+                    "Panic is an impossible state because this code only executes when \
+                     self.recv_data is Some() and it has Some() vector and it's only called when \
+                     the file is completely received, at this point the file should be longer \
+                     than 0"
+                ));
 
                 self.recv_data = None
             }
@@ -396,19 +396,22 @@ impl WSFileSplitter {
     ///the remaining length in bytes will be returned.
     pub fn remaining_len_of_send_file(&self) -> Option<usize> {
         self.send_file.as_ref().map(|rfile| {
-            rfile
-                .0
-                .len_of_head
-                .checked_sub(rfile.0.ptr_in_head)
-                .expect(
-                    "panic an impossible state The pointer len_of_head must always be less than \
-                     or equal to ptr_in_head.",
-                )
-                .checked_add(rfile.1.len().checked_sub(rfile.0.ptr_in_body).expect(
-                    "panic an impossible state The pointer rfile.1.len() must always be less than \
-                     or equal to rfile.0.ptr_in_body.",
-                ))
-                .expect("usize type is overflow")
+            let head_remaining = EXPCP!(
+                rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head),
+                "panic an impossible state The pointer len_of_head must always be less than or \
+                 equal to ptr_in_head."
+            );
+
+            let body_remaining = EXPCP!(
+                rfile.1.len().checked_sub(rfile.0.ptr_in_body),
+                "panic an impossible state The pointer rfile.1.len() must always be less than or \
+                 equal to rfile.0.ptr_in_body."
+            );
+
+            EXPCP!(
+                head_remaining.checked_add(body_remaining),
+                "usize type is overflow"
+            )
         })
     }
     ///Returns the remaining length of the file received by the structure.
@@ -420,8 +423,9 @@ impl WSFileSplitter {
     pub fn remaining_len_of_recv_file(&self) -> Option<usize> {
         if let Some(ref hea) = self.recv_data {
             hea.1.as_ref().map(|dataa| {
-                dataa.len().checked_sub(hea.0.ptr_in_body).expect(
-                    "impossible condition, hea.0.ptr_in_bod must always be less than dataa.len()",
+                EXPCP!(
+                    dataa.len().checked_sub(hea.0.ptr_in_body),
+                    "impossible condition, hea.0.ptr_in_bod must always be less than dataa.len()"
                 )
             })
         } else {

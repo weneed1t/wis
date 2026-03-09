@@ -136,11 +136,10 @@ impl<
             } else {
                 None
             },
-            random_gener: if connect_param.pack_topology().head_crc_slice().is_some() {
+            random_gener: if connect_param.need_init_random() {
                 Some(
                     TRandomer::new(random_seed.ok_or(WSQueueErr::Critical(
-                        "cfc_seed is none but \
-                         connect_param.pack_topology().head_crc_slice().is_some() == true",
+                        "random_seed is none but connect_param.need_init_random() == true",
                     ))?)
                     .map_err(WSQueueErr::Critical)?,
                 )

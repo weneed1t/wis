@@ -86,7 +86,7 @@ pub fn recv_pack<
             false,
             pack,
             topology,
-            crcfn.expect("topology: &PackTopology has a field but crcfn == None"),
+            crcfn.EXPCP!("topology: &PackTopology has a field but crcfn == None"),
         )?
     {
         return Err(wt1_types::WTypeErr::NoneFieldErr("crc summ does not match"));

@@ -1,3 +1,5 @@
+use crate::EXPCP;
+
 pub enum WNotification {
     CriticalErrorKillConnect(&'static str),
     WarningNonCirtical(&'static str),
@@ -338,7 +340,7 @@ pub fn smpp_no_crypt_hash128(input: &[u64]) -> (u64, u64) {
         ii += 1;
     }
 
-    for x in ii..ii.checked_add(7).expect("ii + 7 overflow") {
+    for x in ii..EXPCP!(ii.checked_add(7), "ii + 7 overflow") {
         proc_ha(&mut startparams, x as u64, ii, &mut d_temp);
     }
 

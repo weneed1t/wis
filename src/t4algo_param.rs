@@ -1,7 +1,7 @@
 //Gaoo~~~ :3
 
 use crate::t0pology::PackTopology;
-use crate::wutils;
+use crate::{EXPCP, wutils};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct WsConnectParam {
@@ -139,10 +139,11 @@ impl WsConnectParam {
             );
             //See the description of the pub fn set_counter function in the pub mod t1fields file
             // to understand why this logic for obtaining maximum capacity is used here.
-            let ctr_max_capacity_real = (ctr_max_capacity.0 >> 1).checked_sub(1).expect(
+            let ctr_max_capacity_real = EXPCP!(
+                (ctr_max_capacity.0 >> 1).checked_sub(1),
                 "(ctr_max_capacity.0 >> 1) - 1 < 0 error, impossible behavior, since the minimum \
                  length of counter_slice() is 1, 1 byte is 255 maximum value, 255 >>1 - 127, 127 \
-                 is greater than 1.",
+                 is greater than 1."
             );
 
             //https://github.com/ilostmyg1thubkey You dumbass,

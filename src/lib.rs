@@ -1,7 +1,15 @@
 //pub mod t10_api;
+#![forbid(unsafe_code)]
+#![deny(clippy::unwrap_used)]
+// или более строгий вариант, запрещающий и unwrap, и expect
+#![deny(clippy::all)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+
 pub mod t0pology;
 pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 pub mod t2proc_fields;
+pub mod wacross;
 
 pub mod t3poc_files;
 pub mod t4algo_param;

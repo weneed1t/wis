@@ -27,3 +27,5 @@ opt-level = 3
 #[features]
 #hotpath = ["hotpath/hotpath"]
 #hotpath-alloc = ["hotpath/hotpath-alloc"]
+[lints.clippy]
+unwrap_used = "deny"

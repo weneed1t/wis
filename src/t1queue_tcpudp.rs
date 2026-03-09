@@ -10,7 +10,7 @@ pub mod recv_queue {
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
     use crate::wt1_types::Cfcser;
-    use crate::{t1fields, wutils};
+    use crate::{EXPCP, t1fields, wutils};
 
     #[cfg_attr(test, derive(Debug))]
     pub enum WSQueueErr {
@@ -183,17 +183,19 @@ pub mod recv_queue {
             // arrives in its entirety.
             if *elem_in_buf_quque >= len_of_curent_pack {
                 //current package is a full in buf
-                *ptr_to_start = ptr_to_start
-                    .checked_add(len_of_curent_pack)
-                    .expect("err ptr_to_start + len_of_curent_pack");
+                *ptr_to_start = EXPCP!(
+                    ptr_to_start.checked_add(len_of_curent_pack),
+                    "err ptr_to_start + len_of_curent_pack"
+                );
             } else {
                 return Ok(false);
             }
             let mut boxed_slice = vec![
                 0u8;
-                ptr_to_start
-                    .checked_sub(*old_ret_pos)
-                    .expect("err ptr_to_start - old_ret_pos")
+                EXPCP!(
+                    ptr_to_start.checked_sub(*old_ret_pos),
+                    "err ptr_to_start - old_ret_pos"
+                )
             ]
             .into_boxed_slice();
             boxed_slice.copy_from_slice(&self.u_buf[*old_ret_pos..*ptr_to_start]);
@@ -213,15 +215,14 @@ pub mod recv_queue {
         ) -> Result<(), WSQueueErr> {
             //copying copy_elems_to_buf from data to a buffer using offsets
             self.u_buf[self.elems_in_buf
-                ..self
-                    .elems_in_buf
-                    .checked_add(*copy_elems_to_buf)
-                    .expect("err in elems_in_buf + copy_elems_to_buf")]
+                ..self.elems_in_buf.checked_add(*copy_elems_to_buf).ok_or(
+                    WSQueueErr::Critical("err in elems_in_buf + copy_elems_to_buf"),
+                )?]
                 .copy_from_slice(
                     &data[*pos_in_data
-                        ..pos_in_data
-                            .checked_add(*copy_elems_to_buf)
-                            .expect("err in pos_in_data + copy_elems_to_buf")],
+                        ..pos_in_data.checked_add(*copy_elems_to_buf).ok_or(
+                            WSQueueErr::Critical("err in pos_in_data + copy_elems_to_buf"),
+                        )?],
                 );
 
             //Updating offsets to copy_elems_to_buf value
@@ -374,7 +375,7 @@ pub mod recv_queue {
             }
 
             let minimal_ctr = match self.last_give_ctr {
-                Some(x) => x.checked_add(1).expect("err x +1"),
+                Some(x) => EXPCP!(x.checked_add(1), "err x +1"),
                 None => 0,
             };
 
@@ -388,7 +389,7 @@ pub mod recv_queue {
             }
 
             let elem_url = &mut self.data
-                [(pos.checked_add(self.k_mod).expect("err pos + self.k_mod")) % self.data.len()];
+                [(EXPCP!(pos.checked_add(self.k_mod), "err pos + self.k_mod")) % self.data.len()];
 
             if elem_url.is_some() {
                 return WSQueueState::ElemIsAlreadyIn;
@@ -404,25 +405,23 @@ pub mod recv_queue {
 
             *elem_url = Some((item_ctr, item.clone()));
 
-            self.in_queue = self.in_queue.checked_add(1).expect("err self.in_queue + 1");
+            self.in_queue = EXPCP!(self.in_queue.checked_add(1), "err self.in_queue + 1");
 
             WSQueueState::SuccessfulInsertion
         }
 
         fn k_add(&mut self, addin: usize) {
-            self.k_mod = (self
-                .k_mod
-                .checked_add(addin)
-                .expect("err addin + self.k_mod"))
-                % self.data.len();
+            self.k_mod =
+                EXPCP!(self.k_mod.checked_add(addin), "err addin + self.k_mod") % self.data.len();
         }
 
         fn edit_my_state(&mut self, size_of_ret: usize, last_item_ctr: u64) {
             let le = self.data.len();
             for x in self.k_mod
-                ..size_of_ret
-                    .checked_add(self.k_mod)
-                    .expect("err self.k_mod + size_of_ret")
+                ..EXPCP!(
+                    size_of_ret.checked_add(self.k_mod),
+                    "err self.k_mod + size_of_ret"
+                )
             {
                 self.data[x % le] = None;
             }
@@ -510,12 +509,13 @@ pub mod recv_queue {
                 //    self.in_queue,
                 //    ex
                 //);
-                ((self.in_queue as u64)
-                    .checked_add(ad)
-                    .expect("err ad + self.in_queue"))
-                    < (lctr.checked_sub(lgctr).expect("err (lctr - lgctr)"))
-                        .checked_add(1)
-                        .expect("(lctr - lgctr) + 1")
+                (EXPCP!(
+                    (self.in_queue as u64).checked_add(ad),
+                    "err ad + self.in_queue"
+                )) < EXPCP!(
+                    (EXPCP!(lctr.checked_sub(lgctr), "err (lctr - lgctr)")).checked_add(1),
+                    "(lctr - lgctr) + 1"
+                )
             } else {
                 false
             }
@@ -630,17 +630,16 @@ pub mod recv_queue {
                         data: elem,
                         p_order: p_order.clone(),
                     });
-                    self.elems_in_me = self
-                        .elems_in_me
-                        .checked_add(1)
-                        .expect("err 1+ self.elems_in_me");
+                    self.elems_in_me =
+                        EXPCP!(self.elems_in_me.checked_add(1), "err 1+ self.elems_in_me");
                 },
             };
 
             if let Some(lei) = self.of_max_p.as_ref().map(|x| x.0) {
-                let last_elem = self.data_map.get_mut(&lei).expect(
+                let last_elem = EXPCP!(
+                    self.data_map.get_mut(&lei),
                     "a critical condition that shouldn't exist, an element is missing, but it's \
-                     impossible",
+                     impossible"
                 );
                 last_elem.cl = Some(id);
             }
@@ -666,10 +665,7 @@ pub mod recv_queue {
             if removed_elem.is_none() {
                 None
             } else {
-                self.elems_in_me = self
-                    .elems_in_me
-                    .checked_sub(1)
-                    .expect("impossible situation");
+                self.elems_in_me = EXPCP!(self.elems_in_me.checked_sub(1), "impossible situation");
                 removed_elem
             }
         }
@@ -698,17 +694,19 @@ pub mod recv_queue {
             // | id:10 ,cb:None,cl:7 |---> | id:7 ,cb:10,cl:15 |---> | id:15 ,cb:7,cl:None |--->
 
             if let Some(x_cb) = removed_elem.cb {
-                let cb_elem = self.data_map.get_mut(&x_cb).expect(
+                let cb_elem = EXPCP!(
+                    self.data_map.get_mut(&x_cb),
                     "critical condition, the .cb counter points to an element that is not in the \
-                     table",
+                     table"
                 );
                 cb_elem.cl = removed_elem.cl
             }
 
             if let Some(x_cl) = removed_elem.cl {
-                let cl_elem = self.data_map.get_mut(&x_cl).expect(
+                let cl_elem = EXPCP!(
+                    self.data_map.get_mut(&x_cl),
                     "critical condition, the .cl counter points to an element that is not in the \
-                     table",
+                     table"
                 );
                 cl_elem.cb = removed_elem.cb
             }
@@ -721,14 +719,13 @@ pub mod recv_queue {
                     if let Some(cb_id) = removed_elem.cb.as_ref() {
                         self.of_max_p = Some((
                             *cb_id,
-                            self.data_map
-                                .get(cb_id)
-                                .expect(
-                                    "Critical error: incorrect logic, link to previous element \
-                                     exists, but it is missing from the table.",
-                                )
-                                .p_order
-                                .clone(),
+                            EXPCP!(
+                                self.data_map.get(cb_id),
+                                "Critical error: incorrect logic, link to previous element \
+                                 exists, but it is missing from the table."
+                            )
+                            .p_order
+                            .clone(),
                         ));
                     } else {
                         self.of_max_p = None;
@@ -748,14 +745,13 @@ pub mod recv_queue {
                     if let Some(cl_id) = removed_elem.cl.as_ref() {
                         self.of_min_p = Some((
                             *cl_id,
-                            self.data_map
-                                .get(cl_id)
-                                .expect(
-                                    "Critical error: incorrect logic, link does not exist, but it \
-                                     is missing from the table.",
-                                )
-                                .p_order
-                                .clone(),
+                            EXPCP!(
+                                self.data_map.get(cl_id),
+                                "Critical error: incorrect logic, link does not exist, but it is \
+                                 missing from the table."
+                            )
+                            .p_order
+                            .clone(),
                         ));
                     } else {
                         self.of_min_p = None;
@@ -798,10 +794,10 @@ pub mod recv_queue {
             let mut temp_id = first;
 
             for x in 0..self.elems_in_me {
-                let temp = self
-                    .data_map
-                    .get(&temp_id)
-                    .expect("critical condition, there is a gap in the queue ");
+                let temp = EXPCP!(
+                    self.data_map.get(&temp_id),
+                    "critical condition, there is a gap in the queue "
+                );
                 if p_order_limit >= temp.p_order {
                     reta_vec.push((temp_id, temp.p_order.clone(), temp.data.clone()));
                 }
@@ -809,12 +805,10 @@ pub mod recv_queue {
                 //so if x + 1 ==self.elems_in_me,
                 //then this element is the last one and there is no need to take cl from it, since
                 // it is None.
-                if x.checked_add(1).expect("err x + 1") == self.elems_in_me {
+                if EXPCP!(x.checked_add(1), "err x + 1") == self.elems_in_me {
                     break;
                 }
-                temp_id = temp
-                    .cl
-                    .expect("critical condition, there is a gap in the queue ");
+                temp_id = EXPCP!(temp.cl, "critical condition, there is a gap in the queue ");
             }
 
             reta_vec
@@ -937,8 +931,9 @@ pub mod recv_queue {
                 ctr_elem
             };
 
-            if self.max.checked_sub(self.min).expect(
-                "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?",
+            if EXPCP!(
+                self.max.checked_sub(self.min),
+                "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?"
             ) > wutils::len_byte_maximal_capacity_check(self.ctr_slice_len).0
             {
                 return Err(
@@ -948,15 +943,16 @@ pub mod recv_queue {
             }
 
             self.data[self.ptr] = ctr_elem;
-            self.ptr = self.ptr.checked_add(1).expect("counter overflow");
+            self.ptr = EXPCP!(self.ptr.checked_add(1), "counter overflow");
 
             Ok(())
         }
         ///calculates how many more times counters can be push()
         pub fn free_space(&self) -> usize {
-            self.data.len().checked_sub(self.ptr).expect(
+            EXPCP!(
+                self.data.len().checked_sub(self.ptr),
                 "obvious algorithm error The pointer counter is always no longer than the length \
-                 of the Box.",
+                 of the Box."
             )
         }
 
@@ -969,11 +965,14 @@ pub mod recv_queue {
         /// ctr len = len_ctr_slise
         pub fn payload_len_in_bytes(&self) -> usize {
             //U64_LEN_IN_BYTES + (self.ptr * self.ctr_slice_len)
-            self.ptr
-                .checked_mul(self.ctr_slice_len)
-                .expect("self.payload_len()* self.ctr_slice_len overflow")
-                .checked_add(U64_LEN_IN_BYTES)
-                .expect("(self.payload_len()* self.ctr_slice_len) + U64_LEN_IN_BYTES overflow")
+            EXPCP!(
+                EXPCP!(
+                    self.ptr.checked_mul(self.ctr_slice_len),
+                    "self.payload_len()* self.ctr_slice_len overflow"
+                )
+                .checked_add(U64_LEN_IN_BYTES),
+                "(self.payload_len()* self.ctr_slice_len) + U64_LEN_IN_BYTES overflow"
+            )
         }
 
         pub fn len(&self) -> usize {
@@ -983,8 +982,10 @@ pub mod recv_queue {
         pub fn get_ctrs_as_byte_pack_vec(&mut self) -> Vec<u8> {
             let mut ret_vec = vec![0; self.payload_len_in_bytes()];
 
-            self.copy_ctrs_pack_to_slice(&mut ret_vec)
-                .expect("algorithm error; if the code has been tested, there should be no errors ");
+            EXPCP!(
+                self.copy_ctrs_pack_to_slice(&mut ret_vec),
+                "algorithm error; if the code has been tested, there should be no errors "
+            );
             ret_vec
         }
         /// get the full set of reverse counters, but copy them to a byte array to avoid
@@ -1028,11 +1029,11 @@ pub mod recv_queue {
             swaps zero to the end of the array.
             */
             let temp_swap = self.data[self.ptr_of_min];
-            self.data[self.ptr_of_min] = self.data[self
-                .ptr
-                .checked_sub(1)
-                .expect("impossible state overflow when subtracting ")];
-            self.data[self.ptr.checked_sub(1).expect("err self.ptr - 1")] = temp_swap;
+            self.data[self.ptr_of_min] = self.data[EXPCP!(
+                self.ptr.checked_sub(1),
+                "impossible state overflow when subtracting "
+            )];
+            self.data[EXPCP!(self.ptr.checked_sub(1), "err self.ptr - 1")] = temp_swap;
 
             //copying the reference counter to the swing slice
             wutils::u64_to_1_8bytes(self.min, &mut pack_payload_slice[..U64_LEN_IN_BYTES])?;
@@ -1042,9 +1043,10 @@ pub mod recv_queue {
                 .zip(self.data[..self.ptr].iter())
             {
                 wutils::u64_to_1_8bytes(
-                    (*sls.1).checked_sub(self.min).expect(
+                    EXPCP!(
+                        (*sls.1).checked_sub(self.min),
                         "algorithm error, the minimum value must be less than any value in the \
-                         array",
+                         array"
                     ),
                     sls.0,
                 )
@@ -1172,9 +1174,8 @@ pub mod recv_queue {
                         max_del = Some(del_elem.1.clone())
                     }
 
-                    how_was_deleted = how_was_deleted
-                        .checked_add(1)
-                        .expect("err 1 + how_was_deleted");
+                    how_was_deleted =
+                        EXPCP!(how_was_deleted.checked_add(1), "err 1 + how_was_deleted");
                 }
 
                 if pre_pross.0 == ret_el {
