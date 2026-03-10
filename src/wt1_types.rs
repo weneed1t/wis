@@ -1030,7 +1030,7 @@ mod tests_enca {
         println!("pay {:?} ", a2);
         println!("aut {:?} ", a3);
         println!("non {:?} ", a4);
-        println!(" {:?}", ret);
+        println!("{:?}", ret);
 
         assert_eq!(StatusDecrypt::DecodedCorrectly, ret);
         //
@@ -1053,7 +1053,7 @@ mod tests_enca {
         println!("pay {:?} ", a2);
         println!("aut {:?} ", a3);
         println!("non {:?} ", a4);
-        println!(" {:?}", ret);
+        println!("{:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
 
@@ -1073,7 +1073,7 @@ mod tests_enca {
         println!("pay {:?} ", a2);
         println!("aut {:?} ", a3);
         println!("non {:?} ", a4);
-        println!(" {:?}", ret);
+        println!("{:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
 
@@ -1093,7 +1093,7 @@ mod tests_enca {
         println!("pay {:?} ", a2);
         println!("aut {:?} ", a3);
         println!("non {:?} ", a4);
-        println!(" {:?}", ret);
+        println!("{:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
     }
