@@ -435,13 +435,16 @@ pub fn get_counter(
 /// protocol fingerprinting and blocking no getter function is provided to avoid
 /// accidental exposure of sensitive or generated data purely for obfuscation — commonly
 /// used in censorship-resistant or mimicry protocols
-pub fn set_user_field(
+pub fn set_user_field<F>(
     pack: &mut [u8],
     topology: &PackTopology,
     counter: u64,
     full_len: usize,
-    field_gen: fn(&mut [u8], u64, usize) -> Result<(), &'static str>,
-) -> Result<(), WTypeErr> {
+    mut field_gen: F,
+) -> Result<(), WTypeErr>
+where
+    F: FnMut(&mut [u8], u64, usize) -> Result<(), &'static str>,
+{
     if let Some((start, end, _)) = topology.trash_content_slice() {
         if pack.len() < end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -496,7 +499,7 @@ pub fn crypt<Tenc, Tnoncer>(
     pack: &mut [u8],
     topology: &PackTopology,
     enc_mode: Cryptlag,
-    enc_struct: &mut Tenc,
+    enc_struct: &Tenc,
     countr: Option<u64>,
     nonce_gener: Option<&mut Tnoncer>,
 ) -> Result<(), WTypeErr>

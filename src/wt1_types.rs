@@ -285,7 +285,7 @@ pub trait Noncer: Sized {
 pub trait Thrasher: Sized {
     fn new(key: &[u8]) -> Result<Self, &'static str>;
 
-    fn set_user_field(&mut self, user_field: &mut [u8]) -> Result<(), &'static str>;
+    fn set_user_field(&mut self, user_field: &mut [u8], countr: &u64) -> Result<(), &'static str>;
 }
 
 pub trait Cfcser: Sized {
@@ -401,7 +401,11 @@ impl Thrasher for DumpThrasher {
             })
         }
     }
-    fn set_user_field(&mut self, _user_field: &mut [u8]) -> Result<(), &'static str> {
+    fn set_user_field(
+        &mut self,
+        _user_field: &mut [u8],
+        _countr: &u64,
+    ) -> Result<(), &'static str> {
         #[cfg(not(test))]
         panic!(
             "This panic is called from Thrasher because it is a stub class,
