@@ -486,11 +486,11 @@ impl EncWis for DumpEnc {
 
     fn encrypt(
         &self,
-        non_enc_head: &[u8],
-        enc_payload: &mut [u8],
-        auth_tag: &mut [u8],
-        nonce_countr: u64,
-        nonce: Option<&[u8]>,
+        _non_enc_head: &[u8],
+        _enc_payload: &mut [u8],
+        _auth_tag: &mut [u8],
+        _nonce_countr: u64,
+        _nonce: Option<&[u8]>,
     ) -> Result<(), &'static str> {
         #[cfg(not(test))]
         {
@@ -502,16 +502,17 @@ impl EncWis for DumpEnc {
         }
         #[cfg(test)]
         {
-            let mut t = self.t;
-            bpg(&mut t, enc_payload);
+            bpg(&mut (self.t.clone()), _enc_payload);
+
             let mut hat = vec![];
-            hat.append(&mut non_enc_head.to_vec());
-            hat.append(&mut enc_payload.to_vec());
+            hat.extend_from_slice(_non_enc_head);
+            hat.extend_from_slice(_enc_payload);
 
-            let mut xh = &mut nonce.clone().unwrap_or(vec![0, 1, 2, 3, 4, 5, 6, 7u8]);
+            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
+            hat.extend_from_slice(xh);
 
-            //  hat.append(&mut );
-            hat.append(&mut non_enc_head.to_vec());
+            _auth_tag.fill(0);
+            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), _auth_tag);
 
             Ok(())
         }
@@ -519,11 +520,11 @@ impl EncWis for DumpEnc {
 
     fn decrypt(
         &self,
-        non_enc_head: &[u8],
-        enc_payload: &mut [u8],
-        auth_tag: &mut [u8],
-        nonce_countr: u64,
-        nonce: Option<&[u8]>,
+        _non_enc_head: &[u8],
+        _enc_payload: &mut [u8],
+        _auth_tag: &mut [u8],
+        _nonce_countr: u64,
+        _nonce: Option<&[u8]>,
     ) -> Result<StatusDecrypt, &'static str> {
         #[cfg(not(test))]
         {
@@ -535,10 +536,22 @@ impl EncWis for DumpEnc {
         }
         #[cfg(test)]
         {
-            let mut t = self.t;
-            bpg(&mut t, enc_payload);
+            let mut hat = vec![];
+            hat.extend_from_slice(_non_enc_head);
+            hat.extend_from_slice(_enc_payload);
 
-            Ok(())
+            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
+            hat.extend_from_slice(xh);
+
+            let mut hat2 = vec![0; _auth_tag.len()];
+
+            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), &mut hat2);
+            if hat2.iter().eq(_auth_tag.iter()) {
+                bpg(&mut (self.t.clone()), _enc_payload);
+                Ok(StatusDecrypt::DecodedCorrectly)
+            } else {
+                Ok(StatusDecrypt::PackageDamaged)
+            }
         }
     }
 }
@@ -988,5 +1001,100 @@ mod tests_pack_err {
     fn equality_with_self_always_true() {
         let err = PackErr::LenErr("self");
         assert_eq!(err, err); // reflexivity
+    }
+}
+
+#[cfg(test)]
+mod tests_enca {
+    use super::*;
+
+    // ┌────────────────────────────────────────────────────────────────────────────┐
+    // │ packerr partialeq – equality depends only on variant, not on string       │
+    // └────────────────────────────────────────────────────────────────────────────┘
+
+    #[test]
+    fn same_variant_with_different_strings_are_equal() {
+        let dn = DumpEnc::new(&[1, 2, 3, 4]).unwrap();
+
+        let a1 = vec![1u8; 10];
+        let mut a2 = vec![2u8; 15];
+        let mut a3 = vec![2u8; 20];
+        let a4 = vec![3u8; 25];
+
+        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        println!(" ");
+        println!(" ");
+        println!("hea {:?} ", a1);
+        println!("pay {:?} ", a2);
+        println!("aut {:?} ", a3);
+        println!("non {:?} ", a4);
+        println!(" {:?}", ret);
+
+        assert_eq!(StatusDecrypt::DecodedCorrectly, ret);
+        //
+        //
+        //
+        //
+        let a1 = vec![1u8; 10];
+        let mut a2 = vec![2u8; 15];
+        let mut a3 = vec![2u8; 20];
+        let mut a4 = vec![3u8; 25];
+
+        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+
+        a4[7] = !a4[7];
+
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        println!(" ");
+        println!(" ");
+        println!("hea {:?} ", a1);
+        println!("pay {:?} ", a2);
+        println!("aut {:?} ", a3);
+        println!("non {:?} ", a4);
+        println!(" {:?}", ret);
+
+        assert_eq!(StatusDecrypt::PackageDamaged, ret);
+
+        let mut a1 = vec![1u8; 10];
+        let mut a2 = vec![2u8; 15];
+        let mut a3 = vec![2u8; 20];
+        let a4 = vec![3u8; 25];
+
+        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+
+        a1[7] = !a1[7];
+
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        println!(" ");
+        println!(" ");
+        println!("hea {:?} ", a1);
+        println!("pay {:?} ", a2);
+        println!("aut {:?} ", a3);
+        println!("non {:?} ", a4);
+        println!(" {:?}", ret);
+
+        assert_eq!(StatusDecrypt::PackageDamaged, ret);
+
+        let a1 = vec![1u8; 10];
+        let mut a2 = vec![2u8; 15];
+        let mut a3 = vec![2u8; 20];
+        let a4 = vec![3u8; 25];
+
+        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+
+        a2[7] = !a2[7];
+
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        println!(" ");
+        println!(" ");
+        println!("hea {:?} ", a1);
+        println!("pay {:?} ", a2);
+        println!("aut {:?} ", a3);
+        println!("non {:?} ", a4);
+        println!(" {:?}", ret);
+
+        assert_eq!(StatusDecrypt::PackageDamaged, ret);
     }
 }

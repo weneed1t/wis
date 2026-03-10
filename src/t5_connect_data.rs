@@ -39,7 +39,7 @@ pub struct WsConnection<
     is_active: bool,
     nonce_gener: Option<Tnoncer>,
     //cfc_gener: Option<TCfcser>,
-    user_field: Option<TThrasher>,
+    user_field_gener: Option<TThrasher>,
     random_gener: Option<TRandomer>,
     measurement_window_latency: f64,
     my_role: MyRole,
@@ -137,7 +137,7 @@ impl<
                    None
                },
                */
-            user_field: if connect_param
+            user_field_gener: if connect_param
                 .pack_topology()
                 .trash_content_slice()
                 .is_some()
@@ -226,7 +226,14 @@ impl<
     pub fn identified(&self) -> &Identified {
         &self.identified
     }
+
     pub fn measurement_window_latency(&self) -> &f64 {
         &self.measurement_window_latency
     }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn create_test() {}
 }
