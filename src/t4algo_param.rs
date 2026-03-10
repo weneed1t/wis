@@ -821,14 +821,14 @@ fn get_topol(
     use crate::t0pology;
 
     let fields = vec![
-        //t2page::PakFields::HeadByte,
-        t0pology::PakFields::UserField(1),
-        t0pology::PakFields::Counter(5),
-        t0pology::PakFields::IdConnect(2),
-        t0pology::PakFields::HeadCRC(2),
-        t0pology::PakFields::Nonce(6),
-        //PakFields::TTL(2),
-        t0pology::PakFields::Len(3),
+        //t2page::PackFields::HeadByte,
+        t0pology::PackFields::UserField(1),
+        t0pology::PackFields::Counter(5),
+        t0pology::PackFields::IdConnect(2),
+        t0pology::PackFields::HeadCRC(2),
+        t0pology::PackFields::Nonce(6),
+        //PackFields::TTL(2),
+        t0pology::PackFields::Len(3),
     ];
 
     let mut returna = PackTopology::new(16, &fields, true, true).unwrap();
@@ -2337,28 +2337,30 @@ mod tests_adaptation_coefficients {
 }
 
 #[cfg(test)]
+pub fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
+    WsConnectParamBuilder::new(topo)
+        .max_ms_latency(100.0)
+        .min_ms_latency(10.0)
+        .start_ms_latency(50.0)
+        .latency_increase_coefficient(0.5)
+        .max_num_attempts_resend_package(3)
+        .packages_measurement_window_size_determining_latency(10)
+        .overhead_network_latency_relative_window_coefficient(0.2)
+        .maximum_packet_delay_fback_coefficient(0.8)
+        .maximum_packet_delay_absolute_fback(80.0)
+        .maximum_length_udp_queue_packages(100)
+        .maximum_length_fback_queue_packages(20)
+        .maximum_length_queue_unconfirmed_packages(60)
+        .max_len_file(None)
+        .instant_feedback_on_packet_loss(false)
+}
+
+#[cfg(test)]
 mod tests_from_group {
     use super::*;
 
     // compact builder with only mtu-related parameters.
     // all other fields are set to minimal valid values needed to satisfy the constructor.
-    fn base_builder(topo: &PackTopology) -> WsConnectParamBuilder {
-        WsConnectParamBuilder::new(topo)
-            .max_ms_latency(100.0)
-            .min_ms_latency(10.0)
-            .start_ms_latency(50.0)
-            .latency_increase_coefficient(0.5)
-            .max_num_attempts_resend_package(3)
-            .packages_measurement_window_size_determining_latency(10)
-            .overhead_network_latency_relative_window_coefficient(0.2)
-            .maximum_packet_delay_fback_coefficient(0.8)
-            .maximum_packet_delay_absolute_fback(80.0)
-            .maximum_length_udp_queue_packages(100)
-            .maximum_length_fback_queue_packages(20)
-            .maximum_length_queue_unconfirmed_packages(60)
-            .max_len_file(None)
-            .instant_feedback_on_packet_loss(false)
-    }
 
     // ┌────────────────────────────────────────────────────────────────────────────┐
     // │ mtu validation – all checks related to mtu vs total_minimal_len          │

@@ -14,7 +14,7 @@ pub enum PackErr {
 #[derive(Debug, Clone)]
 pub enum WTypeErr {
     LenSizeErr(&'static str),
-    CompileErr(&'static str),
+    CompileFieldsErr(&'static str),
     PackageDamaged(&'static str),
     WorkTimeErr(&'static str),
 }
@@ -23,6 +23,11 @@ pub enum WTypeErr {
 pub enum WSQueueErr {
     NonCritical(&'static str),
     Critical(&'static str),
+}
+
+pub enum AtomHandFile {
+    InitiatorFileSize(usize),
+    PassiveFileSize(usize),
 }
 
 impl WSQueueErr {
@@ -73,7 +78,7 @@ impl WTypeErr {
 
     pub fn is_none_field(&self) -> bool {
         match self {
-            Self::CompileErr(_) => true,
+            Self::CompileFieldsErr(_) => true,
             _ => false,
         }
     }
@@ -88,7 +93,7 @@ impl WTypeErr {
     pub fn err_to_str(&self) -> &'static str {
         match self {
             Self::LenSizeErr(x) => x,
-            Self::CompileErr(x) => x,
+            Self::CompileFieldsErr(x) => x,
             Self::PackageDamaged(x) => x,
             Self::WorkTimeErr(x) => x,
         }
@@ -99,7 +104,7 @@ impl PartialEq for WTypeErr {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::LenSizeErr(x), Self::LenSizeErr(y)) => x == y,
-            (Self::CompileErr(x), Self::CompileErr(y)) => x == y,
+            (Self::CompileFieldsErr(x), Self::CompileFieldsErr(y)) => x == y,
             (Self::PackageDamaged(x), Self::PackageDamaged(y)) => x == y,
             (Self::WorkTimeErr(x), Self::WorkTimeErr(y)) => x == y,
             _ => false,
@@ -277,43 +282,54 @@ pub trait EncWis: Sized {
 }
 
 pub trait Noncer: Sized {
-    fn new(key: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, &'static str>;
 
     fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
 }
 
 pub trait Thrasher: Sized {
-    fn new(key: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, &'static str>;
 
     fn set_user_field(&mut self, user_field: &mut [u8], countr: &u64) -> Result<(), &'static str>;
 }
 
 pub trait Cfcser: Sized {
-    fn new(_key: &[u8]) -> Result<Self, &'static str>;
-    fn gen_crc(&mut self, payload: &[u8], cfc_field: &mut [u8]) -> Result<(), &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, &'static str>;
+    fn gen_crc(&mut self, payload: &[u8], crc_field: &mut [u8]) -> Result<(), &'static str>;
 }
 
 pub trait Randomer: Sized {
-    fn new(_key: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, &'static str>;
     fn gen_rand_u64(&mut self) -> u64;
     fn gen_rand_u32(&mut self) -> u32;
 }
+
+pub trait HandMaker: Sized {
+    fn new(my_role: MyRole, seed: &[u8]) -> Result<Self, &'static str>;
+    fn file_sheme<'a>() -> &'a [AtomHandFile];
+}
+
 //#############################################################3
 pub struct DumpNonser {
     pub t: u64,
+    pub v: Vec<u8>,
 }
 pub struct DumpCfcser {
     pub t: u64,
+    pub v: Vec<u8>,
 }
 pub struct DumpThrasher {
     pub t: u64,
+    pub v: Vec<u8>,
 }
 pub struct DumpRandomer {
     pub t: u64,
+    pub v: Vec<u8>,
 }
 
 pub struct DumpEnc {
     pub t: u64,
+    pub v: Vec<u8>,
 }
 //#############################################################3
 
@@ -328,6 +344,7 @@ impl Noncer for DumpNonser {
         #[cfg(test)]
         Ok(Self {
             t: _key.iter().map(|&x| x as u64).sum(),
+            v: _key.to_vec(),
         })
     }
     fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), &'static str> {
@@ -358,11 +375,12 @@ impl Cfcser for DumpCfcser {
         {
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
+                v: _key.to_vec(),
             })
         }
         //Ok(Self {})
     }
-    fn gen_crc(&mut self, _payload: &[u8], _cfc_field: &mut [u8]) -> Result<(), &'static str> {
+    fn gen_crc(&mut self, _payload: &[u8], _crc_field: &mut [u8]) -> Result<(), &'static str> {
         #[cfg(not(test))]
         {
             panic!(
@@ -378,7 +396,7 @@ impl Cfcser for DumpCfcser {
                 .enumerate()
                 .map(|(u, &x)| (x as u64).rotate_left(((u as u32) * 17) % 64))
                 .sum();
-            bpg(&mut tt, _cfc_field);
+            bpg(&mut tt, _crc_field);
             Ok(())
         }
     }
@@ -398,6 +416,7 @@ impl Thrasher for DumpThrasher {
         {
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
+                v: _key.to_vec(),
             })
         }
     }
@@ -434,6 +453,7 @@ impl Randomer for DumpRandomer {
         {
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
+                v: _key.to_vec(),
             })
         }
     }
@@ -484,6 +504,7 @@ impl EncWis for DumpEnc {
         {
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
+                v: _key.to_vec(),
             })
         }
     }
@@ -720,16 +741,16 @@ mod tests_my_type {
 #[cfg(test)]
 mod tests_prealocc {
     use super::*;
-    use crate::t0pology::PakFields;
+    use crate::t0pology::PackFields;
     #[test]
     fn test_prealoc() {
         let mkd = [13, 7, 6, 8];
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            PakFields::UserField(mkd[0]),
-            PakFields::Counter(mkd[1]),
-            PakFields::IdConnect(mkd[2]),
-            PakFields::HeadCRC(mkd[3]),
+            //t2page::PackFields::HeadByte,
+            PackFields::UserField(mkd[0]),
+            PackFields::Counter(mkd[1]),
+            PackFields::IdConnect(mkd[2]),
+            PackFields::HeadCRC(mkd[3]),
         ];
 
         let result = PackTopology::new(19, &fields, true, false).unwrap();
@@ -804,7 +825,7 @@ mod tests_dumps_nonser_cfcser {
     #[test]
     //#[should_panic(expected = "This panic is called from DumpNonser")]
     fn dumpnonser_set_nonce_panics() {
-        let mut stub = DumpNonser { t: 10 }; // we can create it directly because it's a struct
+        let mut stub = DumpNonser { t: 10, v: vec![] }; // we can create it directly because it's a struct
         let mut buf = [0u8; 8];
         stub.set_nonce(&mut buf).unwrap();
     }
@@ -828,10 +849,10 @@ mod tests_dumps_nonser_cfcser {
     #[test]
     //#[should_panic(expected = "This panic is called from DumpCfcser")]
     fn dumpcfcser_gen_crc_panics() {
-        let mut stub = DumpCfcser { t: 10 };
-        let mut cfc_field = [0u8; 4];
+        let mut stub = DumpCfcser { t: 10, v: vec![] };
+        let mut crc_field = [0u8; 4];
         let payload = [1, 2, 3];
-        stub.gen_crc(&payload, &mut cfc_field).unwrap();
+        stub.gen_crc(&payload, &mut crc_field).unwrap();
     }
 
     #[test]
@@ -847,13 +868,13 @@ mod tests_dumps_nonser_cfcser {
     #[test]
     fn dumpnonser_impl_noncer() {
         fn takes_noncer<T: Noncer>(_: T) {}
-        takes_noncer(DumpNonser { t: 10 }); // compiles -> ok
+        takes_noncer(DumpNonser { t: 10, v: vec![] }); // compiles -> ok
     }
 
     #[test]
     fn dumpcfcser_impl_cfcser() {
         fn takes_cfcser<T: Cfcser>(_: T) {}
-        takes_cfcser(DumpCfcser { t: 10 }); // compiles -> ok
+        takes_cfcser(DumpCfcser { t: 10, v: vec![] }); // compiles -> ok
     }
 }
 
@@ -1100,5 +1121,148 @@ mod tests_enca {
         println!("{:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
+    }
+}
+
+//_! Implementation of RSA encryption algorithm using only the Rust standard library.
+//_! For demonstration purposes only – not secure for real-world use.
+//_! Assumes availability of trusted prime numbers (obtained externally).
+//_! Uses u64 for all values; intermediate multiplications use u128 to avoid overflow.
+
+/// Structure representing an RSA key pair.
+#[cfg(test)]
+pub struct RsaTest {
+    n: u64, // modulus (product of p and q)
+    e: u64, // public exponent (usually 65537)
+    d: u64, // private exponent
+}
+#[cfg(test)]
+impl RsaTest {
+    /// Creates a new RSA instance from two prime numbers `p` and `q`.
+    /// The public exponent `e` is fixed to 65537.
+    /// Returns `Err` if the provided primes are invalid (e.g., equal, or (p-1)*(q-1) not
+    /// coprime with e).
+    pub fn new(p: u64, q: u64) -> Result<Self, &'static str> {
+        if p == q {
+            return Err("p and q must be different");
+        }
+        let n = p * q;
+        let phi = (p - 1) * (q - 1); // Euler's totient
+
+        // Commonly used public exponent
+        let e = 65537;
+
+        // Ensure e is coprime with phi
+        if Self::gcd(phi, e) != 1 {
+            return Err("e and φ(n) are not coprime");
+        }
+
+        // Compute private exponent d = e⁻¹ mod φ(n)
+        let d = match Self::mod_inv(e, phi) {
+            Some(val) => val,
+            None => return Err("modular inverse not found"),
+        };
+
+        Ok(Self { n, e, d })
+    }
+
+    /// Encrypts a plaintext message `m` (must be less than `n`).
+    /// Returns ciphertext.
+    pub fn encrypt(e: u64, n: u64, m: u64) -> u64 {
+        Self::mod_pow(m, e, n)
+    }
+
+    /// Decrypts a ciphertext `c` (must be less than `n`).
+    /// Returns plaintext.
+    pub fn decrypt(&self, c: u64) -> u64 {
+        Self::mod_pow(c, self.d, self.n)
+    }
+
+    pub fn get_e(&self) -> u64 {
+        self.e
+    }
+    pub fn get_n(&self) -> u64 {
+        self.n
+    }
+
+    // ---------- helper functions ----------
+
+    /// Modular exponentiation: (base^exp) % modulus using exponentiation by squaring.
+    fn mod_pow(mut base: u64, mut exp: u64, modulus: u64) -> u64 {
+        if modulus == 1 {
+            return 0;
+        }
+        let mut result = 1;
+        base %= modulus;
+        while exp > 0 {
+            if exp % 2 == 1 {
+                result = ((result as u128) * (base as u128) % (modulus as u128)) as u64;
+            }
+            base = ((base as u128) * (base as u128) % (modulus as u128)) as u64;
+            exp >>= 1;
+        }
+        result
+    }
+
+    /// Computes the greatest common divisor of two numbers.
+    fn gcd(mut a: u64, mut b: u64) -> u64 {
+        while b != 0 {
+            let t = b;
+            b = a % b;
+            a = t;
+        }
+        a
+    }
+
+    /// Computes the modular inverse of `a` modulo `m` using the extended Euclidean
+    /// algorithm. Returns `Some(inverse)` if exists, else `None`.
+    fn mod_inv(a: u64, m: u64) -> Option<u64> {
+        let (mut t, mut new_t) = (0i64, 1i64);
+        let (mut r, mut new_r) = (m as i64, a as i64);
+        while new_r != 0 {
+            let quotient = r / new_r;
+            (t, new_t) = (new_t, t - quotient * new_t);
+            (r, new_r) = (new_r, r - quotient * new_r);
+        }
+        if r > 1 {
+            return None; // not invertible
+        }
+        if t < 0 {
+            t += m as i64;
+        }
+        Some(t as u64)
+    }
+}
+
+#[cfg(test)]
+mod tests_rsa {
+    use super::*;
+
+    #[test]
+    fn test_rsa_encrypt_decrypt() {
+        // Two small primes (for demonstration only – use much larger ones in practice)
+        let p = 8811653;
+        let q = 9539867;
+        let rsa = RsaTest::new(p, q).unwrap();
+        let eee = rsa.get_e();
+        let nnn = rsa.get_n();
+        //
+        //
+        //
+        let message = 123456;
+        let cipher = RsaTest::encrypt(eee, nnn, message);
+
+        let plain = rsa.decrypt(cipher);
+        assert_eq!(message, plain);
+    }
+
+    #[test]
+    fn test_invalid_primes() {
+        assert!(RsaTest::new(61, 61).is_err()); // equal primes
+    }
+
+    #[test]
+    fn test_mod_pow() {
+        assert_eq!(RsaTest::mod_pow(4, 13, 497), 445); // known example
     }
 }

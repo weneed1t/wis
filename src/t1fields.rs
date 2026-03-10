@@ -62,7 +62,9 @@ where
         return Ok(temp_new[..len] == temp_old[..len]);
     }
 
-    Err(WTypeErr::CompileErr("head_crc_slice not in PackTopology"))
+    Err(WTypeErr::CompileFieldsErr(
+        "head_crc_slice not in PackTopology",
+    ))
 }
 
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
@@ -124,7 +126,7 @@ pub fn set_ttl(
 
         return Ok(temp);
     }
-    Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
 
 ///
@@ -141,7 +143,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         }
         return wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
     }
-    Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
+    Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
 
 /// set_len sets the packet length field in the header based on the actual size of the
@@ -156,7 +158,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
 pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
     let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::CompileErr(" topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))?;
 
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -189,7 +191,7 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
 pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> {
     let sls = topology
         .len_slice()
-        .ok_or(WTypeErr::CompileErr(" topology.len_slice() is none"))?;
+        .ok_or(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))?;
     if pack.len() < sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
@@ -229,7 +231,7 @@ pub fn set_id_conn(
         return Ok(());
     }
 
-    Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
+    Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
 }
 
 /// get_id_conn extracts the connection id and sender role from the packet header
@@ -247,7 +249,7 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
         let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
         return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
-    Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
+    Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
 }
 
 /// set_id_sender_and_recv sets both sender and receiver identifiers in the packet header
@@ -284,7 +286,7 @@ pub fn set_id_sender_and_recv(
         return Ok(());
     }
 
-    Err(WTypeErr::CompileErr(
+    Err(WTypeErr::CompileFieldsErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -312,7 +314,7 @@ pub fn get_id_sender_and_recv(
             wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
         ));
     }
-    Err(WTypeErr::CompileErr(
+    Err(WTypeErr::CompileFieldsErr(
         "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None",
     ))
 }
@@ -345,7 +347,9 @@ pub fn set_counter(
 
         return Ok((pack_ctr, max_cap));
     }
-    Err(WTypeErr::CompileErr("topology.counter_slice() is none"))
+    Err(WTypeErr::CompileFieldsErr(
+        "topology.counter_slice() is none",
+    ))
 }
 
 /// set_counter writes the packet counter value into the header with a control bit
@@ -418,7 +422,9 @@ pub fn get_counter(
             my_type,
         ));
     }
-    Err(WTypeErr::CompileErr("topology.counter_slice() is none"))
+    Err(WTypeErr::CompileFieldsErr(
+        "topology.counter_slice() is none",
+    ))
 }
 
 /// set_user_field generates and fills the user-defined field (aka "trash field") in the
@@ -453,7 +459,7 @@ where
         return Ok(());
     }
 
-    Err(WTypeErr::CompileErr("user_field not in PackTopology"))
+    Err(WTypeErr::CompileFieldsErr("user_field not in PackTopology"))
 }
 
 /// crypt performs encryption or decryption of the packet payload and computes
@@ -528,7 +534,7 @@ where
         let (n, c) = (
             if let Some(x) = topology.nonce_slice() {
                 nonce_gener
-                    .ok_or(WTypeErr::CompileErr("nonce_gener required"))?
+                    .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
                     .set_nonce(&mut pack[x.0..x.1])
                     .map_err(WTypeErr::WorkTimeErr)?;
                 1
@@ -537,7 +543,7 @@ where
             },
             if topology.counter_slice().is_some() {
                 if countr.is_none() {
-                    return Err(WTypeErr::CompileErr("counter_field required"));
+                    return Err(WTypeErr::CompileFieldsErr("counter_field required"));
                 }
                 1
             } else {
@@ -545,7 +551,7 @@ where
             },
         );
         if 0 == n + c {
-            return Err(WTypeErr::CompileErr(
+            return Err(WTypeErr::CompileFieldsErr(
                 "Incorrect combination, the packet must have either a counter field, a nonce \
                  field, or a nonce field + a counter field. This topology has neither a counter \
                  field nor a nonce field.",
@@ -613,20 +619,20 @@ mod tests {
     #[test]
     fn test_gen_head_crc() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::UserField(3333),
-            t0pology::PakFields::Counter(7),
-            t0pology::PakFields::IdConnect(6),
-            t0pology::PakFields::HeadCRC(8),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::UserField(3333),
+            t0pology::PackFields::Counter(7),
+            t0pology::PackFields::IdConnect(6),
+            t0pology::PackFields::HeadCRC(8),
         ];
 
         let result = PackTopology::new(59, &fields, true, false).unwrap();
 
         let fields2 = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::UserField(3333),
-            t0pology::PakFields::Counter(7),
-            t0pology::PakFields::IdConnect(6),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::UserField(3333),
+            t0pology::PackFields::Counter(7),
+            t0pology::PackFields::IdConnect(6),
         ];
 
         let result_non_crc = PackTopology::new(59, &fields2, true, false).unwrap();
@@ -726,7 +732,9 @@ mod tests {
 
             assert_eq!(
                 set_get_head_crc(false, &mut bb, &result_non_crc, dummy_crc_gen),
-                Err(WTypeErr::CompileErr("head_crc_slice not in PackTopology"))
+                Err(WTypeErr::CompileFieldsErr(
+                    "head_crc_slice not in PackTopology"
+                ))
             );
         }
     }
@@ -734,22 +742,22 @@ mod tests {
     #[test]
     fn test_ttl() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            t0pology::PakFields::IdConnect(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::TTL(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            t0pology::PackFields::IdConnect(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::TTL(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, false).unwrap();
 
         let fields2 = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            t0pology::PakFields::IdConnect(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            t0pology::PackFields::IdConnect(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
         ];
 
         let result_no_ttl = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -791,7 +799,7 @@ mod tests {
         );
         assert_eq!(
             set_ttl(&mut bb, &result_no_ttl, 1000, 90000, false),
-            Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
         );
         assert_eq!(
             set_ttl(&mut bb[..9], &result, 1000, 90000, false),
@@ -804,7 +812,7 @@ mod tests {
         );
         assert_eq!(
             get_ttl(&bb, &result_no_ttl),
-            Err(WTypeErr::CompileErr(" set_ttl not in  PackTopology"))
+            Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
         );
 
         assert_eq!(
@@ -825,14 +833,14 @@ mod tests {
     #[test]
     fn test_crypt() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::UserField(1),
-            t0pology::PakFields::Counter(1),
-            t0pology::PakFields::IdConnect(2),
-            t0pology::PakFields::HeadCRC(2),
-            t0pology::PakFields::Nonce(6),
-            t0pology::PakFields::TTL(2),
-            t0pology::PakFields::Len(3),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::UserField(1),
+            t0pology::PackFields::Counter(1),
+            t0pology::PackFields::IdConnect(2),
+            t0pology::PackFields::HeadCRC(2),
+            t0pology::PackFields::Nonce(6),
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::Len(3),
         ];
 
         let result = PackTopology::new(16, &fields, true, true).unwrap();
@@ -978,22 +986,22 @@ mod tests {
     #[test]
     fn test_len() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
 
         let fields2 = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
         ];
 
         let result_non_len = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -1005,11 +1013,11 @@ mod tests {
         assert_eq!(set_len(&mut bb, &result, 15).is_err(), true);
 
         let fields2 = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
         ];
 
         let result1 = PackTopology::new(5, &fields2, true, false).unwrap();
@@ -1019,12 +1027,12 @@ mod tests {
         assert_eq!(get_len(&bb, &result), Ok(bb.len()));
 
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(1),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(1),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
@@ -1044,7 +1052,7 @@ mod tests {
         );
         assert_eq!(
             set_len(&mut bb, &result_non_len, 435,),
-            Err(WTypeErr::CompileErr(" topology.len_slice() is none"))
+            Err(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))
         );
 
         assert_eq!(
@@ -1053,29 +1061,29 @@ mod tests {
         );
         assert_eq!(
             get_len(&bb, &result_non_len),
-            Err(WTypeErr::CompileErr(" topology.len_slice() is none"))
+            Err(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))
         );
     }
 
     #[test]
     fn test_trash() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::UserField(334),
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::UserField(334),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
         ];
 
         let result = PackTopology::new(5, &fields, true, true).unwrap();
 
         let fields1 = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::Counter(7),
-            //t2page::PakFields::IdReceiver(6),
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(7),
+            //t2page::PackFields::IdReceiver(6),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, true).unwrap();
@@ -1108,7 +1116,7 @@ mod tests {
 
         assert_eq!(
             set_user_field(&mut bb3, &result1, 987, 765, dummy_usf),
-            Err(WTypeErr::CompileErr("user_field not in PackTopology"))
+            Err(WTypeErr::CompileFieldsErr("user_field not in PackTopology"))
         );
         assert_eq!(
             set_user_field(&mut bb4[..10], &result, 12213, 987, dummy_usf),
@@ -1135,7 +1143,10 @@ mod tests {
 
     #[test]
     fn test_ctr() {
-        let fields = vec![t0pology::PakFields::TTL(2), t0pology::PakFields::Counter(1)];
+        let fields = vec![
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::Counter(1),
+        ];
 
         let result = PackTopology::new(16, &fields, true, false).unwrap();
 
@@ -1182,15 +1193,15 @@ mod tests {
     #[test]
     fn test_id_conn() {
         let fields1 = vec![
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
-            t0pology::PakFields::Counter(2),
-            t0pology::PakFields::IdConnect(7),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
+            t0pology::PackFields::Counter(2),
+            t0pology::PackFields::IdConnect(7),
         ];
         let fields2 = vec![
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
-            t0pology::PakFields::Counter(4),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
+            t0pology::PackFields::Counter(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
@@ -1243,7 +1254,7 @@ mod tests {
 
         assert_eq!(
             get_id_conn(&bb, &result2),
-            Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
+            Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
         );
         assert_eq!(
             get_id_conn(&bb[0..3], &result1),
@@ -1262,23 +1273,23 @@ mod tests {
         );
         assert_eq!(
             set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator),
-            Err(WTypeErr::CompileErr("topology.idconn_slice is None"))
+            Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
         );
     }
 
     #[test]
     fn test_id_sender_recv() {
         let fields1 = vec![
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
-            t0pology::PakFields::Counter(2),
-            t0pology::PakFields::IdOfSender(4),
-            t0pology::PakFields::IdReceiver(4),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
+            t0pology::PackFields::Counter(2),
+            t0pology::PackFields::IdSender(4),
+            t0pology::PackFields::IdReceiver(4),
         ];
         let fields2 = vec![
-            t0pology::PakFields::HeadCRC(4),
-            t0pology::PakFields::Len(4),
-            t0pology::PakFields::Counter(4),
+            t0pology::PackFields::HeadCRC(4),
+            t0pology::PackFields::Len(4),
+            t0pology::PackFields::Counter(4),
         ];
 
         let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
@@ -1310,7 +1321,7 @@ mod tests {
 
         assert_eq!(
             get_id_sender_and_recv(&bb, &result2),
-            Err(WTypeErr::CompileErr(
+            Err(WTypeErr::CompileFieldsErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
@@ -1320,7 +1331,7 @@ mod tests {
         );
         assert_eq!(
             set_id_sender_and_recv(&mut bb, &result2, 987, 123),
-            Err(WTypeErr::CompileErr(
+            Err(WTypeErr::CompileFieldsErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
@@ -1333,16 +1344,16 @@ mod tests {
     #[test]
     fn full_module_test() {
         let fields = vec![
-            //t2page::PakFields::HeadByte,
-            t0pology::PakFields::IdOfSender(7),
-            t0pology::PakFields::IdReceiver(7),
-            t0pology::PakFields::Len(1),
-            t0pology::PakFields::Counter(4),
-            t0pology::PakFields::TTL(2),
-            t0pology::PakFields::IdConnect(4),
-            t0pology::PakFields::HeadCRC(t0pology::MAXIMAL_CRC_LEN),
-            t0pology::PakFields::UserField(10),
-            t0pology::PakFields::Nonce(16),
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::IdSender(7),
+            t0pology::PackFields::IdReceiver(7),
+            t0pology::PackFields::Len(1),
+            t0pology::PackFields::Counter(4),
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::IdConnect(4),
+            t0pology::PackFields::HeadCRC(t0pology::MAXIMAL_CRC_LEN),
+            t0pology::PackFields::UserField(10),
+            t0pology::PackFields::Nonce(16),
         ];
 
         let id_s = 0x2299FFAABBCC10;

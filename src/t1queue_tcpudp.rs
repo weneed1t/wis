@@ -18,7 +18,7 @@ pub mod recv_queue {
         u_buf: Box<[u8]>,
         pack_topology: &'a PackTopology,
         mtu: usize,
-        cfc_gener: Option<TCfcser>,
+        crc_gener: Option<TCfcser>,
     }
     ///TCP queue, already directly related to conversion into packets from a TCP data
     /// stream,  since such data exchange protocols do not divide data into packets at
@@ -42,7 +42,7 @@ pub mod recv_queue {
         pub fn new(
             mtu: usize,
             pack_topology: &'a PackTopology,
-            cfc_seed: Option<&[u8]>,
+            crc_seed: Option<&[u8]>,
         ) -> Result<Self, WSQueueErr> {
             if pack_topology.len_slice().is_none() {
                 return Err(WSQueueErr::Critical("pack_topology.len_slice() is none"));
@@ -53,10 +53,10 @@ pub mod recv_queue {
                 u_buf: vec![0; mtu].into_boxed_slice(),
                 pack_topology,
                 mtu,
-                cfc_gener: if pack_topology.head_crc_slice().is_some() {
+                crc_gener: if pack_topology.head_crc_slice().is_some() {
                     Some(
-                        TCfcser::new(cfc_seed.ok_or(WSQueueErr::Critical(
-                            "cfc_seed is none but \
+                        TCfcser::new(crc_seed.ok_or(WSQueueErr::Critical(
+                            "crc_seed is none but \
                              connect_param.pack_topology().head_crc_slice().is_some() == true",
                         ))?)
                         .map_err(WSQueueErr::Critical)?,
@@ -119,7 +119,7 @@ pub mod recv_queue {
 
             if self.pack_topology.head_crc_slice().is_some() {
                 let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
-                    let cfc = self.cfc_gener.as_mut().ok_or("cfc_gener is None")?;
+                    let cfc = self.crc_gener.as_mut().ok_or("crc_gener is None")?;
                     cfc.gen_crc(da1ta, out)?;
                     Ok(())
                 };
@@ -1341,7 +1341,7 @@ pub mod recv_queue {
     mod tests_wtcp {
 
         use super::*;
-        use crate::t0pology::{PackTopology, PakFields};
+        use crate::t0pology::{PackFields, PackTopology};
         use crate::t1fields;
 
         struct Cfcstuct {}
@@ -1353,9 +1353,9 @@ pub mod recv_queue {
             fn gen_crc(
                 &mut self,
                 payload: &[u8],
-                cfc_field: &mut [u8],
+                crc_field: &mut [u8],
             ) -> Result<(), &'static str> {
-                dummy_crc_gen(payload, cfc_field)
+                dummy_crc_gen(payload, crc_field)
             }
         }
 
@@ -1373,11 +1373,11 @@ pub mod recv_queue {
                 .collect();
 
             let fields = vec![
-                PakFields::Len(1),
-                PakFields::IdOfSender(1),
-                PakFields::IdReceiver(1),
-                PakFields::Counter(1),
-                PakFields::HeadCRC(3),
+                PackFields::Len(1),
+                PackFields::IdSender(1),
+                PackFields::IdReceiver(1),
+                PackFields::Counter(1),
+                PackFields::HeadCRC(3),
             ];
 
             let pack_topology = PackTopology::new(2, &fields, true, true).unwrap();
@@ -1839,12 +1839,12 @@ pub mod recv_queue {
 
         use ::std::collections::HashMap;
 
-        use crate::t0pology::{PackTopology, PakFields};
+        use crate::t0pology::{PackFields, PackTopology};
         use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
         use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
         #[test]
         fn test_base() {
-            let fields = vec![PakFields::Counter(2)];
+            let fields = vec![PackFields::Counter(2)];
 
             let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
 
@@ -1873,7 +1873,7 @@ pub mod recv_queue {
         fn test_wait() {
             println!("test_wait");
             let ctr_len = 1; //dnt touch
-            let fields = vec![PakFields::Counter(ctr_len)];
+            let fields = vec![PackFields::Counter(ctr_len)];
 
             let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
 
@@ -2046,7 +2046,7 @@ pub mod recv_queue {
         #[test]
         fn test_extend_err() {
             let ctr_len = 2; //dnt touch
-            let fields = vec![PakFields::Counter(ctr_len)];
+            let fields = vec![PackFields::Counter(ctr_len)];
 
             let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
 
@@ -2092,7 +2092,7 @@ pub mod recv_queue {
     }
 
     #[cfg(test)]
-    use crate::t0pology::PakFields;
+    use crate::t0pology::PackFields;
 
     #[test]
     fn test_full_colab_test() {
@@ -2122,7 +2122,7 @@ pub mod recv_queue {
             }
         }
 
-        let fields = vec![PakFields::Counter(3)];
+        let fields = vec![PackFields::Counter(3)];
 
         let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
 

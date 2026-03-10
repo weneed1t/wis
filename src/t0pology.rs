@@ -28,8 +28,8 @@ pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, 
 // communication idconnect field is used to associate packets with a specific connection
 // or session all size constants are defined to support maximum required lengths for
 // secure and flexible packet handling
-pub enum PakFields {
-    IdOfSender(usize),
+pub enum PackFields {
+    IdSender(usize),
     IdReceiver(usize),
     Len(usize),
     Counter(usize),
@@ -40,17 +40,17 @@ pub enum PakFields {
     IdConnect(usize),
 }
 
-impl PartialEq for PakFields {
+impl PartialEq for PackFields {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::IdOfSender(_), Self::IdOfSender(_)) => true,
+            (Self::IdSender(_), Self::IdSender(_)) => true,
             (Self::IdReceiver(_), Self::IdReceiver(_)) => true,
             (Self::Len(_), Self::Len(_)) => true,
             (Self::Counter(_), Self::Counter(_)) => true,
             (Self::UserField(_), Self::UserField(_)) => true,
             (Self::HeadCRC(_), Self::HeadCRC(_)) => true,
             (Self::Nonce(_), Self::Nonce(_)) => true,
-            //(PakFields::HeadByte, PakFields::HeadByte) => true,
+            //(PackFields::HeadByte, PackFields::HeadByte) => true,
             (Self::TTL(_), Self::TTL(_)) => true,
             (Self::IdConnect(_), Self::IdConnect(_)) => true,
             _ => false,
@@ -60,7 +60,7 @@ impl PartialEq for PakFields {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackTopology {
-    all_fields: Box<[PakFields]>,
+    all_fields: Box<[PackFields]>,
     tag_len: usize,
     encrypt_start_pos: usize,
     content_start_pos: usize,
@@ -106,14 +106,14 @@ impl PackTopology {
     /// byte][encrypted user data][tag]   ] [head byte (1 byte) is fixed and marks
     /// transition to encrypted section, not exposed in public fields    ] [validation
     /// ensures consistent configuration: tcp_mode requires Len, missing data_save
-    /// requires CRC, etc.   ] [all possible fields are defined in enum PakFields and
-    /// passed via &[PakFields]; order matters   ] [UserField (trash_content_slice) is
+    /// requires CRC, etc.   ] [all possible fields are defined in enum PackFields and
+    /// passed via &[PackFields]; order matters   ] [UserField (trash_content_slice) is
     /// non-encrypted and used for traffic mimicry or DPI evasion   ] [the structure
     /// supports flexible configuration for use in various network environments (UDP-like
     /// or TCP-like)   ]
     pub fn new(
         tag_len: usize,
-        fields: &[PakFields],
+        fields: &[PackFields],
         data_save: bool,
         tcp_mode: bool,
     ) -> Result<Self, &'static str> {
@@ -132,7 +132,7 @@ impl PackTopology {
         for x in fields.iter() {
             shift = shift
                 .checked_add(match *x {
-                    PakFields::UserField(le) => {
+                    PackFields::UserField(le) => {
                         if trash_content_slice.is_some() {
                             return Err("duplicate userfield");
                         }
@@ -144,7 +144,7 @@ impl PackTopology {
                         trash_content_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::IdConnect(le) => {
+                    PackFields::IdConnect(le) => {
                         if idconn_slice.is_some() {
                             return Err("duplicate idconn");
                         }
@@ -154,7 +154,7 @@ impl PackTopology {
                         idconn_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::Len(le) => {
+                    PackFields::Len(le) => {
                         if len_slice.is_some() {
                             return Err("duplicate len");
                         }
@@ -165,7 +165,7 @@ impl PackTopology {
                         len_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::Counter(le) => {
+                    PackFields::Counter(le) => {
                         if counter_slice.is_some() {
                             return Err("duplicate counter");
                         }
@@ -175,17 +175,17 @@ impl PackTopology {
                         counter_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::IdOfSender(le) => {
+                    PackFields::IdSender(le) => {
                         if id_of_sender_slice.is_some() {
-                            return Err("duplicate idofsender");
+                            return Err("duplicate IdSender");
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("idofsender value exceeds 8");
+                            return Err("IdSender value exceeds 8");
                         }
                         id_of_sender_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::IdReceiver(le) => {
+                    PackFields::IdReceiver(le) => {
                         if id_of_receiver_slice.is_some() {
                             return Err("duplicate idreceiver");
                         }
@@ -195,7 +195,7 @@ impl PackTopology {
                         id_of_receiver_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::HeadCRC(le) => {
+                    PackFields::HeadCRC(le) => {
                         if crc_slice.is_some() {
                             return Err("duplicate crc");
                         }
@@ -207,7 +207,7 @@ impl PackTopology {
                         crc_slice = Some((shift, shift + le, le));
                         le
                     },
-                    PakFields::Nonce(le) => {
+                    PackFields::Nonce(le) => {
                         if le == 0 || le > MAXIMAL_NONCE_LEN {
                             return Err("nonce len is 0");
                         }
@@ -219,7 +219,7 @@ impl PackTopology {
                         nonce_slice = Some((shift, shift + le, le));
                         le
                     },
-                    //PakFields::HeadByte => {
+                    //PackFields::HeadByte => {
                     //    if head_byte_pos.is_some() {
                     //        return Err("duplicate headbyte");
                     //    }
@@ -230,7 +230,7 @@ impl PackTopology {
                     //HeadByte was moved to the encrypted part because the HeadByte field is
                     // mandatory, always comes at the end of the head, and its
                     // encryption increases reliability and security
-                    PakFields::TTL(le) => {
+                    PackFields::TTL(le) => {
                         if ttl_slice.is_some() {
                             return Err("duplicate ttl");
                         }
@@ -463,10 +463,10 @@ impl PackTopology {
                 vector_legend.push(format!("  [I - {} bytes] - IDCONN", lenme));
             }
 
-            // Fill IdOfSender
+            // Fill IdSender
             if let Some((start, end, lenme)) = self.id_of_sender_slice {
                 fill_field(&mut layout, start, end, 'S', &mut sf);
-                vector_legend.push(format!("  [S - {} bytes] - IdOfSender", lenme));
+                vector_legend.push(format!("  [S - {} bytes] - IdSender", lenme));
             }
 
             // Fill IdOfReceiver
@@ -545,15 +545,15 @@ mod tests {
     fn test_valid_input() {
         // Test valid input with all unique fields and correct values
         let fields = vec![
-            PakFields::Len(4),
-            PakFields::Counter(8),
-            PakFields::IdOfSender(6),
-            PakFields::IdReceiver(6),
-            PakFields::UserField(10),
-            PakFields::HeadCRC(4),
-            PakFields::Nonce(8),
-            PakFields::TTL(3),
-            PakFields::IdConnect(7),
+            PackFields::Len(4),
+            PackFields::Counter(8),
+            PackFields::IdSender(6),
+            PackFields::IdReceiver(6),
+            PackFields::UserField(10),
+            PackFields::HeadCRC(4),
+            PackFields::Nonce(8),
+            PackFields::TTL(3),
+            PackFields::IdConnect(7),
         ];
         let result = PackTopology::new(5, &fields, true, true);
 
@@ -627,7 +627,7 @@ mod tests {
     #[test]
     fn test_invalid_inputs() {
         // Duplicate Len
-        let fields_duplicate_len = vec![PakFields::Len(4), PakFields::Len(4)];
+        let fields_duplicate_len = vec![PackFields::Len(4), PackFields::Len(4)];
         assert_eq!(
             PackTopology::new(5, &fields_duplicate_len, false, false).err(),
             Some("duplicate len"),
@@ -635,7 +635,7 @@ mod tests {
         );
 
         // Len value exceeds 8
-        let fields_invalid_len = vec![PakFields::Len(9)];
+        let fields_invalid_len = vec![PackFields::Len(9)];
         assert_eq!(
             PackTopology::new(5, &fields_invalid_len, false, false).err(),
             Some("len value exceeds 8"),
@@ -643,7 +643,7 @@ mod tests {
         );
 
         // CRC len is 0
-        let fields_zero_crc = vec![PakFields::HeadCRC(0)];
+        let fields_zero_crc = vec![PackFields::HeadCRC(0)];
         assert_eq!(
             PackTopology::new(5, &fields_zero_crc, false, false).err(),
             Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0"),
@@ -651,7 +651,7 @@ mod tests {
         );
 
         // Missing Counter or Nonce
-        let fields_no_counter_or_nonce = vec![PakFields::Len(4)];
+        let fields_no_counter_or_nonce = vec![PackFields::Len(4)];
         assert_eq!(
             PackTopology::new(5, &fields_no_counter_or_nonce, false, false).err(),
             Some("the structure must have either a Counter field"),
@@ -662,7 +662,7 @@ mod tests {
     #[test]
     fn test_guarantee_conditions() {
         // Missing HeadCRC when data integrity is not guaranteed
-        let fields_missing_headcrc = vec![PakFields::Len(4), PakFields::Counter(8)];
+        let fields_missing_headcrc = vec![PackFields::Len(4), PackFields::Counter(8)];
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, false).err(),
             Some(
@@ -671,7 +671,7 @@ mod tests {
             ),
             "expected 'missing HeadCRC' error"
         );
-        let fields_missing_headcrc = vec![PakFields::Counter(8)];
+        let fields_missing_headcrc = vec![PackFields::Counter(8)];
         // Missing Len when length preservation is not guaranteed
         assert_eq!(
             PackTopology::new(5, &fields_missing_headcrc, false, true).err(),
@@ -686,7 +686,7 @@ mod tests {
     #[test]
     fn test_edge_cases() {
         // Minimal valid input
-        let fields_minimal_valid = vec![PakFields::Len(1), PakFields::Counter(1)];
+        let fields_minimal_valid = vec![PackFields::Len(1), PackFields::Counter(1)];
         let result = PackTopology::new(1, &fields_minimal_valid, true, false);
         assert!(
             result.is_ok(),
@@ -723,14 +723,14 @@ mod tests {
     fn test_field_positions_and_lengths() {
         // Define a set of fields with varying lengths
         let fields = vec![
-            PakFields::Len(4),
-            PakFields::Counter(8),
-            PakFields::IdOfSender(6),
-            PakFields::IdReceiver(6),
-            PakFields::UserField(10),
-            PakFields::HeadCRC(4),
-            PakFields::Nonce(8),
-            PakFields::TTL(3),
+            PackFields::Len(4),
+            PackFields::Counter(8),
+            PackFields::IdSender(6),
+            PackFields::IdReceiver(6),
+            PackFields::UserField(10),
+            PackFields::HeadCRC(4),
+            PackFields::Nonce(8),
+            PackFields::TTL(3),
         ];
 
         // Define tag length
@@ -765,15 +765,11 @@ mod tests {
             expected_shift += len;
         }
 
-        // IdOfSender
+        // IdSender
         if let Some((start, end, len)) = topology.id_of_sender_slice() {
-            assert_eq!(start, expected_shift, "IdOfSender start position mismatch");
-            assert_eq!(
-                end,
-                expected_shift + len,
-                "IdOfSender end position mismatch"
-            );
-            assert_eq!(len, 6, "IdOfSender length mismatch");
+            assert_eq!(start, expected_shift, "IdSender start position mismatch");
+            assert_eq!(end, expected_shift + len, "IdSender end position mismatch");
+            assert_eq!(len, 6, "IdSender length mismatch");
             expected_shift += len;
         }
 
@@ -851,7 +847,7 @@ mod tests {
         // Test each field with invalid values
         for &invalid_value in &invalid_values {
             // Len
-            let fields_len = vec![PakFields::Counter(2), PakFields::Len(invalid_value)];
+            let fields_len = vec![PackFields::Counter(2), PackFields::Len(invalid_value)];
             let result = PackTopology::new(5, &fields_len, true, true);
             assert_eq!(
                 result.err(),
@@ -861,7 +857,7 @@ mod tests {
             );
 
             // Counter
-            let fields_counter = vec![PakFields::Counter(invalid_value)];
+            let fields_counter = vec![PackFields::Counter(invalid_value)];
             let result = PackTopology::new(5, &fields_counter, true, true);
             assert_eq!(
                 result.err(),
@@ -870,20 +866,22 @@ mod tests {
                 invalid_value
             );
 
-            // IdOfSender
+            // IdSender
             let fields_id_sender =
-                vec![PakFields::Counter(2), PakFields::IdOfSender(invalid_value)];
+                vec![PackFields::Counter(2), PackFields::IdSender(invalid_value)];
             let result = PackTopology::new(5, &fields_id_sender, true, true);
             assert_eq!(
                 result.err(),
-                Some("idofsender value exceeds 8"),
-                "expected 'idofsender value exceeds 8' error for IdOfSender({})",
+                Some("IdSender value exceeds 8"),
+                "expected 'IdSender value exceeds 8' error for IdSender({})",
                 invalid_value
             );
 
             // IdReceiver
-            let fields_id_receiver =
-                vec![PakFields::Counter(2), PakFields::IdReceiver(invalid_value)];
+            let fields_id_receiver = vec![
+                PackFields::Counter(2),
+                PackFields::IdReceiver(invalid_value),
+            ];
             let result = PackTopology::new(5, &fields_id_receiver, true, true);
             assert_eq!(
                 result.err(),
@@ -894,9 +892,9 @@ mod tests {
 
             // HeadCRC
             let fields_crc = vec![
-                PakFields::Counter(2),
-                PakFields::HeadCRC(invalid_value),
-                PakFields::Len(3),
+                PackFields::Counter(2),
+                PackFields::HeadCRC(invalid_value),
+                PackFields::Len(3),
             ];
             let result = PackTopology::new(5, &fields_crc, true, true);
             if invalid_value == 0 {
@@ -916,7 +914,7 @@ mod tests {
             }
 
             // Nonce
-            let fields_nonce = vec![PakFields::Nonce(invalid_value)];
+            let fields_nonce = vec![PackFields::Nonce(invalid_value)];
             let result = PackTopology::new(5, &fields_nonce, true, true);
             if invalid_value == 0 {
                 assert_eq!(
@@ -935,7 +933,7 @@ mod tests {
             }
 
             // TTL
-            let fields_ttl = vec![PakFields::Counter(2), PakFields::TTL(invalid_value)];
+            let fields_ttl = vec![PackFields::Counter(2), PackFields::TTL(invalid_value)];
             let result = PackTopology::new(5, &fields_ttl, false, false);
             assert_eq!(
                 result.err(),
@@ -951,7 +949,7 @@ mod tests {
     #[test]
     fn test_idconnect_validation() {
         // Length > 8
-        let fields_len = vec![PakFields::IdConnect(9), PakFields::Counter(4)];
+        let fields_len = vec![PackFields::IdConnect(9), PackFields::Counter(4)];
         assert_eq!(
             PackTopology::new(5, &fields_len, true, true).err(),
             Some("idconn value exceeds 8")
@@ -959,9 +957,9 @@ mod tests {
 
         // Duplicate
         let fields_dup = vec![
-            PakFields::IdConnect(4),
-            PakFields::IdConnect(4), // Duplicate
-            PakFields::Counter(4),
+            PackFields::IdConnect(4),
+            PackFields::IdConnect(4), // Duplicate
+            PackFields::Counter(4),
         ];
         assert_eq!(
             PackTopology::new(5, &fields_dup, true, true).err(),
@@ -971,14 +969,14 @@ mod tests {
 
     #[test]
     fn test_header_only_config() {
-        let fields = vec![PakFields::Counter(4)];
+        let fields = vec![PackFields::Counter(4)];
         let result = PackTopology::new(0, &fields, true, false);
         assert_eq!(result.err(), Some("!!tag_len ==0"));
     }
 
     #[test]
     fn test_zero_ttl() {
-        let fields = vec![PakFields::TTL(0), PakFields::Counter(4)];
+        let fields = vec![PackFields::TTL(0), PackFields::Counter(4)];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
             Some("TTL value exceeds MAXIMAL_TTL_LEN or  == 0")
@@ -989,18 +987,18 @@ mod tests {
     fn test_max_length_fields() {
         // Valid max lengths
         let fields_valid = vec![
-            PakFields::HeadCRC(32), // MAXIMAL_CRC_LEN
-            PakFields::Nonce(32),   // MAXIMAL_NONCE_LEN
-            PakFields::TTL(8),      // MAXIMAL_TTL_LEN
-            PakFields::Counter(4),
-            PakFields::Len(2),
+            PackFields::HeadCRC(32), // MAXIMAL_CRC_LEN
+            PackFields::Nonce(32),   // MAXIMAL_NONCE_LEN
+            PackFields::TTL(8),      // MAXIMAL_TTL_LEN
+            PackFields::Counter(4),
+            PackFields::Len(2),
         ];
         assert!(PackTopology::new(5, &fields_valid, true, true).is_ok());
 
         // Exceed max lengths
         let fields_invalid = vec![
-            PakFields::HeadCRC(33), // > MAXIMAL_CRC_LEN
-            PakFields::Counter(4),
+            PackFields::HeadCRC(33), // > MAXIMAL_CRC_LEN
+            PackFields::Counter(4),
         ];
         assert_eq!(
             PackTopology::new(5, &fields_invalid, true, true).err(),
@@ -1012,9 +1010,9 @@ mod tests {
     fn test_userfield_edge_cases() {
         // Duplicate
         let fields_dup = vec![
-            PakFields::UserField(10),
-            PakFields::UserField(5), // Duplicate
-            PakFields::Counter(4),
+            PackFields::UserField(10),
+            PackFields::UserField(5), // Duplicate
+            PackFields::Counter(4),
         ];
         assert_eq!(
             PackTopology::new(5, &fields_dup, true, true).err(),
@@ -1023,8 +1021,8 @@ mod tests {
 
         // Zero length
         let fields_zero = vec![
-            PakFields::UserField(0), // Invalid
-            PakFields::Counter(4),
+            PackFields::UserField(0), // Invalid
+            PackFields::Counter(4),
         ];
         assert_eq!(
             PackTopology::new(5, &fields_zero, true, true).err(),
@@ -1035,10 +1033,10 @@ mod tests {
     #[test]
     fn test_mismatched_id_lengths() {
         let fields = vec![
-            PakFields::IdOfSender(4),
-            PakFields::IdReceiver(8), // Different length
-            PakFields::Counter(4),
-            PakFields::Len(2),
+            PackFields::IdSender(4),
+            PackFields::IdReceiver(8), // Different length
+            PackFields::Counter(4),
+            PackFields::Len(2),
         ];
         let result = PackTopology::new(5, &fields, true, true);
         assert_eq!(
@@ -1046,7 +1044,7 @@ mod tests {
             Some("id_of_receiver_slice and id_of_sender_slice must be the same length")
         );
 
-        let fields = vec![PakFields::Counter(4)];
+        let fields = vec![PackFields::Counter(4)];
         let result = PackTopology::new(5, &fields, true, true);
         assert_eq!(
             result.err(),
