@@ -5,6 +5,9 @@ use crate::wt1_types::{
     Cfcser, EncWis, MyRole, /* , Cfcser, WTypeErr */
     Noncer, PackErr, Randomer, Thrasher, WSQueueErr,
 };
+
+const FBACK_START_CTR: u64 = 1;
+const DATA_START_CTR: u64 = 0;
 #[derive(Clone)]
 pub struct Ids {
     pub id_sender: u64,
@@ -130,13 +133,13 @@ impl<
             } else {
                 None
             },
-            ctr_data: 0,
-            ctr_fback: 1,
+            ctr_data: DATA_START_CTR,
+            ctr_fback: FBACK_START_CTR, //
             network_stability: 0.0,
             network_latency: 0.0,
             encrypt: Tencrypt::new(default_enc_key).map_err(WSQueueErr::Critical)?,
             connect_param: connect_param.clone(),
-            enrypaaa: true,
+            enrypaaa: true, //in progress
             is_active: true,
             intermediate_questionable_packages_queue: connect_param
                 .intermediate_questionable_packages_queue()
@@ -944,5 +947,58 @@ mod test_new {
         );
 
         assert_eq!(te1.unwrap().random_gener.is_none(), true);
+    }
+
+    #[test]
+    fn add_to() {
+        let fields = vec![
+            //t2page::PackFields::HeadByte,
+            t0pology::PackFields::Counter(1),
+        ];
+
+        let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
+
+        let result = t4algo_param::base_builder(&po).build().unwrap();
+
+        let te1: WsConnection<
+            DumpNonser,
+            DumpThrasher,
+            u32,
+            u32,
+            DumpEnc,
+            DumpRandomer,
+            DumpCfcser,
+        > = WsConnection::new(
+            &result,
+            &[1, 1, 1, 1],
+            MyRole::Initiator,
+            None,
+            None,
+            None,
+            None,
+            &Identified {
+                my_metall_id: 999,
+                my_s_r_id: None,
+                id_conn: None,
+            },
+        )
+        .unwrap();
+
+        let mut h = 1;
+        assert_eq!(te1.add_two(&mut h).is_ok(), true);
+        assert_eq!(h, 3);
+        assert_eq!(te1.add_two(&mut h).is_ok(), true);
+        assert_eq!(h, 5);
+
+        h = u64::MAX - 1;
+
+        assert_eq!(
+            te1.add_two(&mut h),
+            Err(PackErr::UndefinedErr(
+                "The capacity limit of the main counter u64 has been reached, so it is no longer \
+                 possible to send new messages over this connection. The connection must be \
+                 closed!"
+            ))
+        );
     }
 }
