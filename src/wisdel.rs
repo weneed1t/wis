@@ -9,48 +9,30 @@ const DOUBLE_WIS_CHIP_ROUNDS: usize = 10;
 const WIS_STR_INIT_4_BYTES1: u32 = 0x57697327; //"Wis'" in utf8
 const WIS_STR_INIT_4_BYTES2: u32 = 0x61_64656c; //"adel" in utf8
 
-macro_rules! wis_shift_left_2 {
-    // aka x * 4
-    ($x:expr) => {{ $x << 2 }};
-}
-
-macro_rules! wis_shift_left_6 {
-    // aka x * 64
-    ($x:expr) => {{ $x << 6 }};
-}
-//be careful! , when using on big-endian change the function to_be_bytes() and
-// from_le_bytes(...)
 //===============================================================
-
-macro_rules! wis_u32_to_bytes {
-    ($value:expr) => {{ $value.to_be_bytes() }};
-}
-
-macro_rules! wis_bytes_to_u32 {
-    ($bytes:expr) => {{ u32::from_be_bytes($bytes) }};
-}
 
 fn split_u64_to_u32_be_shift(value: u64) -> (u32, u32) {
     let high = (value >> 32) as u32;
     let low = value as u32;
-    (high.to_be(), low.to_be())
+    (high, low)
 }
 //===============================================================
 
 #[inline]
-fn bytes_to_words(bytes: &[u8; CHUNK_SIZE]) -> [u32; WORDS_PER_CHUNK] {
+fn bytes_to_words<const NU32: usize, const NBYTES: usize>(bytes: &[u8; NBYTES]) -> [u32; NU32] {
+    assert_eq!(NBYTES, NU32 * 4);
     std::array::from_fn(|i| {
         let offset = i * 4;
-        u32::from_be_bytes(
-            bytes[offset..offset + 4]
-                .try_into()
-                .expect("диапазон всегда ровно 4 байта"),
-        )
+        u32::from_be_bytes(bytes[offset..offset + 4].try_into().unwrap())
     })
 }
-
 #[inline]
-fn write_words_to_bytes(words: &[u32; WORDS_PER_CHUNK], bytes: &mut [u8; CHUNK_SIZE]) {
+fn write_words_to_bytes<const NU32: usize, const NBYTES: usize>(
+    words: &[u32; NU32],
+    bytes: &mut [u8; NBYTES],
+) {
+    assert_eq!(NBYTES, NU32 * 4);
+
     for (i, &word) in words.iter().enumerate() {
         let offset = i * 4;
         bytes[offset..offset + 4].copy_from_slice(&word.to_be_bytes());
@@ -103,85 +85,6 @@ pub fn wis_process_block(state: &mut [u32; WORDS_PER_CHUNK], double_rounds: usiz
     }
 }
 
-pub fn wis_key_set(_key8: &[u8; 32], _nonce: &[u8; WORDS_PER_CHUNK]) {
-    let mut key_state = [0; WORDS_PER_CHUNK];
-
-    ///////// wis_u8s_to_u32s(nonce, 4, &mut key_state[0..4]);
-    key_state[12] = WIS_STR_INIT_4_BYTES1;
-
-    key_state[13] = WIS_STR_INIT_4_BYTES2;
-
-    key_state[14] = WIS_STR_INIT_4_BYTES1; //Instead of a counter
-    key_state[15] = WIS_STR_INIT_4_BYTES2; //Instead of a counter
-
-    /////// wis_u8s_to_u32s(key8, 8, &mut key_state[4..12]);
-
-    //wis_process_block(&mut key_state, DOUBLE_WIS_INIT_ROUNDS); //init
-
-    let mut adder: u32 = 0;
-
-    for x in key_state[0..15].iter() {
-        adder = adder.wrapping_add(*x);
-        adder = adder.rotate_left(3);
-    }
-    if 0 == adder {
-        adder = 1;
-    }
-
-    println!();
-}
-
-pub fn _encrypt(
-    key: &[u32; WORDS_PER_CHUNK],
-    _start_counter: usize,
-    plaintext: &mut [u32; WORDS_PER_CHUNK],
-) {
-    let stream = [0; 64];
-    let plaintext_len: usize = plaintext.len();
-    let round_bloks: usize = plaintext_len / plaintext_len;
-    let _tail_p = plaintext_len % 64;
-
-    for mut index in 0..round_bloks {
-        index = wis_shift_left_6!(index);
-
-        let _steam_32 = *key;
-
-        //wis_process_block(&mut steam_32, 21);
-
-        for (ptb, s) in plaintext[index..index + 64].iter_mut().zip(stream.iter()) {
-            *ptb ^= *s;
-        }
-
-        //+=1
-    }
-}
-
-pub fn _1encrypt(
-    key: &[u32; WORDS_PER_CHUNK],
-    temp: &mut [u32; WORDS_PER_CHUNK],
-    counter: u64,
-    plaintext: &mut [u32; WORDS_PER_CHUNK],
-    hash: &mut [u32; WORDS_PER_CHUNK],
-) {
-    temp.copy_from_slice(key);
-    let ctr2 = split_u64_to_u32_be_shift(counter);
-
-    temp[14] ^= ctr2.0;
-    temp[15] ^= ctr2.1;
-
-    wis_process_block(temp, DOUBLE_WIS_CHIP_ROUNDS); //get state
-
-    add_vec::<WORDS_PER_CHUNK>(temp, key); //key + mix
-
-    xor_vec::<u32, WORDS_PER_CHUNK>(temp, plaintext); // enc
-
-    xor_vec::<u32, WORDS_PER_CHUNK>(hash, plaintext); // enc xor temp hash
-
-    wis_process_block(hash, DOUBLE_WIS_TAG_ROUNDS); // progress hash 
-
-    add_vec::<WORDS_PER_CHUNK>(hash, key); //hash add key 
-}
-
 /// # example
 /// ```
 /// let mut data = vec![0u8; 128];
@@ -193,7 +96,7 @@ pub fn _1encrypt(
 /// ```
 pub fn process_in_place<F>(data: &mut [u8], mut process: F)
 where
-    F: FnMut(&mut [u32; WORDS_PER_CHUNK]),
+    F: FnMut(&mut [u32; WORDS_PER_CHUNK], usize),
 {
     let mut chunks = data.chunks_exact_mut(CHUNK_SIZE);
 
@@ -202,7 +105,7 @@ where
             .try_into()
             .expect("A chunk is always exactly CHUNK_SIZE bytes");
         let mut words = bytes_to_words(chunk_array);
-        process(&mut words);
+        process(&mut words, CHUNK_SIZE);
         write_words_to_bytes(&words, chunk_array);
     }
 
@@ -212,87 +115,168 @@ where
         buf[..remainder.len()].copy_from_slice(remainder);
 
         let mut words = bytes_to_words(&buf);
-        process(&mut words);
+        process(&mut words, remainder.len());
         write_words_to_bytes(&words, &mut buf);
 
         remainder.copy_from_slice(&buf[..remainder.len()]);
     }
 }
 
-pub struct WisDel {
-    key: [u32; WORDS_PER_CHUNK],
-    counter: u64,
-    hash: [u32; WORDS_PER_CHUNK],
+pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) {
+    let mut key_state = [0; WORDS_PER_CHUNK];
+
+    /*
+    |-----------------------------------|
+    | nonce1 | nonce2 | nonce3 | nonce4 |
+    |-----------------------------------|
+    |key32_1 |key32_2 |key32_3 |key32_4 |
+    |-----------------------------------|
+    |key32_5 |key32_6 |key32_7 |key32_8 |
+    |-----------------------------------|
+    |  wis1  |  wis2  |  crt1  |  crt2  |
+    |-----------------------------------|
+    */
+    //let a = (0..32).map(|x| x as u8).collect();
+
+    key_state[..4].clone_from_slice(&bytes_to_words::<4, 16>(nonce));
+
+    key_state[4..4 + 8].clone_from_slice(&bytes_to_words::<8, 32>(key8));
+
+    key_state[12] = WIS_STR_INIT_4_BYTES1;
+
+    key_state[13] = WIS_STR_INIT_4_BYTES2;
+
+    #[cfg(test)]
+    {
+        let op = [
+            "nonce 1-4:   ",
+            "key 1-4:     ",
+            "key 5-8:     ",
+            "w 1-2|ct1-2: ",
+        ];
+
+        let a = (0..32).map(|x| x as u8).collect::<Vec<u8>>();
+        if key8.eq(a.as_slice()) {
+            let ctr2 = split_u64_to_u32_be_shift(0x11_22_33_44_55_66_77_88);
+            key_state[14] ^= ctr2.0;
+            key_state[15] ^= ctr2.1;
+            println!("WADE KEY STATE:");
+            for i in 0..16 {
+                if 0 == i % 4 {
+                    println!("");
+                    println!("");
+                    print!("{:?} | ", op[i / 4]);
+                }
+                print!("{:08X} | ", key_state[i]);
+            }
+            let test_var = [
+                0xF0F1F2F3,
+                0xF4F5F6F7,
+                0xF8F9FAFB,
+                0xFCFDFEFF,
+                0x00010203,
+                0x04050607,
+                0x08090A0B,
+                0x0C0D0E0F,
+                0x10111213,
+                0x14151617,
+                0x18191A1B,
+                0x1C1D1E1F,
+                0x57697327,
+                0x6164656C,
+                0x11223344,
+                0x55667788u32,
+            ];
+            assert_eq!(test_var, key_state);
+        }
+    }
+    wis_process_block(&mut key_state, DOUBLE_WIS_INIT_ROUNDS); //init
+
+    println!();
 }
 
-impl WisDel {
-    fn enc(&mut self, plaintext: &mut [u32; WORDS_PER_CHUNK]) {
-        let mut temp = [0; WORDS_PER_CHUNK];
+fn enc(
+    plaintext: &mut [u32; WORDS_PER_CHUNK],
+    key: &[u32; WORDS_PER_CHUNK],
+    hash: &mut [u32; WORDS_PER_CHUNK],
+    counter: u64,
+) {
+    let mut temp = [0; WORDS_PER_CHUNK];
 
-        let ctr2 = split_u64_to_u32_be_shift(self.counter);
+    let ctr2 = split_u64_to_u32_be_shift(counter);
 
-        temp.copy_from_slice(&self.key);
-        temp[14] ^= ctr2.0;
-        temp[15] ^= ctr2.1;
+    temp.copy_from_slice(key);
+    temp[14] ^= ctr2.0;
+    temp[15] ^= ctr2.1;
 
-        wis_process_block(&mut temp, DOUBLE_WIS_CHIP_ROUNDS); //get state
+    wis_process_block(&mut temp, DOUBLE_WIS_CHIP_ROUNDS); //get state
 
-        add_vec::<WORDS_PER_CHUNK>(&mut temp, &self.key); //key + mix
+    add_vec::<WORDS_PER_CHUNK>(&mut temp, key); //key + mix
 
-        xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &temp); // enc
+    xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &temp); // enc
 
-        xor_vec::<u32, WORDS_PER_CHUNK>(&mut self.hash, plaintext); // enc xor temp hash
+    xor_vec::<u32, WORDS_PER_CHUNK>(hash, plaintext); // enc xor temp hash
 
-        wis_process_block(&mut self.hash, DOUBLE_WIS_TAG_ROUNDS); // progress hash 
+    wis_process_block(hash, DOUBLE_WIS_TAG_ROUNDS); // progress hash 
 
-        add_vec::<WORDS_PER_CHUNK>(&mut self.hash, &self.key); //hash add key 
+    add_vec::<WORDS_PER_CHUNK>(hash, key); //hash add key 
+}
 
-        self.counter = self.counter.checked_add(1).expect(
-            "counter overflow That's not possible because there should be an overflow check in \
-             the code before that! If you see this, it means someone has messed up the code!",
+pub fn encrypt(
+    plaintext: &mut [u8],
+    _key: &[u8; 32],
+    _nonce: &[u8; 16],
+    _hash_exit: &mut [u8; 32],
+) -> Result<(), &'static str> {
+    let mut ctr = 0;
+    let state_key = [0; 16];
+    let mut state_hash = [0; 16];
+
+    if plaintext.len() > u64::MAX as usize {
+        return Err("plaintext.len() > u64::MAX as usize; len() is to big");
+    }
+
+    process_in_place(plaintext, |block, adder| {
+        enc(block, &state_key, &mut state_hash, ctr);
+        ctr = ctr.checked_add(adder as u64).expect(
+            "counter overflow during addition, if you see this, it means the program is not \
+             working correctly, since there should have already been an overflow check in the \
+             code before this",
         );
-    }
-
-    pub fn encrypt(&mut self, plaintext: &mut [u8]) -> Result<(), &'static str> {
-        let _ = self
-            .counter
-            .checked_add(
-                (if plaintext.len() > u64::MAX as usize {
-                    return Err("plaintext.len() > u64::MAX as usize; len() is to big");
-                } else {
-                    plaintext.len() as u64
-                } / 64)
-                    .checked_add(1) //+1 because / 64 doesn't take the remainder into account
-                    .ok_or("1221")?,
-            )
-            .ok_or("21")?;
-
-        process_in_place(plaintext, |block| self.enc(block));
-        Ok(())
-    }
+    });
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
     // Helper to convert a slice of u32 to little‑endian bytes.
     fn u32s_to_le_bytes(words: &[u32]) -> Vec<u8> {
         words.iter().flat_map(|&w| w.to_le_bytes()).collect()
     }
+    fn u32s_to_be_bytes(words: &[u32]) -> Vec<u8> {
+        words.iter().flat_map(|&w| w.to_be_bytes()).collect()
+    }
 
     // Identity transformation: does nothing.
-    fn identity(_words: &mut [u32; WORDS_PER_CHUNK]) {}
+    fn identity(_words: &mut [u32; WORDS_PER_CHUNK], _: usize) {}
 
     // Adds 1 to each u32.
-    fn add_one(words: &mut [u32; WORDS_PER_CHUNK]) {
+    fn add_one(words: &mut [u32; WORDS_PER_CHUNK], _: usize) {
         for w in words.iter_mut() {
             *w = w.wrapping_add(0x01_01_01_01);
         }
     }
+    fn add_ottf(words: &mut [u32; WORDS_PER_CHUNK], _: usize) {
+        for w in words.iter_mut() {
+            *w = w.wrapping_add(0x04_03_02_01);
+        }
+    }
 
     // Bitwise NOT.
-    fn bitwise_not(words: &mut [u32; WORDS_PER_CHUNK]) {
+    fn bitwise_not(words: &mut [u32; WORDS_PER_CHUNK], _: usize) {
         for w in words.iter_mut() {
             *w = !*w;
         }
@@ -320,7 +304,7 @@ mod tests {
             let offset = i * 4;
             *word = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
         }
-        add_one(&mut words);
+        add_one(&mut words, 1);
         let expected = u32s_to_le_bytes(&words);
 
         assert_eq!(data, expected);
@@ -330,9 +314,24 @@ mod tests {
     fn multiple_chunks() {
         // 3 full chunks (192 bytes)
         let input: Vec<u8> = (0..192).map(|i| i as u8).collect();
+
+        let input_test: Vec<u8> = (0..192).map(|i| ((i / 4) + 1) * 4 as u8).collect();
+
         let mut data = input.clone();
 
-        process_in_place(&mut data, add_one);
+        let ds = &mut [0; 13];
+
+        process_in_place(ds, add_ottf);
+        process_in_place(&mut data, add_ottf);
+
+        assert_eq!(
+            *ds,
+            [4, 3, 2, 1, 4, 3, 2, 1, 4, 3, 2, 1, 4],
+            "Order is not be endian"
+        );
+
+        //println!("{:?}", ds);
+        //return;
 
         // Compute expected chunk by chunk.
         let mut expected = Vec::with_capacity(192);
@@ -340,13 +339,14 @@ mod tests {
             let mut words = [0u32; WORDS_PER_CHUNK];
             for (i, word) in words.iter_mut().enumerate() {
                 let offset = chunk_start + i * 4;
-                *word = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
+                *word = u32::from_be_bytes(input[offset..offset + 4].try_into().unwrap());
             }
-            add_one(&mut words);
-            expected.extend(u32s_to_le_bytes(&words));
+            add_ottf(&mut words, 1);
+            expected.extend(u32s_to_be_bytes(&words));
         }
 
         assert_eq!(data, expected);
+        assert_eq!(input_test, data, "Order is not be endian");
     }
 
     #[test]
@@ -366,7 +366,7 @@ mod tests {
             let offset = i * 4;
             *word = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
         }
-        bitwise_not(&mut words_full);
+        bitwise_not(&mut words_full, 1);
         expected.extend(u32s_to_le_bytes(&words_full));
 
         // Remainder: pad to 64 bytes with zeros.
@@ -378,7 +378,7 @@ mod tests {
             let offset = i * 4;
             *word = u32::from_le_bytes(padded[offset..offset + 4].try_into().unwrap());
         }
-        bitwise_not(&mut words_rem);
+        bitwise_not(&mut words_rem, 1);
         // Convert back to bytes, then take only the first 32 bytes.
         let rem_bytes = u32s_to_le_bytes(&words_rem);
         expected.extend(&rem_bytes[..32]);
@@ -411,7 +411,7 @@ mod tests {
             let offset = i * 4;
             *word = u32::from_le_bytes(input[offset..offset + 4].try_into().unwrap());
         }
-        add_one(&mut words);
+        add_one(&mut words, 1);
         let expected = u32s_to_le_bytes(&words);
 
         assert_eq!(data, expected);
@@ -429,7 +429,7 @@ mod tests {
 
         {
             let calls = calls.clone();
-            process_in_place(&mut data, move |_| {
+            process_in_place(&mut data, move |_, _| {
                 *calls.borrow_mut() += 1;
             });
         }
@@ -449,7 +449,7 @@ mod tests {
 
         {
             let calls = calls.clone();
-            process_in_place(&mut data, move |_| {
+            process_in_place(&mut data, move |_, _| {
                 *calls.borrow_mut() += 1;
             });
         }
@@ -466,24 +466,73 @@ mod tests {
             process_in_place(&mut data, identity);
         }
     }
+    /*
+    DEPRECATED TEST!!!  NI USE!
+    #[test]
+    fn multiple_chunks_check_be_endian() {
+        // 3 full chunks (192 bytes)
+        let mut input: Vec<u8> = (0..192).map(|i| i as u8).collect();
+
+        let mut t2: Vec<u8> = (0..13).map(|i| 0 as u8).collect();
+        let mut input1: Vec<u8> = (0..70).map(|i| i as u8).collect();
+
+        let mut input2: Vec<u8> = (70..99).map(|i| i as u8).collect();
+
+        let mut input3: Vec<u8> = (99..192).map(|i| i as u8).collect();
+        process_in_place(&mut t2, add_ottf);
+        process_in_place(&mut input1, add_ottf);
+        process_in_place(&mut input2, add_ottf);
+        process_in_place(&mut input3, add_ottf);
+        process_in_place(&mut input, add_ottf);
+
+        let mut he2 = vec![];
+        he2.append(&mut input1);
+        he2.append(&mut input2);
+        he2.append(&mut input3);
+
+        assert_eq!(he2.len(), input.len());
+
+        for (i, (x, y)) in he2.iter().zip(input.iter()).enumerate() {
+            println!("{i:>3} | {:>3} {:>3}  {:>3} ", *x, *y, *y == *x);
+        }
+
+        assert_eq!(he2, input);
+
+        println!("{:?}", t2);
+        println!("{:?}", input1);
+        println!("{:?}", input2);
+        println!("{:?}", input3);
+        println!("{:?}", input);
+
+        return;
+    }
+
+    */
 }
 
 #[cfg(test)]
 mod wdel {
     use super::*;
 
+    // #[test]
+    // fn no_panic_on_any_length() {
+    // let mut a = vec![0; 1024];
+
+    // let mut enc = WisDel {
+    //     key: [0; 16],
+    //     counter: 00,
+    //     hash: [0; 16],
+    // };
+
+    // enc.encrypt(&mut a[..]).unwrap();
+
+    //  println!("{:?}", a);
+    // }
+
     #[test]
-    fn no_panic_on_any_length() {
-        let mut a = vec![0; 1024];
-
-        let mut enc = WisDel {
-            key: [0; 16],
-            counter: 00,
-            hash: [0; 16],
-        };
-
-        enc.encrypt(&mut a[..]).unwrap();
-
-        println!("{:?}", a);
+    fn t1() {
+        let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
+        let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
+        wis_key_set(&k[..].try_into().expect(""), &n[..].try_into().expect(""));
     }
 }

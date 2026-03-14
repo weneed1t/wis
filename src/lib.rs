@@ -18,7 +18,10 @@ pub mod wt1_types;
 pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;
-pub mod zw;
+
+#[cfg(feature = "wisdel")]
+pub mod wisdel;
+
 pub use crate::t1queue_tcpudp::recv_queue::{
     WSRecvQueueCtrs, WSTcpLike as TcpPackageSplitter, WSUdpLike,
     WSWaitQueue as UnconfirmedQueuePackets,
