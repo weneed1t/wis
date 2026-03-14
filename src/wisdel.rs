@@ -122,7 +122,7 @@ where
     }
 }
 
-pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) {
+pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     let mut key_state = [0; WORDS_PER_CHUNK];
 
     /*
@@ -190,9 +190,12 @@ pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) {
             assert_eq!(test_var, key_state);
         }
     }
+    //
+    //
+
     wis_process_block(&mut key_state, DOUBLE_WIS_INIT_ROUNDS); //init
 
-    println!();
+    key_state
 }
 
 fn enc(
@@ -213,28 +216,29 @@ fn enc(
 
     add_vec::<WORDS_PER_CHUNK>(&mut temp, key); //key + mix
 
-    xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &temp); // enc
+    xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &temp); // = plaintext ^ (key + mix)
 
-    xor_vec::<u32, WORDS_PER_CHUNK>(hash, plaintext); // enc xor temp hash
+    xor_vec::<u32, WORDS_PER_CHUNK>(hash, plaintext); //  = hash ^ (plaintext ^ (key + mix))
 
-    wis_process_block(hash, DOUBLE_WIS_TAG_ROUNDS); // progress hash 
+    wis_process_block(hash, DOUBLE_WIS_TAG_ROUNDS); // hash mix
 
-    add_vec::<WORDS_PER_CHUNK>(hash, key); //hash add key 
+    add_vec::<WORDS_PER_CHUNK>(hash, key); //hash  = key + (hash mix)
 }
 
 pub fn encrypt(
     plaintext: &mut [u8],
-    _key: &[u8; 32],
-    _nonce: &[u8; 16],
-    _hash_exit: &mut [u8; 32],
-) -> Result<(), &'static str> {
+    key: &[u8; 32],
+    nonce: &[u8; 16],
+) -> Result<[u8; 32], &'static str> {
     let mut ctr = 0;
-    let state_key = [0; 16];
     let mut state_hash = [0; 16];
 
     if plaintext.len() > u64::MAX as usize {
         return Err("plaintext.len() > u64::MAX as usize; len() is to big");
     }
+
+    let state_key = wis_key_set(key, nonce);
+    state_hash.copy_from_slice(&state_key);
 
     process_in_place(plaintext, |block, adder| {
         enc(block, &state_key, &mut state_hash, ctr);
@@ -244,7 +248,24 @@ pub fn encrypt(
              code before this",
         );
     });
-    Ok(())
+
+    let one_two_side_hash = state_hash.split_at_mut(16);
+
+    xor_vec::<u32, 16>(
+        &mut one_two_side_hash
+            .0
+            .try_into()
+            .expect("impossible program state, lengths must be constant equal to 16"),
+        &one_two_side_hash
+            .1
+            .try_into()
+            .expect("impossible program state, lengths must be constant equal to 16"),
+    );
+
+    //let exi_hash = write_words_to_bytes(words, bytes);
+
+    Err("")
+    //Ok(state_hash[])
 }
 
 #[cfg(test)]
@@ -514,23 +535,15 @@ mod tests {
 mod wdel {
     use super::*;
 
-    // #[test]
-    // fn no_panic_on_any_length() {
-    // let mut a = vec![0; 1024];
-
-    // let mut enc = WisDel {
-    //     key: [0; 16],
-    //     counter: 00,
-    //     hash: [0; 16],
-    // };
-
-    // enc.encrypt(&mut a[..]).unwrap();
-
-    //  println!("{:?}", a);
-    // }
-
     #[test]
     fn t1() {
+        let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
+        let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
+        wis_key_set(&k[..].try_into().expect(""), &n[..].try_into().expect(""));
+    }
+
+    #[test]
+    fn t2() {
         let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
         let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
         wis_key_set(&k[..].try_into().expect(""), &n[..].try_into().expect(""));
