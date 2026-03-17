@@ -1,7 +1,7 @@
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::wt1_types::{
+use crate::wt1types::{
     Cfcser, EncWis, MyRole, /* , Cfcser, WTypeErr */
     Noncer, PackErr, Randomer, Thrasher, WSQueueErr,
 };
@@ -255,7 +255,7 @@ impl<
 #[cfg(test)]
 mod test_new {
     use super::*;
-    use crate::wt1_types::*;
+    use crate::t1dumps_struct::*;
     use crate::{t0pology, t4algo_param};
 
     #[test]

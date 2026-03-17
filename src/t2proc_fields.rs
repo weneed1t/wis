@@ -1,6 +1,6 @@
 use std::u64;
 
-use crate::wt1_types::MyRole;
+use crate::wt1types::MyRole;
 
 /*
 

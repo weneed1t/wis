@@ -1,5 +1,5 @@
 use crate::t0pology::PackTopology;
-use crate::wt1_types::*;
+use crate::wt1types::*;
 use crate::{t0pology, wutils};
 
 /// computes and validates the header crc checksum using a user-provided crc function
@@ -615,6 +615,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::t1dumps_struct::*;
 
     #[test]
     fn test_gen_head_crc() {

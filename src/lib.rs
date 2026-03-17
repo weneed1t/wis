@@ -7,6 +7,7 @@
 #![deny(clippy::expect_used)]
 
 pub mod t0pology;
+pub mod t1dumps_struct;
 pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 pub mod t2proc_fields;
 pub mod wacross;
@@ -14,7 +15,7 @@ pub mod wacross;
 pub mod t3poc_files;
 pub mod t4algo_param;
 pub mod t5_connect_data;
-pub mod wt1_types;
+pub mod wt1types;
 pub mod wutils; //utils //topology
 
 mod t1queue_tcpudp;

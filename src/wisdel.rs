@@ -1,4 +1,3 @@
-use core::hash;
 use std::ops::BitXor;
 
 const CHUNK_SIZE: usize = 64;

@@ -9,7 +9,7 @@ pub mod recv_queue {
 
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
-    use crate::wt1_types::{Cfcser, WSQueueErr};
+    use crate::wt1types::{Cfcser, WSQueueErr};
     use crate::{EXPCP, t1fields, wutils};
 
     #[derive(Clone)]
