@@ -271,7 +271,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -314,7 +314,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -351,7 +351,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -395,7 +395,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -442,7 +442,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -484,7 +484,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -532,7 +532,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -574,7 +574,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -622,7 +622,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -665,7 +665,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(Some(0.3))
             .percent_fake_fback_packets(Some(0.3))
             .percent_len_random_coefficient(Some(0.3))
@@ -718,7 +718,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(Some(0.3))
             //.percent_fake_fback_packets(Some(0.3))
             //.percent_len_random_coefficient(Some(0.3))
@@ -766,7 +766,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(None)
             .percent_fake_fback_packets(None)
             .percent_len_random_coefficient(None)
@@ -814,7 +814,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(None)
             .percent_fake_fback_packets(None)
             .percent_len_random_coefficient(None)
@@ -868,7 +868,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(None)
             .percent_fake_fback_packets(None)
             .percent_len_random_coefficient(None)
@@ -915,7 +915,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po)
+        let result = t4algo_param::base_builder_pub(&po)
             .percent_fake_data_packets(None)
             .percent_fake_fback_packets(None)
             .percent_len_random_coefficient(None)
@@ -958,7 +958,7 @@ mod test_new {
 
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
-        let result = t4algo_param::base_builder(&po).build().unwrap();
+        let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: WsConnection<
             DumpNonser,
