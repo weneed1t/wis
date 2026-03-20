@@ -53,7 +53,6 @@ impl PartialEq for PackFields {
             (Self::UserField(_), Self::UserField(_)) => true,
             (Self::HeadCRC(_), Self::HeadCRC(_)) => true,
             (Self::Nonce(_), Self::Nonce(_)) => true,
-            //(PackFields::HeadByte, PackFields::HeadByte) => true,
             (Self::TTL(_), Self::TTL(_)) => true,
             (Self::IdConnect(_), Self::IdConnect(_)) => true,
             (Self::TrickyByte, Self::TrickyByte) => true,
@@ -1228,6 +1227,7 @@ fn test_tcp_mode_requires_len_field() {
 
 #[cfg(test)]
 mod tests_coverage_gaps {
+
     use super::*;
 
     // ========================================================================
@@ -1730,5 +1730,142 @@ mod tests_coverage_gaps {
         // Basic sanity check
         assert!(topo.tag_len() > 0);
         assert!(topo.content_start_pos() > topo.encrypt_start_pos());
+    }
+}
+
+
+
+
+
+
+#[cfg(test)]
+mod packfields_tests {
+    use super::*;
+
+    // ========================================================================
+    // PARTIAL EQ: Same variant, different inner values → EQUAL (by design)
+    // ========================================================================
+
+    #[test]
+    fn test_partial_eq_ignores_inner_value() {
+        // Equality is based on variant type only, not the usize payload
+        assert_eq!(PackFields::Len(1), PackFields::Len(100));
+        assert_eq!(PackFields::Counter(1), PackFields::Counter(8));
+        assert_eq!(PackFields::IdSender(2), PackFields::IdSender(64));
+        assert_eq!(PackFields::IdReceiver(4), PackFields::IdReceiver(8));
+        assert_eq!(PackFields::UserField(10), PackFields::UserField(1000));
+        assert_eq!(PackFields::HeadCRC(4), PackFields::HeadCRC(32));
+        assert_eq!(PackFields::Nonce(8), PackFields::Nonce(32));
+        assert_eq!(PackFields::TTL(1), PackFields::TTL(8));
+        assert_eq!(PackFields::IdConnect(4), PackFields::IdConnect(8));
+        assert_eq!(PackFields::TrickyByte, PackFields::TrickyByte);
+    }
+
+    // ========================================================================
+    // PARTIAL EQ: Different variants → NOT EQUAL
+    // ========================================================================
+
+    #[test]
+    fn test_partial_eq_different_variants_not_equal() {
+        // Cross-variant comparisons must return false
+        assert_ne!(PackFields::Len(4), PackFields::Counter(4));
+        assert_ne!(PackFields::IdSender(4), PackFields::IdReceiver(4));
+        assert_ne!(PackFields::UserField(10), PackFields::HeadCRC(10));
+        assert_ne!(PackFields::Nonce(8), PackFields::TTL(8));
+        assert_ne!(PackFields::IdConnect(4), PackFields::TrickyByte);
+        assert_ne!(PackFields::TrickyByte, PackFields::Counter(1));
+    }
+
+    // ========================================================================
+    // PARTIAL EQ: Reflexivity and symmetry properties
+    // ========================================================================
+
+    #[test]
+    fn test_partial_eq_reflexive() {
+        // Every value must equal itself (reflexivity)
+        let fields = [
+            PackFields::Len(5),
+            PackFields::Counter(3),
+            PackFields::IdSender(8),
+            PackFields::IdReceiver(8),
+            PackFields::UserField(128),
+            PackFields::HeadCRC(16),
+            PackFields::Nonce(24),
+            PackFields::TTL(4),
+            PackFields::IdConnect(6),
+            PackFields::TrickyByte,
+        ];
+        for f in &fields {
+            assert_eq!(f, f, "PartialEq must be reflexive for {:?}", f);
+        }
+    }
+
+    #[test]
+    fn test_partial_eq_symmetric() {
+        // If a == b, then b == a (symmetry)
+        let a = PackFields::Len(4);
+        let b = PackFields::Len(99);
+        assert_eq!(a == b, b == a, "PartialEq must be symmetric");
+    }
+
+    // ========================================================================
+    // VARIANT CONSTRUCTORS: Ensure all variants can be instantiated
+    // ========================================================================
+
+    #[test]
+    fn test_all_variants_constructible() {
+        // Smoke test: each variant can be created with valid values
+        let _ = PackFields::Len(1);
+        let _ = PackFields::Counter(8);
+        let _ = PackFields::IdSender(4);
+        let _ = PackFields::IdReceiver(4);
+        let _ = PackFields::UserField(256);
+        let _ = PackFields::HeadCRC(32);
+        let _ = PackFields::Nonce(32);
+        let _ = PackFields::TTL(8);
+        let _ = PackFields::IdConnect(8);
+        let _ = PackFields::TrickyByte;
+    }
+
+    #[test]
+    fn test_variant_with_zero_value() {
+        // Zero is a valid usize payload for most variants (validation happens in PackTopology::new)
+        assert_eq!(PackFields::Len(0), PackFields::Len(0));
+        assert_eq!(PackFields::Counter(0), PackFields::Counter(0));
+        assert_ne!(PackFields::Len(0), PackFields::Counter(0));
+    }
+
+    // ========================================================================
+    // DERIVED TRAITS: Clone and Debug should work
+    // ========================================================================
+
+    #[test]
+    fn test_clone_and_debug() {
+        let original = PackFields::UserField(42);
+        let cloned = original.clone();
+        
+        assert_eq!(original, cloned);
+        
+        // Debug formatting should not panic
+        let debug_str = format!("{:?}", original);
+        assert!(debug_str.contains("UserField"));
+    }
+
+    // ========================================================================
+    // USE CASE: Deduplication via PartialEq (as used in PackTopology::new)
+    // ========================================================================
+
+    #[test]
+    fn test_partial_eq_useful_for_deduplication() {
+        // Simulate the duplicate-check logic from PackTopology::new
+        let existing = PackFields::Counter(4);
+        let incoming = PackFields::Counter(8); // different size, same variant
+        
+        // PartialEq ignores size, so this correctly detects "duplicate Counter"
+        assert_eq!(existing, incoming, "Duplicate detection should ignore size");
+        
+        // Different variant should not be flagged as duplicate
+        let other = PackFields::Nonce(8);
+        assert_ne!(existing, other, "Different variants are not duplicates");
     }
 }
