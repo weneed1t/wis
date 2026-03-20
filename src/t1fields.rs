@@ -539,32 +539,7 @@ where
     //nonce only:valid
     //not counter and nonce :invalid
     if is_encrypt {
-        let (n, c) = (
-            if let Some(x) = topology.nonce_slice() {
-                nonce_gener
-                    .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
-                    .set_nonce(&mut pack[x.0..x.1])
-                    .map_err(WTypeErr::WorkTimeErr)?;
-                1
-            } else {
-                0
-            },
-            if topology.counter_slice().is_some() {
-                if countr.is_none() {
-                    return Err(WTypeErr::CompileFieldsErr("counter_field required"));
-                }
-                1
-            } else {
-                0
-            },
-        );
-        if 0 == n + c {
-            return Err(WTypeErr::CompileFieldsErr(
-                "Incorrect combination, the packet must have either a counter field, a nonce \
-                 field, or a nonce field + a counter field. This topology has neither a counter \
-                 field nor a nonce field.",
-            ));
-        }
+        if_encrypt(topology, pack, nonce_gener, countr)?;
     }
 
     //since TTL and HEADCRC can be changed during packet transmission, these two fields are
@@ -581,6 +556,22 @@ where
         crc_vec_temp_mem[..len].copy_from_slice(&pack[s..e]);
         pack[s..e].fill(0);
     }
+
+    crypt_procress(is_encrypt, topology, p_len, enc_struct, pack, countr)?;
+
+    if let Some((s, e, len)) = topology.ttl_slice() {
+        pack[s..e].copy_from_slice(&ttl_vec_temp_mem[..len]);
+    }
+
+    if let Some((s, e, len)) = topology.head_crc_slice() {
+        pack[s..e].copy_from_slice(&crc_vec_temp_mem[..len]);
+    }
+
+    Ok(())
+}
+
+
+fn crypt_procress<Tenc:EncWis>(is_encrypt: bool,topology: &PackTopology,p_len:usize, enc_struct: &Tenc, pack: &mut [u8],countr: Option<u64>)-> Result<(), WTypeErr>{
 
     let enc_start = topology.encrypt_start_pos();
     let enc_end = p_len - topology.tag_len();
@@ -605,17 +596,40 @@ where
             "error return during decryption associated with packet corruption",
         ));
     }
-
-    if let Some((s, e, len)) = topology.ttl_slice() {
-        pack[s..e].copy_from_slice(&ttl_vec_temp_mem[..len]);
-    }
-
-    if let Some((s, e, len)) = topology.head_crc_slice() {
-        pack[s..e].copy_from_slice(&crc_vec_temp_mem[..len]);
-    }
-
     Ok(())
 }
+
+fn if_encrypt<Tnoncer:Noncer>(topology: &PackTopology, pack: &mut [u8], nonce_gener: Option<&mut Tnoncer>,countr: Option<u64>)-> Result<(), WTypeErr>{
+    let (n, c) = (
+        if let Some(x) = topology.nonce_slice() {
+            nonce_gener
+                .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
+                .set_nonce(&mut pack[x.0..x.1])
+                .map_err(WTypeErr::WorkTimeErr)?;
+            1
+        } else {
+            0
+        },
+        if topology.counter_slice().is_some() {
+            if countr.is_none() {
+                return Err(WTypeErr::CompileFieldsErr("counter_field required"));
+            }
+            1
+        } else {
+            0
+        },
+    );
+    if 0 == n + c {
+        return Err(WTypeErr::CompileFieldsErr(
+            "Incorrect combination, the packet must have either a counter field, a nonce \
+             field, or a nonce field + a counter field. This topology has neither a counter \
+             field nor a nonce field.",
+        ));
+    }
+    Ok(())
+
+}
+
 
 //##=============================================================TESTS====================================TESTS===================////=============
 //##=============================================================TESTS====================================TESTS====================////=============
