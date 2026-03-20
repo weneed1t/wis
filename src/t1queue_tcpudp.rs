@@ -404,7 +404,7 @@ pub mod recv_queue {
                     return more elements than it has,
                     can't be handled via Result<>, Sorry~~"#
                     );
-                },
+                }
             };
 
             self.k_add(size_of_ret);
@@ -430,7 +430,7 @@ pub mod recv_queue {
 
                     _ => {
                         return vec![].into_boxed_slice();
-                    },
+                    }
                 },
             );
 
@@ -591,7 +591,7 @@ pub mod recv_queue {
             match self.data_map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(_) => {
                     return Err("this id elem is already in");
-                },
+                }
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     entry.insert(ElemMy {
                         cl: None,
@@ -601,7 +601,7 @@ pub mod recv_queue {
                     });
                     self.elems_in_me =
                         EXPCP!(self.elems_in_me.checked_add(1), "err 1+ self.elems_in_me");
-                },
+                }
             };
 
             if let Some(lei) = self.of_max_p.as_ref().map(|x| x.0) {
@@ -1167,7 +1167,7 @@ pub mod recv_queue {
 
         #[test]
         fn test_one() {
-            assert_eq!(WSWaitQueue::<bool, u32>::new(0).is_err(), true);
+            assert!(WSWaitQueue::<bool, u32>::new(0).is_err());
 
             let mut waa = WSWaitQueue::<bool, u32>::new(10).unwrap();
 
@@ -1194,7 +1194,7 @@ pub mod recv_queue {
             assert_eq!(
                 waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                     .iter()
-                    .map(|x| (x.0.clone() / 2) - addrt)
+                    .map(|x| (x.0 / 2) - addrt)
                     .collect::<Vec<u64>>(),
                 (0..max_x).collect::<Vec<u64>>()
             );
@@ -1233,7 +1233,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| x.0.clone())
+                        .map(|x| x.0)
                         .collect::<Vec<u64>>(),
                     (0..max_x).collect::<Vec<u64>>()
                 );
@@ -1243,7 +1243,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| x.0.clone())
+                        .map(|x| x.0)
                         .collect::<Vec<u64>>(),
                     vec![0, 1, 2, 3, 5, 6, 7, 8, 9]
                 );
@@ -1254,7 +1254,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| x.0.clone())
+                        .map(|x| x.0)
                         .collect::<Vec<u64>>(),
                     vec![0, 2, 3, 6, 8, 9]
                 );
@@ -1278,24 +1278,24 @@ pub mod recv_queue {
                 waa.push(10, 10, false, true).unwrap();
                 waa.push(20, 1000, false, true).unwrap();
 
-                assert_eq!(waa.push(30, 999, false, true).is_err(), true);
-                assert_eq!(waa.push(30, 1000, false, true).is_ok(), true); //is ok !!!!! order <= p
+                assert!(waa.push(30, 999, false, true).is_err());
+                assert!(waa.push(30, 1000, false, true).is_ok()); //is ok !!!!! order <= p
 
-                assert_eq!(waa.push(30, 1000000, false, true).is_err(), true);
-                assert_eq!(waa.push(31, 1001, false, true).is_ok(), true); //is ok !!!!! order <= p\
+                assert!(waa.push(30, 1000000, false, true).is_err());
+                assert!(waa.push(31, 1001, false, true).is_ok()); //is ok !!!!! order <= p\
 
                 waa.remove(2).unwrap();
                 waa.remove(20).unwrap();
                 waa.remove(6).unwrap();
                 waa.remove(10).unwrap();
 
-                assert_eq!(waa.push(50, 0, true, true).is_ok(), true);
-                assert_eq!(waa.push(51, 43, true, true).is_ok(), true);
-                assert_eq!(waa.push(52, 6, true, true).is_ok(), true);
+                assert!(waa.push(50, 0, true, true).is_ok());
+                assert!(waa.push(51, 43, true, true).is_ok());
+                assert!(waa.push(52, 6, true, true).is_ok());
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| x.0.clone())
+                        .map(|x| x.0)
                         .collect::<Vec<u64>>(),
                     vec![3, 30, 31, 50, 51, 52]
                 );
@@ -1303,7 +1303,7 @@ pub mod recv_queue {
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
-                        .map(|x| x.1.clone())
+                        .map(|x| x.1)
                         .collect::<Vec<u32>>(),
                     vec![3, 1000, 1001, 1001, 1001, 1001]
                 );
@@ -1383,16 +1383,15 @@ pub mod recv_queue {
             let pack_topology = PackTopology::new(2, &fields, true, true).unwrap();
 
             let mut pkks: Vec<u8> = Vec::new();
-            for mut packet in packets.iter_mut() {
-                t1fields::set_get_head_crc(true, &mut packet, &pack_topology, dummy_crc_gen)
-                    .unwrap();
+            for packet in packets.iter_mut() {
+                t1fields::set_get_head_crc(true, packet, &pack_topology, dummy_crc_gen).unwrap();
                 pkks.append(&mut packet.clone());
             }
 
             let buf = vec![0u8; 41].into_boxed_slice();
 
             let data_slises = (0..200)
-                .map(|x| (x * 347 * 499 * 809) % 500 as usize)
+                .map(|x| (x * 347 * 499 * 809) % 500_usize)
                 .collect::<Vec<usize>>();
 
             //let mut data_slises = data_slises.iter().cycle();
@@ -1509,7 +1508,7 @@ pub mod recv_queue {
         }
 
         fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-            if crc.len() == 0 {
+            if crc.is_empty() {
                 return Err("CRC  crc.len() == 0");
             }
             crc.fill(77);
@@ -1573,7 +1572,7 @@ pub mod recv_queue {
                     assert_eq!(xx.get_largest_ctr(), None);
                     //
                     assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //1
-                    assert_eq!(xx.gap_in_queue(), true);
+                    assert!(xx.gap_in_queue());
                     assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //2
                     //
                     assert_eq!(xx.last_ctr_get(), None);
@@ -1581,7 +1580,7 @@ pub mod recv_queue {
                     assert_eq!(xx.get_largest_ctr(), Some(4));
                     //
                     assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
-                    assert_eq!(xx.gap_in_queue(), true);
+                    assert!(xx.gap_in_queue());
                     assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
                     assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //5
                     //
@@ -1595,7 +1594,7 @@ pub mod recv_queue {
                 assert_eq!(xx.insert(8, &eleme), WSQueueState::ElemIdIsBig); //8
                 assert_eq!(xx.insert(3, &eleme), WSQueueState::ElemIsAlreadyIn); //9
                 assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //10
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 assert_eq!(xx.in_queue, 8);
                 //
                 assert_eq!(xx.last_ctr_get(), None);
@@ -1617,13 +1616,13 @@ pub mod recv_queue {
                 .into_boxed_slice()
             );
             {
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 assert_eq!(xx.insert(9, &eleme), WSQueueState::SuccessfulInsertion);
 
                 assert_eq!(xx.insert(11, &eleme), WSQueueState::SuccessfulInsertion);
 
                 assert_eq!(xx.insert(12, &eleme), WSQueueState::SuccessfulInsertion);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
                 //
                 assert_eq!(xx.last_ctr_get(), Some(7));
@@ -1633,7 +1632,7 @@ pub mod recv_queue {
                 assert_eq!(xx.insert(10, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.insert(13, &eleme), WSQueueState::SuccessfulInsertion);
                 assert_eq!(xx.get_queue(), (vec![]).into_boxed_slice());
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 //
                 assert_eq!(xx.last_ctr_get(), Some(7));
                 assert_eq!(xx.how_items_in_queue(), 5);
@@ -1692,13 +1691,13 @@ pub mod recv_queue {
             );
 
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(7).unwrap();
-            assert_eq!(xx.gap_in_queue(), false);
+            assert!(!xx.gap_in_queue());
             assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //1
-            assert_eq!(xx.gap_in_queue(), false);
+            assert!(!xx.gap_in_queue());
             assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //2
             assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
             assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
-            assert_eq!(xx.gap_in_queue(), false);
+            assert!(!xx.gap_in_queue());
             assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //5
             assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //6
             assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //7
@@ -1790,46 +1789,46 @@ pub mod recv_queue {
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(20).unwrap();
             let eleme = 0.0;
             {
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 xx.insert(0, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 xx.insert(1, &eleme);
                 xx.insert(1, &eleme);
                 xx.insert(3, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.insert(4, &eleme);
                 xx.insert(5, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.insert(2, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 xx.insert(7, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.insert(6, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 xx.get_queue();
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 //
                 xx.insert(9, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.insert(8, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 xx.get_queue();
                 xx.insert(11, &eleme);
                 xx.insert(12, &eleme);
                 xx.insert(13, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
 
                 xx.insert(10, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
                 //
                 xx.insert(15, &eleme);
                 xx.insert(16, &eleme);
                 xx.insert(17, &eleme);
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.get_queue();
-                assert_eq!(xx.gap_in_queue(), true);
+                assert!(xx.gap_in_queue());
                 xx.insert(14, &eleme);
-                assert_eq!(xx.gap_in_queue(), false);
+                assert!(!xx.gap_in_queue());
             }
         }
     }
@@ -1863,9 +1862,8 @@ pub mod recv_queue {
                 Err("The MTU is too small to accommodate even one counter.")
             );
 
-            assert_eq!(
-                WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 39, 100).is_ok(),
-                true
+            assert!(
+                WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 39, 100).is_ok()
             );
         }
 
@@ -1929,7 +1927,7 @@ pub mod recv_queue {
 
                 assert_eq!(
                     test_me_old.payload_len_in_bytes(),
-                    U64_LEN_IN_BYTES + test_me_old.len() * 1
+                    U64_LEN_IN_BYTES + test_me_old.len()
                 );
                 assert_eq!(ws_wa.len(), 256);
 
@@ -2068,7 +2066,7 @@ pub mod recv_queue {
             let mut test_me1 =
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1100).unwrap();
 
-            test_me1.push(1 << (8 * 2) + 1).unwrap();
+            test_me1.push(1 << ((8 * 2) + 1)).unwrap();
             assert_eq!(
                 test_me1.push(1),
                 Err(
@@ -2082,7 +2080,7 @@ pub mod recv_queue {
 
             test_me1.push(1).unwrap();
             assert_eq!(
-                test_me1.push(1 << (8 * 2) + 1),
+                test_me1.push(1 << ((8 * 2) + 1)),
                 Err(
                     "The difference between the maximum and minimum counters is greater than the \
                      counter_slice field can hold."
@@ -2110,7 +2108,7 @@ pub mod recv_queue {
         fn coof(cof: f32, rrr: u64) -> bool {
             let smalll = rrr.wrapping_add(rrr >> 32) as u32;
 
-            (!(0 as u32)) as f32 * cof > smalll as f32
+            (!0_u32) as f32 * cof > smalll as f32
         }
 
         fn shuffle<T>(array: &mut [T], s: u64) {

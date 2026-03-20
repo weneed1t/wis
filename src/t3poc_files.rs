@@ -453,7 +453,7 @@ mod tests_wudp {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
         assert_eq!(
-            tw_s.slices_to_file(&vec![9, 1, 1, 1, 1,]),
+            tw_s.slices_to_file(&[9, 1, 1, 1, 1]),
             Err(
                 "error, the first non-zero byte of the file is greater than 8, the length of u64 \
                  must be greater than 0 and less than 9 bytes  "
@@ -461,7 +461,7 @@ mod tests_wudp {
         );
 
         assert_eq!(
-            tw_s.slices_to_file(&vec![1, 0, 1, 1, 1, 1, 1]),
+            tw_s.slices_to_file(&[1, 0, 1, 1, 1, 1, 1]),
             Err(
                 "An error occurred, the file size == 0 which is impossible, it's likely the file \
                  has been corrupted"
@@ -472,8 +472,8 @@ mod tests_wudp {
     fn test_file_splitt() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc: Rc<Vec<u8>> = Rc::new((0..50).map(|x| x).collect());
-        let rc_err: Rc<Vec<u8>> = Rc::new((0..51).map(|x| x).collect());
+        let rc: Rc<Vec<u8>> = Rc::new((0..50).collect());
+        let rc_err: Rc<Vec<u8>> = Rc::new((0..51).collect());
         assert_eq!(
             tw_s.write_new_rc_file(rc_err),
             Err("rc_file length greater than max_len_of_recv")
@@ -505,10 +505,7 @@ mod tests_wudp {
             }
         );
 
-        assert_eq!(
-            tw_s.file_to_slices(&mut reta2).unwrap(),
-            50 + 1 + 1 - 20 - 0
-        );
+        assert_eq!(tw_s.file_to_slices(&mut reta2).unwrap(), (50 + 1 + 1 - 20));
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
             DataDrain {
@@ -521,7 +518,7 @@ mod tests_wudp {
 
         assert_eq!(
             tw_s.file_to_slices(&mut reta3).unwrap(),
-            50 + 1 + 1 - 20 - 0 - 7
+            (50 + 1 + 1 - 20) - 7
         );
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
@@ -535,7 +532,7 @@ mod tests_wudp {
 
         assert_eq!(
             tw_s.file_to_slices(&mut reta4).unwrap(),
-            50 + 1 + 1 - 20 - 0 - 7 - 11
+            (50 + 1 + 1 - 20) - 7 - 11
         );
         assert_eq!(
             tw_s.clone().send_file.unwrap().0,
@@ -548,7 +545,7 @@ mod tests_wudp {
         );
 
         assert_eq!(tw_s.file_to_slices(&mut reta5), None);
-        assert_eq!(tw_s.clone().send_file.is_none(), true);
+        assert!(tw_s.clone().send_file.is_none());
 
         // println!("{:?}", reta1);
         //println!("{:?}", reta2);is zero size
@@ -578,7 +575,7 @@ mod tests_wudp {
     fn test_spkit_to_file() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc: Rc<Vec<u8>> = Rc::new((0..50).map(|x| x).collect());
+        let rc: Rc<Vec<u8>> = Rc::new((0..50).collect());
 
         let rc2: Rc<Vec<u8>> = Rc::new((0..20).map(|x| 20 - x).collect());
 

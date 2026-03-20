@@ -909,10 +909,7 @@ mod all_test {
                 result.is_ok(),
                 "instant_feedback_on_packet_loss = true should be valid"
             );
-            assert_eq!(
-                result.as_ref().unwrap().instant_feedback_on_packet_loss(),
-                true
-            );
+            assert!(result.as_ref().unwrap().instant_feedback_on_packet_loss());
         }
 
         #[test]
@@ -933,10 +930,7 @@ mod all_test {
                 result.is_ok(),
                 "instant_feedback_on_packet_loss = false should be valid"
             );
-            assert_eq!(
-                result.as_ref().unwrap().instant_feedback_on_packet_loss(),
-                false
-            );
+            assert!(!result.as_ref().unwrap().instant_feedback_on_packet_loss());
         }
 
         #[test]
@@ -1242,7 +1236,7 @@ mod all_test {
                 "combination of ttl and instant_feedback should be valid"
             );
             let param = result.unwrap();
-            assert_eq!(param.instant_feedback_on_packet_loss(), true);
+            assert!(param.instant_feedback_on_packet_loss());
             assert_eq!(param.ttl_max_start_cost(), Some((255, 128, -1)));
         }
     }

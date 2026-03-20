@@ -334,7 +334,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.is_ok(), true);
+        assert!(te1.is_ok());
     }
 
     #[test]
@@ -466,7 +466,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.is_ok(), true);
+        assert!(te1.is_ok());
     }
 
     #[test]
@@ -556,7 +556,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.is_ok(), true);
+        assert!(te1.is_ok());
 
         assert_eq!(te1.unwrap().nonce_gener.unwrap().v, vec![1, 1, 1, 1])
     }
@@ -646,7 +646,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.is_ok(), true);
+        assert!(te1.is_ok());
 
         assert_eq!(te1.unwrap().user_field_gener.unwrap().v, vec![4, 4, 4, 4])
     }
@@ -672,7 +672,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), true);
+        assert!(result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -725,7 +725,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), true);
+        assert!(result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -773,7 +773,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), false);
+        assert!(!result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -797,7 +797,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.unwrap().random_gener.is_none(), true);
+        assert!(te1.unwrap().random_gener.is_none());
     }
 
     #[test]
@@ -821,7 +821,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), false);
+        assert!(!result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -875,7 +875,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), false);
+        assert!(!result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -922,7 +922,7 @@ mod test_new {
             .build()
             .unwrap();
 
-        assert_eq!(result.need_init_random(), false);
+        assert!(!result.need_init_random());
 
         let te1: Result<
             WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
@@ -946,7 +946,7 @@ mod test_new {
             },
         );
 
-        assert_eq!(te1.unwrap().random_gener.is_none(), true);
+        assert!(te1.unwrap().random_gener.is_none());
     }
 
     #[test]
@@ -985,9 +985,9 @@ mod test_new {
         .unwrap();
 
         let mut h = 1;
-        assert_eq!(te1.add_two(&mut h).is_ok(), true);
+        assert!(te1.add_two(&mut h).is_ok());
         assert_eq!(h, 3);
-        assert_eq!(te1.add_two(&mut h).is_ok(), true);
+        assert!(te1.add_two(&mut h).is_ok());
         assert_eq!(h, 5);
 
         h = u64::MAX - 1;

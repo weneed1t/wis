@@ -430,8 +430,12 @@ pub fn get_counter(
 /// set_user_field generates and fills the user-defined field (aka "trash field") in the
 /// packet header takes mutable packet data, topology, a counter value, full packet
 /// length, and a user-provided generator function the generator function: fn(&mut [u8],
-/// u64, usize) -> Result<(), &'static str> is called with the field's byte slice,
-/// counter, and total packet length for custom data generation only executes if
+/// u64, usize, usize) -> Result<(), &'static str> is called with:<br>
+/// 1 a byte slice of the field that needs to be filled with user information,<br>
+/// 2 the packet counter,<br>
+/// 3 the total packet length>,<br>
+/// 4 the user field number,<br>
+/// since there may be several user fields, for custom data generation only executes if
 /// trash_content_slice is defined in topology; otherwise returns error validates that
 /// packet length covers the entire field range; returns error if out of bounds
 /// writes generated data directly into the specified slice in the packet
@@ -449,13 +453,17 @@ pub fn set_user_field<F>(
     mut field_gen: F,
 ) -> Result<(), WTypeErr>
 where
-    F: FnMut(&mut [u8], u64, usize) -> Result<(), &'static str>,
+    F: FnMut(&mut [u8], u64, usize, usize) -> Result<(), &'static str>,
 {
-    if let Some((start, end, _)) = topology.trash_content_slice() {
-        if pack.len() < end {
-            return Err(WTypeErr::LenSizeErr("pack len non correct"));
+    if let Some(vecta_trash) = topology.trash_content_slice() {
+        for (i, (start, end, _)) in vecta_trash.iter().enumerate() {
+            if pack.len() < *end {
+                return Err(WTypeErr::LenSizeErr("pack len non correct"));
+            }
+
+            field_gen(&mut pack[*start..*end], counter, full_len, i)
+                .map_err(WTypeErr::PackageDamaged)?; //
         }
-        field_gen(&mut pack[start..end], counter, full_len).map_err(WTypeErr::PackageDamaged)?; //
         return Ok(());
     }
 
@@ -654,18 +662,14 @@ mod tests {
                 result.head_crc_slice()
             );
         }
-        assert_eq!(
-            set_get_head_crc(true, bb.as_mut_slice(), &result, dummy_crc_gen).unwrap(),
-            true
-        );
+        assert!(set_get_head_crc(true, bb.as_mut_slice(), &result, dummy_crc_gen).unwrap());
 
         for i in 0..result.encrypt_start_pos() {
             let mut bbt = bb.clone();
             bbt[i] = !bbt[i];
 
-            assert_eq!(
-                set_get_head_crc(true, bbt.as_mut_slice(), &result, dummy_crc_gen).unwrap(),
-                false,
+            assert!(
+                !set_get_head_crc(true, bbt.as_mut_slice(), &result, dummy_crc_gen).unwrap(),
                 "i:  {}",
                 i
             );
@@ -773,7 +777,7 @@ mod tests {
         // unwrap().1]);
         assert_eq!(set_ttl(&mut bb, &result, 435, 1000, true), Ok(435));
 
-        assert_eq!(set_ttl(&mut bb, &result, 6546, 1000, false).is_ok(), false);
+        assert!(set_ttl(&mut bb, &result, 6546, 1000, false).is_err());
 
         assert_eq!(get_ttl(&bb, &result), Ok(435));
 
@@ -851,7 +855,7 @@ mod tests {
             *x.1 = x.0.wrapping_add(1) as u8;
         }
 
-        assert_eq!(set_ttl(&mut bb, &result, 100, 200, true).is_ok(), true);
+        assert!(set_ttl(&mut bb, &result, 100, 200, true).is_ok());
 
         assert_eq!(set_len(&mut bb, &result, 100), Ok(()));
 
@@ -859,7 +863,7 @@ mod tests {
 
         let ctr_n = Some(1000);
 
-        let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 5, 6]).unwrap();
+        let cs = CyptStruct::new(&[1, 2, 3, 4, 5, 6]).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
@@ -867,7 +871,7 @@ mod tests {
                 &mut bb,
                 &result,
                 Cryptlag::Encrypt,
-                &mut cs,
+                &cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -889,7 +893,7 @@ mod tests {
                 &mut bbb,
                 &result,
                 Cryptlag::Decrypt,
-                &mut cs,
+                &cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -902,7 +906,7 @@ mod tests {
                 &mut bbb1,
                 &result,
                 Cryptlag::Decrypt,
-                &mut cs,
+                &cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -915,7 +919,7 @@ mod tests {
                 &mut bbb2,
                 &result,
                 Cryptlag::Decrypt,
-                &mut cs,
+                &cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -936,44 +940,46 @@ mod tests {
             bbb[i] = !bbb[i];
             print!("{} ", i);
 
-            if let Some(x) = result.head_crc_slice() {
-                if i >= x.0 && i < x.1 {
-                    assert_eq!(
-                        crypt(
-                            &mut bbb,
-                            &result,
-                            Cryptlag::Decrypt,
-                            &mut cs,
-                            ctr_n,
-                            Some(&mut noncex)
-                        ),
-                        Ok(())
-                    );
-                    continue;
-                }
+            if let Some(x) = result.head_crc_slice()
+                && i >= x.0
+                && i < x.1
+            {
+                assert_eq!(
+                    crypt(
+                        &mut bbb,
+                        &result,
+                        Cryptlag::Decrypt,
+                        &cs,
+                        ctr_n,
+                        Some(&mut noncex)
+                    ),
+                    Ok(())
+                );
+                continue;
             }
-            if let Some(x) = result.ttl_slice() {
-                if i >= x.0 && i < x.1 {
-                    assert_eq!(
-                        crypt(
-                            &mut bbb,
-                            &result,
-                            Cryptlag::Decrypt,
-                            &mut cs,
-                            ctr_n,
-                            Some(&mut noncex)
-                        ),
-                        Ok(())
-                    );
-                    continue;
-                }
+            if let Some(x) = result.ttl_slice()
+                && i >= x.0
+                && i < x.1
+            {
+                assert_eq!(
+                    crypt(
+                        &mut bbb,
+                        &result,
+                        Cryptlag::Decrypt,
+                        &cs,
+                        ctr_n,
+                        Some(&mut noncex)
+                    ),
+                    Ok(())
+                );
+                continue;
             }
             assert_eq!(
                 crypt(
                     &mut bbb,
                     &result,
                     Cryptlag::Decrypt,
-                    &mut cs,
+                    &cs,
                     ctr_n,
                     Some(&mut noncex)
                 ),
@@ -1009,9 +1015,9 @@ mod tests {
 
         let mut bb = vec![0_u8; result.total_minimal_len() + 132];
 
-        assert_eq!(set_len(&mut bb, &result, 435,).is_ok(), true);
+        assert!(set_len(&mut bb, &result, 435,).is_ok());
 
-        assert_eq!(set_len(&mut bb, &result, 15).is_err(), true);
+        assert!(set_len(&mut bb, &result, 15).is_err());
 
         let fields2 = vec![
             //t2page::PackFields::HeadByte,
@@ -1023,7 +1029,7 @@ mod tests {
 
         let result1 = PackTopology::new(5, &fields2, true, false).unwrap();
 
-        assert_eq!(get_len(&bb, &result1).is_err(), true);
+        assert!(get_len(&bb, &result1).is_err());
 
         assert_eq!(get_len(&bb, &result), Ok(bb.len()));
 
@@ -1080,12 +1086,27 @@ mod tests {
         let result = PackTopology::new(5, &fields, true, true).unwrap();
 
         let fields1 = vec![
-            //t2page::PackFields::HeadByte,
+
+         
             t0pology::PackFields::Counter(7),
             //t2page::PackFields::IdReceiver(6),
             t0pology::PackFields::HeadCRC(4),
             t0pology::PackFields::Len(4),
         ];
+
+        let fieldsus = vec![
+        t0pology::PackFields::UserField(4),
+        t0pology::PackFields::UserField(3),
+        t0pology::PackFields::Counter(7),
+        t0pology::PackFields::UserField(11),
+        //t2page::PackFields::IdReceiver(6),
+        t0pology::PackFields::HeadCRC(4),
+        t0pology::PackFields::UserField(6),
+        t0pology::PackFields::Len(4),
+        t0pology::PackFields::UserField(4),
+        t0pology::PackFields::UserField(5),
+        ];
+        let result_usr_test = PackTopology::new(5, &fieldsus, true, true).unwrap();
 
         let result1 = PackTopology::new(5, &fields1, true, true).unwrap();
 
@@ -1094,15 +1115,27 @@ mod tests {
         let mut bb3 = vec![0_u8; result.total_minimal_len() + 1];
         let mut bb4 = vec![0_u8; result.total_minimal_len() + 1];
 
+        let mut bb4_usr_test = vec![0_u8; result_usr_test.total_minimal_len() + 1];
+
         let mut tb1 = vec![0_u8; 334];
         let mut tb2 = vec![0_u8; 334];
         let mut tb3 = vec![0_u8; 334];
         let mut tb4 = vec![0_u8; 334];
 
-        dummy_usf(&mut tb1, 312, 38865).unwrap();
-        dummy_usf(&mut tb2, 675, 7564).unwrap();
-        dummy_usf(&mut tb3, 987, 765).unwrap();
-        dummy_usf(&mut tb4, 12213, 987).unwrap();
+        dummy_usf(&mut tb1, 312, 38865, 0).unwrap();
+        dummy_usf(&mut tb2, 675, 7564, 0).unwrap();
+        dummy_usf(&mut tb3, 987, 765, 0).unwrap();
+        dummy_usf(&mut tb4, 12213, 987, 0).unwrap();
+
+        set_user_field(&mut bb4_usr_test, &result_usr_test, 20, 111, dummy_usf).unwrap();
+
+        assert_eq!(bb4_usr_test,[20, 111, 0, 20,
+             20, 111, 1, 
+             0, 0, 0, 0, 0, 0, 0,
+              20, 111, 2, 20, 111, 2, 20, 111, 2, 20, 111,
+               0, 0, 0, 0,
+                20, 111, 3, 20, 111, 3,
+                 0, 0, 0, 0, 20, 111, 4, 20, 20, 111, 5, 20, 111, 0, 0, 0, 0, 0, 0, 0]);
 
         assert_ne!(tb1, tb2);
         assert_ne!(tb2, tb3);
@@ -1126,19 +1159,23 @@ mod tests {
 
         assert_eq!(
             tb1[..],
-            bb1[result.trash_content_slice().unwrap().0..result.trash_content_slice().unwrap().1]
+            bb1[result.trash_content_slice().unwrap()[0].0
+                ..result.trash_content_slice().unwrap()[0].1]
         );
         assert_eq!(
             tb2[..],
-            bb2[result.trash_content_slice().unwrap().0..result.trash_content_slice().unwrap().1]
+            bb2[result.trash_content_slice().unwrap()[0].0
+                ..result.trash_content_slice().unwrap()[0].1]
         );
         assert_eq!(
             tb3[..],
-            bb3[result.trash_content_slice().unwrap().0..result.trash_content_slice().unwrap().1]
+            bb3[result.trash_content_slice().unwrap()[0].0
+                ..result.trash_content_slice().unwrap()[0].1]
         );
         assert_eq!(
             tb4[..],
-            bb4[result.trash_content_slice().unwrap().0..result.trash_content_slice().unwrap().1]
+            bb4[result.trash_content_slice().unwrap()[0].0
+                ..result.trash_content_slice().unwrap()[0].1]
         );
     }
 
@@ -1163,18 +1200,17 @@ mod tests {
                 for y in 0..120 {
                     let ccc = if tt { i1 } else { i2 };
 
-                    assert_eq!(
+                    assert!(
                         set_counter(&mut bb, &result, ccc, PackType::bit_to_state(tt as u8))
-                            .is_ok(),
-                        true
+                            .is_ok()
                     );
-                    assert_eq!(get_counter(&mut bb, &result, i1, i2).is_ok(), true);
+                    assert!(get_counter(&bb, &result, i1, i2).is_ok());
 
                     assert_eq!(
-                        get_counter(&mut bb, &result, i1, i2).unwrap(),
+                        get_counter(&bb, &result, i1, i2).unwrap(),
                         (if tt { i1 } else { i2 }, PackType::bit_to_state(tt as u8)),
                         "from get_counter {:?}  real {:?}  i:{i}  tt:{tt}  y:{y}",
-                        get_counter(&mut bb, &result, i1 - y, i2 - y).unwrap(),
+                        get_counter(&bb, &result, i1 - y, i2 - y).unwrap(),
                         (if tt { i1 } else { i2 }, tt)
                     );
                 }
@@ -1186,7 +1222,7 @@ mod tests {
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            get_counter(&mut bb[..2], &result, 21, 1),
+            get_counter(&bb[..2], &result, 21, 1),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
     }
@@ -1210,44 +1246,26 @@ mod tests {
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok(),
-            true
-        );
+        assert!(set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok());
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator).is_ok(),
-            false
-        );
+        assert!(set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator).is_err());
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok(),
-            true
-        );
+        assert!(set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok());
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result1, (!0_u64) >> 8, MyRole::Initiator).is_ok(),
-            false
-        );
+        assert!(set_id_conn(&mut bb, &result1, (!0_u64) >> 8, MyRole::Initiator).is_err());
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result1, 100000, MyRole::Initiator).is_ok(),
-            true
-        );
+        assert!(set_id_conn(&mut bb, &result1, 100000, MyRole::Initiator).is_ok());
 
-        assert_eq!(get_id_conn(&bb, &result2).is_ok(), false);
+        assert!(get_id_conn(&bb, &result2).is_err());
 
-        assert_eq!(get_id_conn(&bb, &result1).is_ok(), true);
+        assert!(get_id_conn(&bb, &result1).is_ok());
 
         assert_eq!(
             get_id_conn(&bb, &result1).unwrap(),
             (100000, MyRole::Initiator)
         );
 
-        assert_eq!(
-            set_id_conn(&mut bb, &result1, 13321, MyRole::Passive).is_ok(),
-            true
-        );
+        assert!(set_id_conn(&mut bb, &result1, 13321, MyRole::Passive).is_ok());
         assert_eq!(
             get_id_conn(&bb, &result1).unwrap(),
             (13321, MyRole::Passive)
@@ -1297,24 +1315,14 @@ mod tests {
         let result2 = PackTopology::new(5, &fields2, true, false).unwrap();
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
-        assert_eq!(
-            set_id_sender_and_recv(&mut bb, &result1, 213214, 213214).is_ok(),
-            true
-        );
-        assert_eq!(
-            set_id_sender_and_recv(&mut bb, &result2, 213214, 213214).is_ok(),
-            false
-        );
-        assert_eq!(
+        assert!(set_id_sender_and_recv(&mut bb, &result1, 213214, 213214).is_ok());
+        assert!(set_id_sender_and_recv(&mut bb, &result2, 213214, 213214).is_err());
+        assert!(
             set_id_sender_and_recv(&mut bb, &result1, !(312312_u64) << 16, !(111233_u64) << 8)
-                .is_ok(),
-            false
+                .is_err()
         );
-        assert_eq!(
-            set_id_sender_and_recv(&mut bb, &result1, 987654, 1234567).is_ok(),
-            true
-        );
-        assert_eq!(get_id_sender_and_recv(&bb, &result1).is_ok(), true);
+        assert!(set_id_sender_and_recv(&mut bb, &result1, 987654, 1234567).is_ok());
+        assert!(get_id_sender_and_recv(&bb, &result1).is_ok());
         assert_eq!(
             get_id_sender_and_recv(&bb, &result1).unwrap(),
             (987654, 1234567)
@@ -1368,98 +1376,67 @@ mod tests {
         let topology = PackTopology::new(50, &fields, true, false).unwrap();
 
         let mut pak = vec![0_u8; topology.total_minimal_len() + 100];
-        let mut pack = &mut pak[..];
+        let pack = &mut pak[..];
         //id R  S
-        assert_eq!(
-            set_id_sender_and_recv(&mut pack, &topology, 0x22, 0x1122334455667788).is_ok(),
-            false
+        assert!(set_id_sender_and_recv(pack, &topology, 0x22, 0x1122334455667788).is_err());
+        assert!(set_id_sender_and_recv(pack, &topology, 0x2299FFAABBCC1088, 0x11).is_err());
+        assert!(
+            set_id_sender_and_recv(pack, &topology, 0x2299FFAABBCC1088, 0x1122334455667788)
+                .is_err()
         );
-        assert_eq!(
-            set_id_sender_and_recv(&mut pack, &topology, 0x2299FFAABBCC1088, 0x11).is_ok(),
-            false
-        );
-        assert_eq!(
-            set_id_sender_and_recv(&mut pack, &topology, 0x2299FFAABBCC1088, 0x1122334455667788)
-                .is_ok(),
-            false
-        );
-        assert_eq!(
-            set_id_sender_and_recv(&mut pack, &topology, id_s, id_r).is_ok(),
-            true
-        );
+        assert!(set_id_sender_and_recv(pack, &topology, id_s, id_r).is_ok());
 
-        assert_eq!(get_id_sender_and_recv(&mut pack, &topology).is_ok(), true);
+        assert!(get_id_sender_and_recv(pack, &topology).is_ok());
 
         assert_eq!(
-            get_id_sender_and_recv(&mut pack, &topology).unwrap(),
+            get_id_sender_and_recv(pack, &topology).unwrap(),
             (id_s, id_r)
         );
         //LEN
-        assert_eq!(set_len(&mut pack, &topology, 0x10).is_ok(), false);
+        assert!(set_len(pack, &topology, 0x10).is_err());
         {
             let mut pack = [0_u8; 256];
-            assert_eq!(set_len(&mut pack, &topology, 0x1000).is_ok(), false);
+            assert!(set_len(&mut pack, &topology, 0x1000).is_err());
         }
-        assert_eq!(set_len(&mut pack, &topology, 0x1000).is_ok(), true);
+        assert!(set_len(pack, &topology, 0x1000).is_ok());
 
-        assert_eq!(get_len(&mut pack, &topology).unwrap(), pack.len());
+        assert_eq!(get_len(pack, &topology).unwrap(), pack.len());
 
         //COUNTER
+        assert!(set_counter(pack, &topology, ctr_m, PackType::FBack).is_ok());
         assert_eq!(
-            set_counter(&mut pack, &topology, ctr_m, PackType::FBack).is_ok(),
-            true
-        );
-        assert_eq!(
-            set_get_head_crc(true, &mut pack, &topology, dummy_crc_gen),
+            set_get_head_crc(true, pack, &topology, dummy_crc_gen),
             Ok(false)
         );
         assert_eq!(
-            get_counter(&mut pack, &topology, ctr_m - 17, ctr_m - 30),
+            get_counter(pack, &topology, ctr_m - 17, ctr_m - 30),
             Ok((ctr_m, PackType::FBack))
         );
         assert_eq!(
-            get_counter(&mut pack, &topology, ctr_m - 100, ctr_m - 31,),
+            get_counter(pack, &topology, ctr_m - 100, ctr_m - 31,),
             Ok((ctr_m, PackType::FBack))
         );
         assert_eq!(
-            get_counter(&mut pack, &topology, ctr_m - 123, ctr_m - 23,),
+            get_counter(pack, &topology, ctr_m - 123, ctr_m - 23,),
             Ok((ctr_m, PackType::FBack))
         );
 
         //TTL
-        assert_eq!(
-            set_ttl(&mut pack, &topology, 70000, 100000, true).is_ok(),
-            false
-        );
+        assert!(set_ttl(pack, &topology, 70000, 100000, true).is_err());
 
-        assert_eq!(set_ttl(&mut pack, &topology, ttl, 1000, true).is_ok(), true);
-        assert_eq!(get_ttl(&pack, &topology).unwrap(), ttl as u64);
+        assert!(set_ttl(pack, &topology, ttl, 1000, true).is_ok());
+        assert_eq!(get_ttl(pack, &topology).unwrap(), ttl as u64);
 
         //IDC
+        assert!(set_id_conn(pack, &topology, (!0_u32) as u64, MyRole::Initiator).is_err());
+        assert!(set_id_conn(pack, &topology, id_c, MyRole::bit_to_state(id_c_b as u8)).is_ok());
         assert_eq!(
-            set_id_conn(&mut pack, &topology, (!0_u32) as u64, MyRole::Initiator).is_ok(),
-            false
-        );
-        assert_eq!(
-            set_id_conn(
-                &mut pack,
-                &topology,
-                id_c,
-                MyRole::bit_to_state(id_c_b as u8)
-            )
-            .is_ok(),
-            true
-        );
-        assert_eq!(
-            get_id_conn(&pack, &topology).unwrap(),
+            get_id_conn(pack, &topology).unwrap(),
             (id_c, MyRole::bit_to_state(id_c_b as u8))
         );
 
         //us reash
-        assert_eq!(
-            set_user_field(&mut pack, &topology, ctr_m, len, dummy_usf).is_ok(),
-            true
-        );
+        assert!(set_user_field(pack, &topology, ctr_m, len, dummy_usf).is_ok());
 
         /*
         IN FUTURE
@@ -1476,7 +1453,7 @@ mod tests {
             true
         )
         ;*/
-        let mut cs = CyptStruct::new(&vec![1, 2, 3, 4, 45]).unwrap();
+        let cs = CyptStruct::new(&[1, 2, 3, 4, 45]).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
             pack.clone_into(&mut ttt);
@@ -1492,7 +1469,7 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &mut cs,
+                    &cs,
                     None,
                     none_nonse
                 ),
@@ -1503,7 +1480,7 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &mut cs,
+                    &cs,
                     None,
                     Some(&mut noncex)
                 ),
@@ -1515,34 +1492,34 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &mut cs,
+                    &cs,
                     Some(ctr_m),
                     none_nonse
                 ),
                 Ok(())
             );
             println!("before H {:?}", &pack[..topology.encrypt_start_pos()]);
-            println!("");
+            println!();
             println!("before D {:?}", &pack[topology.encrypt_start_pos()..]);
-            println!("");
-            println!("");
+            println!();
+            println!();
 
             assert_eq!(
                 crypt(
-                    &mut pack,
+                    pack,
                     &topology,
                     Cryptlag::Encrypt,
-                    &mut cs,
+                    &cs,
                     Some(ctr_m),
                     Some(&mut noncex)
                 ),
                 Ok(())
             );
             println!("after H {:?}", &pack[..topology.encrypt_start_pos()]);
-            println!("");
+            println!();
             println!("after D {:?}", &pack[topology.encrypt_start_pos()..]);
-            println!("");
-            println!("");
+            println!();
+            println!();
         }
         let tttttlls = topology.ttl_slice().unwrap_or((9999999999, 9999999999, 0));
         let crsrsr = topology
@@ -1562,7 +1539,7 @@ mod tests {
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
-                        &mut cs,
+                        &cs,
                         Some(ctr_m),
                         Some(&mut noncex)
                     ),
@@ -1576,7 +1553,7 @@ mod tests {
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
-                        &mut cs,
+                        &cs,
                         Some(ctr_m),
                         Some(&mut noncex)
                     ),
@@ -1600,7 +1577,7 @@ mod tests {
                     &mut t,
                     &topology,
                     Cryptlag::Decrypt,
-                    &mut cs,
+                    &cs,
                     Some(ctr_m),
                     Some(&mut noncex)
                 ),
@@ -1609,14 +1586,8 @@ mod tests {
         }
 
         //CRC
-        assert_eq!(
-            set_get_head_crc(true, &mut pack, &topology, dummy_crc_gen).unwrap(),
-            false
-        );
-        assert_eq!(
-            set_get_head_crc(true, &mut pack, &topology, dummy_crc_gen).unwrap(),
-            true
-        );
+        assert!(!set_get_head_crc(true, pack, &topology, dummy_crc_gen).unwrap());
+        assert!(set_get_head_crc(true, pack, &topology, dummy_crc_gen).unwrap());
 
         let mut last_after_head = vec![0; topology.encrypt_start_pos()];
 
@@ -1628,10 +1599,7 @@ mod tests {
                 *x.0 = *x.1;
             }
             t[x] = !t[x];
-            assert_eq!(
-                set_get_head_crc(true, &mut t[..], &topology, dummy_crc_gen).unwrap(),
-                false
-            );
+            assert!(!set_get_head_crc(true, &mut t[..], &topology, dummy_crc_gen).unwrap());
         }
 
         for x in topology.encrypt_start_pos()..pack.len() {
@@ -1640,10 +1608,7 @@ mod tests {
                 *x.0 = *x.1;
             }
             t[x] = !t[x];
-            assert_eq!(
-                set_get_head_crc(true, &mut t[..], &topology, dummy_crc_gen).unwrap(),
-                true
-            );
+            assert!(set_get_head_crc(true, &mut t[..], &topology, dummy_crc_gen).unwrap());
         }
 
         for (i, (&x, &y)) in last_after_head
@@ -1657,10 +1622,10 @@ mod tests {
         //testt
         assert_eq!(
             crypt(
-                &mut pack,
+                pack,
                 &topology,
                 Cryptlag::Decrypt,
-                &mut cs,
+                &cs,
                 Some(ctr_m),
                 Some(&mut noncex)
             ),
@@ -1668,10 +1633,10 @@ mod tests {
         );
 
         println!("Dfter H {:?}", &pack[..topology.encrypt_start_pos()]);
-        println!("");
+        println!();
         println!("Dfter D {:?}", &pack[topology.encrypt_start_pos()..]);
-        println!("");
-        println!("");
+        println!();
+        println!();
 
         assert_eq!(
             pack[topology.content_start_pos()..pack.len() - topology.tag_len()],
@@ -1691,24 +1656,24 @@ mod tests {
         );
         */
         assert_eq!(
-            get_id_conn(&pack, &topology).unwrap(),
+            get_id_conn(pack, &topology).unwrap(),
             (id_c, MyRole::bit_to_state(id_c_b as u8))
         );
 
         assert_eq!(
-            set_get_head_crc(true, &mut pack, &topology, dummy_crc_gen),
+            set_get_head_crc(true, pack, &topology, dummy_crc_gen),
             Ok(true)
         );
         assert_eq!(
-            get_counter(&mut pack, &topology, ctr_m - 10, ctr_m - 11),
+            get_counter(pack, &topology, ctr_m - 10, ctr_m - 11),
             Ok((ctr_m, PackType::FBack))
         );
-        assert_eq!(get_ttl(&pack, &topology).unwrap(), ttl as u64);
+        assert_eq!(get_ttl(pack, &topology).unwrap(), ttl as u64);
         assert_eq!(
-            get_id_sender_and_recv(&mut pack, &topology).unwrap(),
+            get_id_sender_and_recv(pack, &topology).unwrap(),
             (id_s, id_r)
         );
-        assert_eq!(get_len(&mut pack, &topology).unwrap(), pack.len());
+        assert_eq!(get_len(pack, &topology).unwrap(), pack.len());
     }
 
     //============================================================================================================helper functions for testing====================
@@ -1716,18 +1681,21 @@ mod tests {
     //============================================================================================================helper functions for testing====================
     //============================================================================================================helper functions for testing====================
 
-    fn dummy_usf(field: &mut [u8], counter: u64, full_len: usize) -> Result<(), &'static str> {
-        field.fill(123);
-        for (i, x) in field.iter_mut().enumerate() {
-            *x = x.wrapping_add(((i as u64 * counter).rotate_left(3)) as u8);
-            *x = x.rotate_right(5);
-            *x ^= ((!i).wrapping_add(full_len) as u64).rotate_left(3) as u8;
+    fn dummy_usf(
+        field: &mut [u8],
+        counter: u64,
+        full_len: usize,
+        i: usize,
+    ) -> Result<(), &'static str> {
+        let teto = [counter as u8,full_len as u8, i as u8];
+        for (x,t) in field.iter_mut().zip(teto.iter().cycle()){
+            *x= *t;
         }
         Ok(())
     }
 
     fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-        if crc.len() == 0 {
+        if crc.is_empty() {
             return Err("CRC  crc.len() == 0");
         }
         crc.fill(0);
@@ -1786,7 +1754,7 @@ mod tests {
             let mut keee = self.key.iter().cycle();
             for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
                 *x = (*x).wrapping_add(i as u8);
-                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
+                *x ^= 0x2a_u8.wrapping_add(*n) ^ (*keee.next().unwrap());
             }
             let mut tag = 0_u32;
             let mut tag_index = 0_usize;
@@ -1846,7 +1814,7 @@ mod tests {
             let mut keee = self.key.iter().cycle();
             //enc
             for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x ^= (0x2a as u8).wrapping_add(*n) ^ (*keee.next().unwrap());
+                *x ^= 0x2a_u8.wrapping_add(*n) ^ (*keee.next().unwrap());
 
                 *x = (*x).wrapping_sub(i as u8);
             }
@@ -1889,7 +1857,7 @@ mod tests {
                     *he = he.wrapping_add((i * 254) as u8);
                 }
 
-                let cs = CyptStruct::new(&vec![1, 2, 3, 5]).unwrap();
+                let cs = CyptStruct::new(&[1, 2, 3, 5]).unwrap();
 
                 if ingame == 0 {
                     assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));

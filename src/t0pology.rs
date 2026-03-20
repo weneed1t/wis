@@ -1,11 +1,11 @@
 //using in other files
-
 pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
 pub const MAXIMAL_TTL_LEN: usize = 8; //8 bytes is u64 max size
 pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
 const fn maxval(a: usize, b: usize) -> usize {
     if a > b { a } else { b }
 }
+pub const MAXIMAL_NUMS_USER_FIELDS: usize = 16 & (u8::MAX as usize);
 
 pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, MAXIMAL_NONCE_LEN));
 
@@ -60,6 +60,7 @@ impl PartialEq for PackFields {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackTopology {
+   // _phantom_time:PhantomData<&'a bool>,
     all_fields: Box<[PackFields]>,
     tag_len: usize,
     encrypt_start_pos: usize,
@@ -68,7 +69,7 @@ pub struct PackTopology {
     id_of_sender_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
     id_of_receiver_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
     len_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
-    trash_content_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
+    trash_content_slices_vec: Option<Box<[(usize, usize, usize)]>>, // (pos_start, pos_end, len)
     crc_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
     nonce_slice: Option<(usize, usize, usize)>,   // (pos_start, pos_end, len)
     ttl_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
@@ -120,30 +121,31 @@ impl PackTopology {
         let mut id_of_sender_slice: Option<(usize, usize, usize)> = None;
         let mut id_of_receiver_slice: Option<(usize, usize, usize)> = None;
         let mut len_slice: Option<(usize, usize, usize)> = None;
-        let mut trash_content_slice: Option<(usize, usize, usize)> = None;
         let mut crc_slice: Option<(usize, usize, usize)> = None;
         let mut nonce_slice: Option<(usize, usize, usize)> = None;
         let mut counter_slice: Option<(usize, usize, usize)> = None;
         let mut ttl_slice: Option<(usize, usize, usize)> = None;
         let mut idconn_slice: Option<(usize, usize, usize)> = None;
-
+        let mut trash_content_slices_vec = vec![];
         let mut shift: usize = 0_usize;
 
         for x in fields.iter() {
             shift = shift
                 .checked_add(match *x {
+
                     PackFields::UserField(le) => {
-                        if trash_content_slice.is_some() {
-                            return Err("duplicate userfield");
+                        if trash_content_slices_vec.len().checked_add(1).expect("overwlow err") > MAXIMAL_NUMS_USER_FIELDS {
+                            return Err(" userfield nums > MAXIMAL_NUMS_USER_FIELDS");
                         }
 
                         if le == 0 || le > (usize::MAX >> 1) {
                             //done just in case, maximum length limit
                             return Err("userfield value is 0");
                         }
-                        trash_content_slice = Some((shift, shift + le, le));
+                        trash_content_slices_vec.push((shift, shift + le, le));
                         le
-                    },
+                    }
+
                     PackFields::IdConnect(le) => {
                         if idconn_slice.is_some() {
                             return Err("duplicate idconn");
@@ -153,7 +155,7 @@ impl PackTopology {
                         }
                         idconn_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::Len(le) => {
                         if len_slice.is_some() {
                             return Err("duplicate len");
@@ -164,7 +166,7 @@ impl PackTopology {
 
                         len_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::Counter(le) => {
                         if counter_slice.is_some() {
                             return Err("duplicate counter");
@@ -174,7 +176,7 @@ impl PackTopology {
                         }
                         counter_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::IdSender(le) => {
                         if id_of_sender_slice.is_some() {
                             return Err("duplicate IdSender");
@@ -184,7 +186,7 @@ impl PackTopology {
                         }
                         id_of_sender_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::IdReceiver(le) => {
                         if id_of_receiver_slice.is_some() {
                             return Err("duplicate idreceiver");
@@ -194,7 +196,7 @@ impl PackTopology {
                         }
                         id_of_receiver_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::HeadCRC(le) => {
                         if crc_slice.is_some() {
                             return Err("duplicate crc");
@@ -206,7 +208,7 @@ impl PackTopology {
 
                         crc_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                     PackFields::Nonce(le) => {
                         if le == 0 || le > MAXIMAL_NONCE_LEN {
                             return Err("nonce len is 0");
@@ -218,18 +220,8 @@ impl PackTopology {
 
                         nonce_slice = Some((shift, shift + le, le));
                         le
-                    },
-                    //PackFields::HeadByte => {
-                    //    if head_byte_pos.is_some() {
-                    //        return Err("duplicate headbyte");
-                    //    }
-                    //    head_byte_pos = Some(shift);
-                    //    shift += 1;
-                    //}
-                    // it was decided to move the HeadByte to the encrypted part of the data
-                    //HeadByte was moved to the encrypted part because the HeadByte field is
-                    // mandatory, always comes at the end of the head, and its
-                    // encryption increases reliability and security
+                    }
+
                     PackFields::TTL(le) => {
                         if ttl_slice.is_some() {
                             return Err("duplicate ttl");
@@ -240,7 +232,7 @@ impl PackTopology {
 
                         ttl_slice = Some((shift, shift + le, le));
                         le
-                    },
+                    }
                 })
                 .ok_or("header size exceeds addressable memory")?;
         }
@@ -276,7 +268,7 @@ impl PackTopology {
         match (id_of_sender_slice, id_of_receiver_slice) {
             (Some(_), None) | (None, Some(_)) => {
                 return Err("sender and receiver IDs must both exist or both be absent");
-            },
+            }
             _ => (),
         }
 
@@ -291,6 +283,7 @@ impl PackTopology {
             .ok_or("total packet size exceeds addressable memory")?; //len is 1 byte of HeadByte
 
         let topology = Self {
+           // _phantom_time: PhantomData,
             all_fields: fields.to_vec().into_boxed_slice(),
             tag_len,
             encrypt_start_pos: shift,
@@ -299,7 +292,11 @@ impl PackTopology {
             id_of_sender_slice,
             id_of_receiver_slice,
             len_slice,
-            trash_content_slice,
+            trash_content_slices_vec: if trash_content_slices_vec.is_empty() {
+                None
+            } else {
+                Some(trash_content_slices_vec.into_boxed_slice())
+            },
             crc_slice,
             nonce_slice,
             ttl_slice,
@@ -363,8 +360,8 @@ impl PackTopology {
         self.len_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn trash_content_slice(&self) -> Option<(usize, usize, usize)> {
-        self.trash_content_slice
+    pub fn trash_content_slice(&self) -> Option<&Box<[(usize, usize, usize)]>> {
+        self.trash_content_slices_vec.as_ref()
     }
     /// (start pos, end pos, len of slise)
     pub fn head_crc_slice(&self) -> Option<(usize, usize, usize)> {
@@ -415,13 +412,13 @@ impl PackTopology {
     pub fn display_layout_with_separators(&self) {
         let total_len = self.total_minimal_len;
 
-        let st_data: &[u8] = "PAYLOAD_ENC".as_bytes();
-        let mut layout: Vec<char> = vec!['-'; total_len + st_data.len()];
+        let st_data = "PAYLOADENC".to_string();
+        let mut layout: Vec<String> = vec!['-'.to_string(); total_len + st_data.len()];
 
         for i in
-            (self.content_start_pos()..self.content_start_pos() + st_data.len()).zip(st_data.iter())
+            (self.content_start_pos()..self.content_start_pos() + st_data.len()).zip(st_data.chars())
         {
-            layout[i.0] = *i.1 as char;
+            layout[i.0] = i.1.to_string();
         }
 
         // Helper function to fill the layout with field representation
@@ -430,26 +427,17 @@ impl PackTopology {
         let mut vector_legend = vec![];
 
         fn fill_field(
-            layout: &mut Vec<char>,
+            layout: &mut Vec<String>,
             start: usize,
             end: usize,
             label: char,
             sf: &mut usize,
         ) {
-            layout[*sf + start..*sf + end].fill(label);
+            layout[*sf + start..*sf + end].fill(label.to_string());
+            layout[*sf + end-1]+="_";
         }
         {
-            // Fill HeadByte
-            if let Some(pos) = Some(self.encrypt_start_pos) {
-                //println!("Pos: {}", pos);
-                fill_field(&mut layout, pos, pos + 1, 'H', &mut sf);
-                //println!("Pos: {:?}", layout);
-            }
-
-            // Fill Tag (assuming it starts after content_start_pos)
-            //let tag_start = self.encrypt_start_pos + st_data.len();
-            //let tag_end = tag_start + self.total_minimal_len();
-            //fill_field(&mut layout, tag_start, tag_end, '-', &mut sf);
+ 
 
             // Fill Counter
             if let Some((start, end, lenme)) = self.counter_slice {
@@ -482,12 +470,14 @@ impl PackTopology {
             }
 
             // Fill TrashContent
-            if let Some((start, end, lenme)) = self.trash_content_slice {
-                fill_field(&mut layout, start, end, 'U', &mut sf);
-                vector_legend.push(format!(
-                    "  [U - {} bytes] - UserField (TrashContent)",
-                    lenme
-                ));
+            if let Some(usrr) = self.trash_content_slice() {
+                for &(start, end, lenme) in usrr.iter() { 
+                    fill_field(&mut layout, start, end, 'U', &mut sf); 
+                    vector_legend.push(format!(
+                        "  [U - {} bytes] - UserField (TrashContent)",
+                        lenme
+                    ));
+                }
             }
 
             // Fill CRC
@@ -508,11 +498,11 @@ impl PackTopology {
                 vector_legend.push(format!("  [T - {} bytes] - TTL", lenme));
             }
 
-            layout[self.head_byte_pos()] = '@';
+            layout[self.head_byte_pos()] = "@_".to_string();
 
             // Convert the layout to a string and print it
             println!("|.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-|");
-            let layout_str: String = layout.iter().collect();
+            let layout_str: String = layout.join("");
             println!("Memory Layout:");
             println!("{}", layout_str);
 
@@ -529,7 +519,7 @@ impl PackTopology {
     }
 }
 
-//=============================================TESTS=========================================================================================
+//=============================================TESTS=============================================================================
 
 #[cfg(test)]
 mod tests {
@@ -546,13 +536,16 @@ mod tests {
         // Test valid input with all unique fields and correct values
         let fields = vec![
             PackFields::Len(4),
+            PackFields::UserField(32),
             PackFields::Counter(8),
             PackFields::IdSender(6),
             PackFields::IdReceiver(6),
             PackFields::UserField(10),
             PackFields::HeadCRC(4),
+            PackFields::UserField(1),
             PackFields::Nonce(8),
             PackFields::TTL(3),
+            PackFields::UserField(3),
             PackFields::IdConnect(7),
         ];
         let result = PackTopology::new(5, &fields, true, true);
@@ -562,30 +555,30 @@ mod tests {
         assert_eq!(topology.tag_len(), 5, "tag_len should be 5");
         assert_eq!(
             topology.content_start_pos(),
-            57,
+            93,
             "content_start_pos should be 57"
         );
-        assert_eq!(topology.head_byte_pos(), 56, "head_byte_pos should be 56");
+        assert_eq!(topology.head_byte_pos(), 92, "head_byte_pos should be 92");
 
         // Verify getters for optional fields
         assert_eq!(
             topology.counter_slice(),
-            Some((4, 12, 8)),
+            Some((36, 44, 8)),
             "counter_slice should match"
         );
         assert_eq!(
             topology.id_of_sender_slice(),
-            Some((12, 18, 6)),
+            Some((12 + 32, 18 + 32, 6)),
             "id_of_sender_slice should match"
         );
         assert_eq!(
             topology.ttl_slice(),
-            Some((46, 49, 3)),
+            Some((46 + 33, 49 + 33, 3)),
             "ttl_slice should match"
         );
         assert_eq!(
             topology.id_of_receiver_slice(),
-            Some((18, 24, 6)),
+            Some((18 + 32, 24 + 32, 6)),
             "id_of_receiver_slice should match"
         );
         assert_eq!(
@@ -593,35 +586,40 @@ mod tests {
             Some((0, 4, 4)),
             "len_slice should match"
         );
+
         assert_eq!(
-            topology.trash_content_slice(),
-            Some((24, 34, 10)),
+            topology.trash_content_slice().unwrap().clone(),
+            
+                [(4, 36, 32), (56, 66, 10), (70, 71, 1), (82, 85, 3)]
+                    .to_vec()
+                    .into_boxed_slice()
+            ,
             "trash_content_slice should match"
         );
         assert_eq!(
             topology.head_crc_slice(),
-            Some((34, 38, 4)),
+            Some((34 + 32, 38 + 32, 4)),
             "head_crc_slice should match"
         );
         assert_eq!(
             topology.nonce_slice(),
-            Some((38, 46, 8)),
+            Some((38 + 33, 46 + 33, 8)),
             "nonce_slice should match"
         );
 
         assert_eq!(
             topology.idconn_slice(),
-            Some((49, 56, 7)),
+            Some((49 + 36, 56 + 36, 7)),
             "idconn_slice should match"
         );
         // Verify total_minimal_len
         assert_eq!(
             topology.total_minimal_len(),
-            62,
-            "total_minimal_len should be 62"
+            98,
+            "total_minimal_len should be 98"
         );
-        assert_eq!(topology.data_save(), true);
-        assert_eq!(topology.is_tcp(), true);
+        assert!(topology.data_save());
+        assert!(topology.is_tcp());
     }
 
     #[test]
@@ -788,8 +786,9 @@ mod tests {
             expected_shift += len;
         }
 
-        // UserField (TrashContent)
-        if let Some((start, end, len)) = topology.trash_content_slice() {
+        //UserField (TrashContent)
+        if let Some(vec_some) = topology.trash_content_slice() {
+            let (start, end, len) = vec_some[0];
             assert_eq!(start, expected_shift, "UserField start position mismatch");
             assert_eq!(end, expected_shift + len, "UserField end position mismatch");
             assert_eq!(len, 10, "UserField length mismatch");
@@ -835,8 +834,8 @@ mod tests {
             "total_minimal_len mismatch"
         );
 
-        assert_eq!(topology.data_save(), true);
-        assert_eq!(topology.is_tcp(), true);
+        assert!(topology.data_save());
+        assert!(topology.is_tcp());
     }
 
     #[test]
@@ -968,6 +967,38 @@ mod tests {
     }
 
     #[test]
+    fn test_trash_user_over() {
+        let mut fields_len = vec![PackFields::IdConnect(8), PackFields::Counter(4)];
+        for x in 1..1+MAXIMAL_NUMS_USER_FIELDS{
+            fields_len.push(PackFields::UserField(x));
+        }
+
+        assert_eq!(
+            PackTopology::new(5, &fields_len, true, false).unwrap()
+            .trash_content_slice().unwrap().clone(),
+        
+            [(12, 13, 1), (13, 15, 2), (15, 18, 3), (18, 22, 4), (22, 27, 5), (27, 33, 6), (33, 40, 7), (40, 48, 8), (48, 57, 9), (57, 67, 10), (67, 78, 11), (78, 90, 12), (90, 103, 13), (103, 117, 14), (117, 132, 15), (132, 148, 16)]
+                .to_vec()
+                .into_boxed_slice()
+        );
+
+
+        let mut fields_len = vec![PackFields::IdConnect(8), PackFields::Counter(4)];
+        for x in 1..2+MAXIMAL_NUMS_USER_FIELDS{
+            println!("{x}");
+            fields_len.push(PackFields::UserField(x));
+        }
+
+        assert_eq!(
+            PackTopology::new(5, &fields_len, true, false),
+        
+            Err(" userfield nums > MAXIMAL_NUMS_USER_FIELDS")
+        );
+
+
+    }
+
+    #[test]
     fn test_header_only_config() {
         let fields = vec![PackFields::Counter(4)];
         let result = PackTopology::new(0, &fields, true, false);
@@ -1011,16 +1042,41 @@ mod tests {
         // Duplicate
         let fields_dup = vec![
             PackFields::UserField(10),
-            PackFields::UserField(5), // Duplicate
+            PackFields::UserField(5), // Duplicate // deprecated!!
             PackFields::Counter(4),
         ];
         assert_eq!(
-            PackTopology::new(5, &fields_dup, true, true).err(),
-            Some("duplicate userfield")
+            PackTopology::new(5, &fields_dup, true, false)
+                .unwrap()
+                .trash_content_slice().unwrap().clone(),
+            
+                [(0usize, 10usize, 10usize), (10usize, 15usize, 5usize)]
+                    .to_vec()
+                    .into_boxed_slice()
+             //Some("duplicate userfield")
+        );
+        //No
+        let fields_dup = vec![PackFields::Counter(4)];
+        assert_eq!(
+            PackTopology::new(5, &fields_dup, true, false)
+                .unwrap()
+                .trash_content_slice(),
+            None //Some("duplicate userfield")
         );
 
         // Zero length
         let fields_zero = vec![
+            PackFields::UserField(0), // Invalid
+            PackFields::Counter(4),
+        ];
+        assert_eq!(
+            PackTopology::new(5, &fields_zero, true, true).err(),
+            Some("userfield value is 0")
+        );
+
+        // Zero length
+        let fields_zero = vec![
+            PackFields::UserField(3),
             PackFields::UserField(0), // Invalid
             PackFields::Counter(4),
         ];
