@@ -2,6 +2,36 @@ use crate::t0pology::PackTopology;
 use crate::wt1types::*;
 use crate::{t0pology, wutils};
 
+
+pub fn get_tricky_byte(pack: &mut [u8],topology: &PackTopology)->Result<u8,WTypeErr>{
+
+    if let Some(star) = topology.tricky_byte(){
+        if pack.len() <= star {
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
+        }
+        return Ok(pack[star]);
+    }
+
+     Err(WTypeErr::CompileFieldsErr(
+        "tricky_byte not in PackTopology",
+    ))
+}
+
+pub fn set_tricky_byte(pack: &mut [u8],topology: &PackTopology,tricky_byte:u8)->Result<(),WTypeErr>{
+      if let Some(star) = topology.tricky_byte(){
+        if pack.len() <= star {
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
+        }
+        pack[star]= tricky_byte;
+        return Ok(());
+    }
+    
+     Err(WTypeErr::CompileFieldsErr(
+        "tricky_byte not in PackTopology",
+    ))
+}
+
+
 /// computes and validates the header crc checksum using a user-provided crc function
 /// takes mutable packet data, packet topology, and a crc function: (&[u8], &mut [u8]) ->
 /// Result<(), &'static str> the header is defined as bytes from start of packet to
@@ -35,10 +65,10 @@ where
 {
     if let Some((start, end, len)) = topology.head_crc_slice() {
         if len > t0pology::MAXIMAL_CRC_LEN {
-            return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
+            return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));//no test
         }
 
-        if pack.len() < end {
+        if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
@@ -89,7 +119,7 @@ pub fn set_ttl(
     is_start_ttl: bool,
 ) -> Result<u64, WTypeErr> {
     if let Some((start, end, len)) = topology.ttl_slice() {
-        if pack.len() < end {
+        if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
 
@@ -138,7 +168,7 @@ pub fn set_ttl(
 /// during construction
 pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
     if let Some((start, end, _)) = topology.ttl_slice() {
-        if pack.len() < end {
+        if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
@@ -160,7 +190,7 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
         .len_slice()
         .ok_or(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))?;
 
-    if pack.len() < sls.1 {
+    if pack.len() <= sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
@@ -192,7 +222,7 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
     let sls = topology
         .len_slice()
         .ok_or(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))?;
-    if pack.len() < sls.1 {
+    if pack.len() <= sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
     Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(WTypeErr::WorkTimeErr)? as usize)
@@ -215,7 +245,7 @@ pub fn set_id_conn(
     role: MyRole,
 ) -> Result<(), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
-        if pack.len() < x.1 {
+        if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         if id_conn > wutils::len_byte_maximal_capacity_check(x.2).0 >> 1 {
@@ -243,7 +273,7 @@ pub fn set_id_conn(
 /// both functions assume that the idconn field is unencrypted and is in the packet header
 pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
-        if pack.len() < x.1 {
+        if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
@@ -271,7 +301,7 @@ pub fn set_id_sender_and_recv(
         topology.id_of_receiver_slice(),
     ) {
         let maxim = wutils::len_byte_maximal_capacity_check(x_s.2).0;
-        if pack.len() < x_s.1 {
+        if pack.len() <= x_s.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         if maxim < id_recv || maxim < id_sender {
@@ -306,7 +336,7 @@ pub fn get_id_sender_and_recv(
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
-        if pack.len() < x_s.1 {
+        if pack.len() <= x_s.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return Ok((
@@ -336,7 +366,7 @@ pub fn set_counter(
     my_type: PackType,
 ) -> Result<(u64, u64), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
-        if pack.len() < x.1 {
+        if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let max_cap = wutils::len_byte_maximal_capacity_check(x.2).0 >> 1;
@@ -382,7 +412,7 @@ pub fn get_counter(
     countr2_data: u64,
 ) -> Result<(u64, PackType), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
-        if pack.len() < x.1 {
+        if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let ctr_in_pack = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
@@ -457,7 +487,7 @@ where
 {
     if let Some(vecta_trash) = topology.trash_content_slice() {
         for (i, (start, end, _)) in vecta_trash.iter().enumerate() {
-            if pack.len() < *end {
+            if pack.len() <= *end {
                 return Err(WTypeErr::LenSizeErr("pack len non correct"));
             }
 
@@ -533,11 +563,7 @@ where
         Cryptlag::Encrypt => true,
         Cryptlag::Decrypt => false,
     };
-    //Nonce gen     or/and counter set
-    //nonce + counter:valid
-    //counter only :valid
-    //nonce only:valid
-    //not counter and nonce :invalid
+
     if is_encrypt {
         if_encrypt(topology, pack, nonce_gener, countr)?;
     }
@@ -599,7 +625,13 @@ fn crypt_procress<Tenc:EncWis>(is_encrypt: bool,topology: &PackTopology,p_len:us
     Ok(())
 }
 
+///---Nonce gen     or/and counter set---<br> 
+///nonce + counter:valid<br>
+///counter only :valid<br>
+///nonce only:valid<br>
+///not counter and nonce :invalid<br>
 fn if_encrypt<Tnoncer:Noncer>(topology: &PackTopology, pack: &mut [u8], nonce_gener: Option<&mut Tnoncer>,countr: Option<u64>)-> Result<(), WTypeErr>{
+    
     let (n, c) = (
         if let Some(x) = topology.nonce_slice() {
             nonce_gener
@@ -638,6 +670,53 @@ fn if_encrypt<Tnoncer:Noncer>(topology: &PackTopology, pack: &mut [u8], nonce_ge
 mod tests {
     use super::*;
     use crate::t1dumps_struct::*;
+
+     #[test]
+    fn test_tricky_byte() {
+        let fields = vec![
+            t0pology::PackFields::UserField(33),
+            t0pology::PackFields::Counter(7),
+            t0pology::PackFields::TrickyByte,
+            t0pology::PackFields::IdConnect(6),
+            t0pology::PackFields::HeadCRC(8),
+        ];
+
+        let result = PackTopology::new(59, &fields, true, false).unwrap();
+
+        let mut tets1 = vec![0;100];
+
+        assert_eq!(set_tricky_byte(&mut tets1[..], &result,7),Ok(()));
+
+        assert_eq!(set_tricky_byte(&mut tets1[..100-60], &result,7),Err( WTypeErr::LenSizeErr("pack len non correct")));
+
+        assert_eq!(get_tricky_byte(&mut tets1[..], &result),Ok(7));
+
+        assert_eq!(get_tricky_byte(&mut tets1[..100-60], &result),Err( WTypeErr::LenSizeErr("pack len non correct")));
+        
+        for i in 0..15{
+
+            set_tricky_byte(&mut tets1[..], &result,i).expect("");
+
+            assert_eq!(get_tricky_byte(&mut tets1[..], &result),Ok(i));
+        }
+
+                let fields = vec![
+            t0pology::PackFields::UserField(33),
+            t0pology::PackFields::Counter(7),
+            //t0pology::PackFields::TrickyByte,
+            t0pology::PackFields::IdConnect(6),
+            t0pology::PackFields::HeadCRC(8),
+        ];
+
+        let result = PackTopology::new(59, &fields, true, false).unwrap();
+
+        assert_eq!(get_tricky_byte(&mut tets1[..100-60], &result),Err(WTypeErr::CompileFieldsErr("tricky_byte not in PackTopology")));
+
+        assert_eq!(set_tricky_byte(&mut tets1[..100-60], &result,7),Err(WTypeErr::CompileFieldsErr("tricky_byte not in PackTopology")));
+
+    }
+
+
 
     #[test]
     fn test_gen_head_crc() {
@@ -745,7 +824,7 @@ mod tests {
             );
 
             assert_eq!(
-                set_get_head_crc(false, &mut bb[..4], &result, dummy_crc_gen),
+                set_get_head_crc(false, &mut bb[..result.head_crc_slice().unwrap().1], &result, dummy_crc_gen),
                 Err(WTypeErr::LenSizeErr("pack len non correct"))
             );
 
@@ -821,12 +900,12 @@ mod tests {
             Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
         );
         assert_eq!(
-            set_ttl(&mut bb[..9], &result, 1000, 90000, false),
+            set_ttl(&mut bb[..result.ttl_slice().unwrap().1], &result, 1000, 90000, false),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         assert_eq!(
-            get_ttl(&bb[..5], &result),
+            get_ttl(&bb[..result.ttl_slice().unwrap().1], &result),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
@@ -1068,7 +1147,7 @@ mod tests {
         );
 
         assert_eq!(
-            set_len(&mut bb[..0], &result, 435,),
+            set_len(&mut bb[..result.len_slice().unwrap().1], &result, 435,),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
@@ -1077,7 +1156,7 @@ mod tests {
         );
 
         assert_eq!(
-            get_len(&bb[..0], &result),
+            get_len(&bb[..result.len_slice().unwrap().1], &result),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
@@ -1167,7 +1246,7 @@ mod tests {
             Err(WTypeErr::CompileFieldsErr("user_field not in PackTopology"))
         );
         assert_eq!(
-            set_user_field(&mut bb4[..10], &result, 12213, 987, dummy_usf),
+            set_user_field(&mut bb4[..result.trash_content_slice().unwrap()[0].1], &result, 12213, 987, dummy_usf),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
@@ -1232,11 +1311,11 @@ mod tests {
         }
 
         assert_eq!(
-            set_counter(&mut bb[..2], &result, 21, PackType::FBack),
+            set_counter(&mut bb[..result.counter_slice().unwrap().1], &result, 21, PackType::FBack),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            get_counter(&bb[..2], &result, 21, 1),
+            get_counter(&bb[..result.counter_slice().unwrap().1], &result, 21, 1),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
     }
@@ -1290,7 +1369,7 @@ mod tests {
             Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
         );
         assert_eq!(
-            get_id_conn(&bb[0..3], &result1),
+            get_id_conn(&bb[0..result1.idconn_slice().unwrap().1], &result1),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
@@ -1301,7 +1380,7 @@ mod tests {
             ))
         );
         assert_eq!(
-            set_id_conn(&mut bb[0..2], &result1, 2, MyRole::Initiator),
+            set_id_conn(&mut bb[0..result1.idconn_slice().unwrap().1], &result1, 2, MyRole::Initiator),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
