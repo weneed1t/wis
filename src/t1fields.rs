@@ -65,7 +65,7 @@ where
 {
     if let Some((start, end, len)) = topology.head_crc_slice() {
         if len > t0pology::MAXIMAL_CRC_LEN {
-            return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));//no test
+            return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
         if pack.len() <= end {
@@ -301,7 +301,7 @@ pub fn set_id_sender_and_recv(
         topology.id_of_receiver_slice(),
     ) {
         let maxim = wutils::len_byte_maximal_capacity_check(x_s.2).0;
-        if pack.len() <= x_s.1 {
+        if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         if maxim < id_recv || maxim < id_sender {
@@ -336,7 +336,7 @@ pub fn get_id_sender_and_recv(
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
-        if pack.len() <= x_s.1 {
+        if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return Ok((
@@ -756,6 +756,17 @@ mod tests {
             );
         }
         assert!(set_get_head_crc(true, bb.as_mut_slice(), &result, dummy_crc_gen).unwrap());
+
+        {
+
+            let mut eer_result = result.clone();
+            eer_result.__warning_test_only_force_edit_crc(Some((0,t0pology::MAXIMAL_CRC_LEN+1,t0pology::MAXIMAL_CRC_LEN+1)));
+            assert_eq!(set_get_head_crc(true, bb.as_mut_slice(), &eer_result, dummy_crc_gen),Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN")));//err
+        }
+
+
+        
+
 
         for i in 0..result.encrypt_start_pos() {
             let mut bbt = bb.clone();
@@ -1389,6 +1400,78 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn test_err_id_sender_recv() {
+        let fields1 = vec![
+            t0pology::PackFields::Counter(2),
+            t0pology::PackFields::IdSender(4),
+            t0pology::PackFields::IdReceiver(4),
+        ];
+        let fields2 = vec![
+            t0pology::PackFields::Counter(2),
+            t0pology::PackFields::IdReceiver(4),
+            t0pology::PackFields::IdSender(4),
+        ];
+
+        let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
+        let result2 = PackTopology::new(5, &fields2, true, false).unwrap();
+
+        let mut  bb = vec![0;100];
+
+        assert_eq!(
+            get_id_sender_and_recv(&bb[..result1.id_of_receiver_slice().unwrap().1], &result1),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+        assert_eq!(
+            get_id_sender_and_recv(&bb[..result1.id_of_sender_slice().unwrap().1], &result1),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+
+
+        assert_eq!(
+            get_id_sender_and_recv(&bb[..result1.id_of_receiver_slice().unwrap().1], &result2),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+        assert_eq!(
+            get_id_sender_and_recv(&bb[..result1.id_of_sender_slice().unwrap().1], &result2),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+
+
+
+
+
+
+        assert_eq!(
+            set_id_sender_and_recv(&mut bb[..result1.id_of_receiver_slice().unwrap().1], &result1,0,0),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+        assert_eq!(
+            set_id_sender_and_recv(&mut bb[..result1.id_of_sender_slice().unwrap().1], &result1,0,0),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+
+
+        assert_eq!(
+            set_id_sender_and_recv(&mut bb[..result1.id_of_receiver_slice().unwrap().1], &result2,0,0),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+
+        assert_eq!(
+            set_id_sender_and_recv(&mut bb[..result1.id_of_sender_slice().unwrap().1], &result2,0,0),
+            Err(WTypeErr::LenSizeErr("pack len non correct"))
+        );
+    }
+
+
+
     #[test]
     fn test_id_sender_recv() {
         let fields1 = vec![
@@ -1427,6 +1510,7 @@ mod tests {
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
+
         assert_eq!(
             get_id_sender_and_recv(&bb[..5], &result1),
             Err(WTypeErr::LenSizeErr("pack len non correct"))

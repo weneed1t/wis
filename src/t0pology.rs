@@ -430,6 +430,12 @@ impl PackTopology {
         self.ttl_slice = ttl;
     }
 
+        ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
+    ///<h1> !IS TEST ONLY TEST ONLY!
+    pub fn __warning_test_only_force_edit_crc(&mut self, crc: Option<(usize, usize, usize)>) {
+        self.crc_slice = crc;
+    }
+
     pub fn display_layout_with_separators(&self) {
         let total_len = self.total_minimal_len;
 
