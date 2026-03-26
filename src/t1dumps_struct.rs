@@ -280,6 +280,124 @@ fn bpg(t: &mut u64, v: &mut [u8]) {
     }
 }
 
+#[derive(Debug,Clone)]
+pub struct  DumpHandMaker{
+    in_state:Box<[AtomHandFile]>,
+    ptr_in_state:usize,
+    role:MyRole,
+    private_key:u64
+
+
+}
+
+/**/
+
+impl HandMaker for DumpHandMaker {
+    fn new(my_role: MyRole, seed: &[u8]) -> Result<Self, &'static str> {
+        
+        let mut staka: u64 =0;
+        for x in seed{
+            staka = staka.rotate_left(27).wrapping_add(*x as u64 *123345)
+        }
+
+        Ok(Self { 
+            in_state:[
+                AtomHandFile::InitiatorFileSize(2),
+                 AtomHandFile::PassiveFileSize(3),
+                  AtomHandFile::PassiveFileSize(2),
+                   AtomHandFile::InitiatorFileSize(3),
+                    AtomHandFile::PassiveFileSize(2),
+                ].to_vec().into_boxed_slice(),
+             ptr_in_state: 0
+             
+             , role: my_role,private_key:staka})
+
+    }
+
+    fn recv(&mut self,file:InFile<u8>)-> Result<(), &'static str> {
+        
+        let curent_step = self.in_state.get(self.ptr_in_state)
+        .ok_or("too many steps, step index outside the bounds of the circuit array")?;
+
+        println!(" {:?}  {:?}",curent_step,self.role);
+        if ( curent_step.is_passive() && self.role.is_initiator() ) ||
+        ( curent_step.is_passive() && self.role.is_initiator() ){
+
+
+            self.private_key = self.private_key.rotate_left(file[0] as u32);
+            self.private_key = self.private_key.wrapping_mul(file[1] as u64);
+
+            if file.len() == 3{
+                self.private_key = self.private_key.wrapping_add(file[2] as u64);
+            }
+            if file.len() ==2 || file.len() ==3 {
+                return Ok(());
+            }
+            self.ptr_in_state+=1;
+        }
+
+        Err("Recv order error: The initiator cannot accept files from the initiator, 
+        and the passive cannot accept files from the passive!
+        The correct order is for the initiator to accept files from the passive,
+        or for the passive to send files to the initiator!")
+        
+    }
+    fn send(&mut self)-> Result<InFile<u8>, &'static str> {
+                let curent_step = self.in_state.get(self.ptr_in_state)
+                .ok_or("too many steps, step index outside the bounds of the circuit array")?;
+
+
+        println!(" {:?}  {:?}",curent_step,self.role);
+        if ( curent_step.is_initiator() && self.role.is_initiator() ) ||
+        ( curent_step.is_passive() && self.role.is_passive() ){
+
+            let t1 = (self.ptr_in_state *17) as u8;
+            let t2 = ((self.ptr_in_state+2) *17) as u8;
+            let t3 = self.ptr_in_state as u8;
+
+            self.private_key = self.private_key.rotate_left(t1 as u32);
+            self.private_key = self.private_key.wrapping_mul(t2 as u64);
+
+            self.ptr_in_state+=1;
+
+            return  match curent_step.size() {
+                2=>{
+                    Ok(InFile::new([t1,t2].to_vec().into_boxed_slice()))
+                },
+                3=>{
+                    self.private_key = self.private_key.wrapping_add(t3 as u64);
+                    Ok(InFile::new([t1,t2,t3].to_vec().into_boxed_slice()))
+                },
+                _=>{panic!("its unreal state")}
+                
+            }
+        }
+
+        Err("Send order error: The initiator cannot accept files from the initiator, 
+        and the passive cannot accept files from the passive!
+        The correct order is for the initiator to accept files from the passive,
+        or for the passive to send files to the initiator!")
+    }
+    fn file_sheme(&self) -> &[AtomHandFile] {
+       &self.in_state[..]
+    }
+    fn get_private_key(&mut self)->Result<Box<[u8]>, &'static str> {
+        
+        if self.ptr_in_state == self.in_state.len(){
+        
+        Ok( self.private_key.to_be_bytes().to_vec().into_boxed_slice())
+
+        }else {
+            Err("The key installation process is still not complete!")
+        }
+        
+    }
+    
+}
+
+
+
+
 #[cfg(test)]
 mod tests_enca {
     use super::*;

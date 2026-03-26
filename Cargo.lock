@@ -3,5 +3,14 @@
 version = 4
 
 [[package]]
+name = "mambo_map"
+version = "0.1.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa444118b59df7d7c0b35bf7e188df679115a8c843581cb40949d95a6400690b"
+
+[[package]]
 name = "wisleess2"
 version = "0.1.0"
+dependencies = [
+ "mambo_map",
+]

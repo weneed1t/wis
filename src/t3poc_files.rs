@@ -1,9 +1,9 @@
 use crate::wutils;
+use crate::wt1types::InFile;
 
 const FILE_HEAD_LEN: usize = 9;
 
 use std::cmp::min;
-use std::rc::Rc;
 
 use crate::EXPCP;
 
@@ -23,7 +23,7 @@ struct DataDrain {
 #[derive(Debug, PartialEq, Clone)]
 pub struct WSFileSplitter {
     max_len_of_file: Option<usize>,
-    send_file: Option<(DataDrain, Rc<Vec<u8>>)>,
+    send_file: Option<(DataDrain, InFile<u8>)>,
     recv_data: Option<(DataDrain, Option<Vec<u8>>)>,
 }
 
@@ -49,7 +49,7 @@ impl WSFileSplitter {
     ///  copying data to a new vector. Only one file can be in the WSFileSplitter
     /// structure  at a time. To find out if a file is in the structure, call
     /// remaining_len_of_rc_file(&self).
-    pub fn write_new_rc_file(&mut self, rc_file: Rc<Vec<u8>>) -> Result<(), &'static str> {
+    pub fn write_new_rc_file(&mut self, rc_file: InFile<u8>) -> Result<(), &'static str> {
         if self.send_file.is_some() {
             return Err("WSFileSplitter already has an unprocessed file ");
         }
@@ -472,8 +472,8 @@ mod tests_wudp {
     fn test_file_splitt() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc: Rc<Vec<u8>> = Rc::new((0..50).collect());
-        let rc_err: Rc<Vec<u8>> = Rc::new((0..51).collect());
+        let rc = InFile::new((0..50).collect());
+        let rc_err = InFile::new((0..51).collect());
         assert_eq!(
             tw_s.write_new_rc_file(rc_err),
             Err("rc_file length greater than max_len_of_recv")
@@ -575,9 +575,9 @@ mod tests_wudp {
     fn test_spkit_to_file() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc: Rc<Vec<u8>> = Rc::new((0..50).collect());
+        let rc = InFile::new((0..50).collect());
 
-        let rc2: Rc<Vec<u8>> = Rc::new((0..20).map(|x| 20 - x).collect());
+        let rc2 = InFile::new((0..20).map(|x| 20 - x).collect());
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
@@ -606,7 +606,7 @@ mod tests_wudp {
         ];
 
         for file_size_in_iter in fs_vec {
-            let rc: Rc<Vec<u8>> = Rc::new((0..file_size_in_iter).map(|x| x as u8).collect());
+            let rc= InFile::new((0..file_size_in_iter).map(|x| x as u8).collect());
 
             assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 

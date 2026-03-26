@@ -16,14 +16,15 @@ questionable_algo = ["wisdel"]
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }
-
-[profile.test]
 #rustflags = ["-Z", "unstable-options", "--check-cfg"]
 
 
 [profile.release]
 #rustflags = ["-Z", "unstable-options", "--check-cfg"]
 opt-level = 3
+
+[dependencies]
+mambo_map = "0.1.23"
 
 #[features]
 #hotpath = ["hotpath/hotpath"]
