@@ -1013,8 +1013,8 @@ mod all_test {
             );
             assert_eq!(
                 result.err().unwrap(),
-                "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field \
-             is None."
+                "The ttl_max_start_cost field is defined as Some(), but in pack_topology this \
+                 field is None."
             );
         }
 
@@ -1035,9 +1035,9 @@ mod all_test {
             assert!(result.is_err(), "ttl start > max should error");
             assert_eq!(
                 result.err().unwrap(),
-                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
-             value. For more information, see the description of this variable at the beginning \
-             of the file."
+                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum \
+                 ttl value. For more information, see the description of this variable at the \
+                 beginning of the file."
             );
         }
 
@@ -1076,9 +1076,9 @@ mod all_test {
             assert!(result.is_err(), "ttl max = 0 should error");
             assert_eq!(
                 result.err().unwrap(),
-                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
-             value. For more information, see the description of this variable at the beginning \
-             of the file."
+                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum \
+                 ttl value. For more information, see the description of this variable at the \
+                 beginning of the file."
             );
         }
 
@@ -1100,7 +1100,7 @@ mod all_test {
             assert_eq!(
                 result.err().unwrap(),
                 "ttl_max_start_cost.1 must be greater than zero. For more information, see the \
-             description of this variable at the beginning of the file."
+                 description of this variable at the beginning of the file."
             );
         }
 
@@ -1122,7 +1122,7 @@ mod all_test {
             assert_eq!(
                 result.err().unwrap(),
                 "ttl_max_start_cost.1 is greater than the length that can be accommodated in the \
-             pack_topology field."
+                 pack_topology field."
             );
         }
 
@@ -1680,7 +1680,7 @@ mod all_test {
             assert_eq!(
                 err,
                 " maximum_length_udp_queue_packages must be less than the maximum capacity of the \
-             pack_topology.counter_slice() field. "
+                 pack_topology.counter_slice() field. "
             );
 
             // fback queue > capacity
@@ -1694,7 +1694,7 @@ mod all_test {
             assert_eq!(
                 err,
                 "maximum_length_fback_queue_packages must not exceed the maximum capacity of the \
-             pack_topology.counter_slice() counter. "
+                 pack_topology.counter_slice() counter. "
             );
 
             // max attempts > capacity
@@ -1708,8 +1708,8 @@ mod all_test {
             assert_eq!(
                 err,
                 "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
-             max_num_attempts_resend_package must be less than the maximum possible capacity in \
-             pack_topology.counter_slice()."
+                 max_num_attempts_resend_package must be less than the maximum possible capacity \
+                 in pack_topology.counter_slice()."
             );
         }
 
@@ -1771,8 +1771,9 @@ mod all_test {
             assert_eq!(
                 err,
                 " maximum_length_udp_queue_packages must be greater than \
-             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
-             more information, see the description of this variable at the beginning of the file."
+                 maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
+                 more information, see the description of this variable at the beginning of the \
+                 file."
             );
 
             // udp == unconfirmed is allowed
@@ -1801,8 +1802,8 @@ mod all_test {
             assert_eq!(
                 err,
                 " maximum_length_fback_queue_packages must be less than \
-             maximum_length_queue_unconfirmed_packages.For more information, see the description \
-             of this variable at the beginning of the file."
+                 maximum_length_queue_unconfirmed_packages.For more information, see the \
+                 description of this variable at the beginning of the file."
             );
 
             // fback == unconfirmed is allowed
@@ -2047,8 +2048,8 @@ mod all_test {
             assert_eq!(
                 err,
                 "The variable maximum_packet_delay_absolute_fback must be no greater than \
-             max_ms_latency For more information, see the description of this variable at the \
-             beginning of the file."
+                 max_ms_latency For more information, see the description of this variable at the \
+                 beginning of the file."
             );
         }
 
@@ -2200,8 +2201,9 @@ mod all_test {
                 .unwrap_err();
             assert_eq!(
                 err,
-                "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
-             maximum_packet_delay_fback_coefficient must be greater than zero"
+                "latency_increase_coefficient \
+                 overhead_network_latency_relative_window_coefficient \
+                 maximum_packet_delay_fback_coefficient must be greater than zero"
             );
         }
 
@@ -2279,8 +2281,9 @@ mod all_test {
                 .unwrap_err();
             assert_eq!(
                 err,
-                "latency_increase_coefficient overhead_network_latency_relative_window_coefficient \
-             maximum_packet_delay_fback_coefficient must be greater than zero"
+                "latency_increase_coefficient \
+                 overhead_network_latency_relative_window_coefficient \
+                 maximum_packet_delay_fback_coefficient must be greater than zero"
             );
         }
 
@@ -2381,10 +2384,10 @@ mod all_test {
             assert_eq!(
                 err,
                 "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
-             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
-             minimum packet length, such a packet contains only protocol service information, mtu \
-             must be large enough to accommodate the length of the packet's useful data and \
-             service data."
+                 pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is \
+                 the minimum packet length, such a packet contains only protocol service \
+                 information, mtu must be large enough to accommodate the length of the packet's \
+                 useful data and service data."
             );
         }
 
@@ -2395,10 +2398,10 @@ mod all_test {
             assert_eq!(
                 err,
                 "pack_topology.total_minimal_len() > mtu mtu must be significantly larger than \
-             pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is the \
-             minimum packet length, such a packet contains only protocol service information, mtu \
-             must be large enough to accommodate the length of the packet's useful data and \
-             service data."
+                 pack_topology.total_minimal_len(). Since pack_topology.total_minimal_len() is \
+                 the minimum packet length, such a packet contains only protocol service \
+                 information, mtu must be large enough to accommodate the length of the packet's \
+                 useful data and service data."
             );
         }
 
@@ -2521,8 +2524,8 @@ mod all_test {
                 .unwrap_err();
             assert_eq!(
                 err,
-                "The ttl_max_start_cost field is defined as Some(), but in pack_topology this field \
-             is None."
+                "The ttl_max_start_cost field is defined as Some(), but in pack_topology this \
+                 field is None."
             );
         }
 
@@ -2537,9 +2540,9 @@ mod all_test {
                 .unwrap_err();
             assert_eq!(
                 err,
-                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum ttl \
-             value. For more information, see the description of this variable at the beginning \
-             of the file."
+                "ttl_max_start_cost.0 < ttl_max_start_cost.1; start must be less than the maximum \
+                 ttl value. For more information, see the description of this variable at the \
+                 beginning of the file."
             );
 
             // start == max → allowed (code uses <, not <=)
@@ -2563,7 +2566,7 @@ mod all_test {
             assert_eq!(
                 err,
                 "ttl_max_start_cost.0 must be greater than zero. For more information, see the \
-             description of this variable at the beginning of the file."
+                 description of this variable at the beginning of the file."
             );
 
             // start = 0 → error
@@ -2574,7 +2577,7 @@ mod all_test {
             assert_eq!(
                 err,
                 "ttl_max_start_cost.1 must be greater than zero. For more information, see the \
-             description of this variable at the beginning of the file."
+                 description of this variable at the beginning of the file."
             );
         }
 
@@ -2589,7 +2592,7 @@ mod all_test {
             assert_eq!(
                 err,
                 "ttl_max_start_cost.1 is greater than the length that can be accommodated in the \
-             pack_topology field."
+                 pack_topology field."
             );
         }
 
@@ -2705,7 +2708,7 @@ mod all_test {
             assert_eq!(
                 param.err().unwrap(),
                 "intermediate_questionable_packages_queue is Some(0), but Some(the value must be \
-             greater than zero) "
+                 greater than zero) "
             );
 
             let param = param_normal
@@ -2715,9 +2718,9 @@ mod all_test {
 
             assert_eq!(
                 param.err().unwrap(),
-                "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The maximum \
-             value that the counter field in the packet topology can hold must be GREATER than \
-             intermediate_questionable_packages_queue."
+                "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The \
+                 maximum value that the counter field in the packet topology can hold must be \
+                 GREATER than intermediate_questionable_packages_queue."
             );
 
             let param = param_normal
@@ -2727,7 +2730,7 @@ mod all_test {
             assert_eq!(
                 param.err().unwrap(),
                 " maximum_length_udp_queue_packages must be less than the maximum capacity of the \
-             pack_topology.counter_slice() field. "
+                 pack_topology.counter_slice() field. "
             );
             let param = param_normal
                 .clone()
@@ -2736,8 +2739,9 @@ mod all_test {
             assert_eq!(
                 param.err().unwrap(),
                 " maximum_length_udp_queue_packages must be greater than \
-             maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
-             more information, see the description of this variable at the beginning of the file."
+                 maximum_length_queue_unconfirmed_packages so that all packets are confirmed. For \
+                 more information, see the description of this variable at the beginning of the \
+                 file."
             );
             let param = param_normal
                 .clone()
@@ -2746,7 +2750,7 @@ mod all_test {
             assert_eq!(
                 param.err().unwrap(),
                 "maximum_length_fback_queue_packages must not exceed the maximum capacity of the \
-             pack_topology.counter_slice() counter. "
+                 pack_topology.counter_slice() counter. "
             );
             let param = param_normal
                 .clone()
@@ -2755,8 +2759,8 @@ mod all_test {
             assert_eq!(
                 param.err().unwrap(),
                 "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
-             max_num_attempts_resend_package must be less than the maximum possible capacity in \
-             pack_topology.counter_slice()."
+                 max_num_attempts_resend_package must be less than the maximum possible capacity \
+                 in pack_topology.counter_slice()."
             );
             let param = param_normal
                 .clone()
@@ -2765,9 +2769,9 @@ mod all_test {
 
             assert_eq!(
                 param.err().unwrap(),
-                "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The maximum \
-             value that the counter field in the packet topology can hold must be GREATER than \
-             intermediate_questionable_packages_queue."
+                "Some(intermediate_questionable_packages_queue) > ctr_max_capacity_real, The \
+                 maximum value that the counter field in the packet topology can hold must be \
+                 GREATER than intermediate_questionable_packages_queue."
             );
         }
 

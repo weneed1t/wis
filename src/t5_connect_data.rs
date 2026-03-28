@@ -1,11 +1,11 @@
+use crate::t0pology::*;
+use crate::t1fields::{self, get_id_conn, get_id_sender_and_recv, get_len};
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::t1fields::{self, get_id_conn, get_id_sender_and_recv, get_len};
 use crate::wt1types::{
-    Cfcser, EncWis, MyRole, Noncer, PackErr, PackType, Randomer, Thrasher, WSQueueErr,WTypeErr
+    Cfcser, EncWis, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
-use crate::t0pology::*;
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
 #[derive(Clone)]
@@ -18,47 +18,58 @@ pub struct Ids {
 pub struct Identified {
     my_metall_id: u64,
     my_s_r_id: Option<Ids>,
-    id_conn: Option<(u64,MyRole)>,
+    id_conn: Option<(u64, MyRole)>,
 }
-
-
 
 ///check crc + get idc/ids/idr + get len + get TrickyByte
-/// 
-pub fn get_all_pub_info_of_package<Tcrc:Cfcser>(metal_id:u64 ,pack:&mut [u8],topology:&PackTopology,check_head_crc_if_pack_not_from_tls_like_queue:Option<Tcrc>)->Result<(Identified,usize,u8),WTypeErr>
+pub fn get_all_pub_info_of_package<Tcrc: Cfcser>(
+    metal_id: u64,
+    pack: &mut [u8],
+    topology: &PackTopology,
+    check_head_crc_if_pack_not_from_tls_like_queue: Option<Tcrc>,
+) -> Result<(Identified, usize, u8), WTypeErr>
 where
-    Tcrc: FnMut(&[u8], &mut [u8]) -> Result<(), &'static str>{
-
-    if !check_head_crc_if_pack_not_from_tls_like_queue.is_some() &&topology.head_crc_slice().is_some(){
-    if  !t1fields::set_get_head_crc(false, pack, topology, check_head_crc_if_pack_not_from_tls_like_queue.expect(""))?{
+    Tcrc: FnMut(&[u8], &mut [u8]) -> Result<(), &'static str>,
+{
+    if check_head_crc_if_pack_not_from_tls_like_queue.is_none()
+        && topology.head_crc_slice().is_some()
+        && !t1fields::set_get_head_crc(
+            false,
+            pack,
+            topology,
+            check_head_crc_if_pack_not_from_tls_like_queue.expect(""),
+        )?
+    {
         return Err(WTypeErr::PackageDamaged("crc of head is incorrect"));
     }
-    }
 
-    let len_of_pack = if topology.len_slice().is_some(){
+    let _len_of_pack = if topology.len_slice().is_some() {
         get_len(pack, topology)?
-    }else{
+    } else {
         pack.len()
-    } ;
+    };
 
-    let mut ids_mys = Identified{my_metall_id:metal_id,my_s_r_id:None,id_conn:None};
+    let mut ids_mys = Identified {
+        my_metall_id: metal_id,
+        my_s_r_id: None,
+        id_conn: None,
+    };
 
-
-    if topology.id_of_sender_slice().is_some(){
-        let (send, recv) =  get_id_sender_and_recv(pack, topology)?;
-        ids_mys.my_s_r_id =Some(Ids { id_sender: send, id_receiver: recv })
+    if topology.id_of_sender_slice().is_some() {
+        let (send, recv) = get_id_sender_and_recv(pack, topology)?;
+        ids_mys.my_s_r_id = Some(Ids {
+            id_sender: send,
+            id_receiver: recv,
+        })
     }
 
-
-     if topology.idconn_slice().is_some(){
-        let (id_conn, role) =  get_id_conn(pack, topology)?;
-        ids_mys.id_conn =Some((id_conn,role));
+    if topology.idconn_slice().is_some() {
+        let (id_conn, role) = get_id_conn(pack, topology)?;
+        ids_mys.id_conn = Some((id_conn, role));
     }
 
-    
     Err(WTypeErr::WorkTimeErr(""))
 }
-
 
 pub struct WsConnection<
     //TCfcser: Cfcser,
@@ -291,8 +302,6 @@ impl<
     }
 }
 
-
-
 #[cfg(test)]
 mod test_new {
     use super::*;
@@ -371,7 +380,7 @@ mod test_new {
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: None,
-                id_conn: Some((999,MyRole::Initiator)),
+                id_conn: Some((999, MyRole::Initiator)),
             },
         );
 

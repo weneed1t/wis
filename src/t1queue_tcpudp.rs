@@ -404,7 +404,7 @@ pub mod recv_queue {
                     return more elements than it has,
                     can't be handled via Result<>, Sorry~~"#
                     );
-                }
+                },
             };
 
             self.k_add(size_of_ret);
@@ -430,7 +430,7 @@ pub mod recv_queue {
 
                     _ => {
                         return vec![].into_boxed_slice();
-                    }
+                    },
                 },
             );
 
@@ -591,7 +591,7 @@ pub mod recv_queue {
             match self.data_map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(_) => {
                     return Err("this id elem is already in");
-                }
+                },
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     entry.insert(ElemMy {
                         cl: None,
@@ -601,7 +601,7 @@ pub mod recv_queue {
                     });
                     self.elems_in_me =
                         EXPCP!(self.elems_in_me.checked_add(1), "err 1+ self.elems_in_me");
-                }
+                },
             };
 
             if let Some(lei) = self.of_max_p.as_ref().map(|x| x.0) {

@@ -1,12 +1,11 @@
-use crate::t0pology::PackTopology;
-
-
 //use std::rc::Rc;
-use std::{ sync::Arc};
+use std::sync::Arc;
+
+use crate::t0pology::PackTopology;
 pub type InFile<T> = Arc<Box<[T]>>;
 //pub type InFile<T> = Arc<Vec<T>>;
 
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub enum AtomHandFile {
     InitiatorFileSize(usize),
     PassiveFileSize(usize),
@@ -65,8 +64,6 @@ pub enum WSQueueErr {
     NonCritical(&'static str),
     Critical(&'static str),
 }
-
-
 
 impl WSQueueErr {
     pub fn is_critical(&self) -> bool {
@@ -344,82 +341,78 @@ pub trait Randomer: Sized {
 
 pub trait HandMaker: Sized {
     fn new(my_role: MyRole, seed: &[u8]) -> Result<Self, &'static str>;
-    fn file_sheme(&self) -> & [AtomHandFile];
-    fn send(&mut self)-> Result<InFile<u8>, &'static str>;
-    fn recv(&mut self,file:InFile<u8>)-> Result<(), &'static str>;
-    fn get_private_key(&mut self)->Result<Box<[u8]>, &'static str>;
+    fn file_sheme(&self) -> &[AtomHandFile];
+    fn send(&mut self) -> Result<InFile<u8>, &'static str>;
+    fn recv(&mut self, file: InFile<u8>) -> Result<(), &'static str>;
+    fn get_private_key(&mut self) -> Result<Box<[u8]>, &'static str>;
 }
 
+pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
+    for k_len in [0, 17, 40] {
+        for gamma in [0, 77, 255] {
+            let mut intua = Thm::new(MyRole::Initiator, &vec![gamma; k_len])?;
 
+            let mut passve = Thm::new(MyRole::Passive, &vec![gamma; k_len])?;
 
-pub fn hand_maker_tester<Thm:HandMaker + Clone>()->Result<(),&'static str> {
-
-    for k_len in [0,17,40]{
-        for gamma in [0,77,255]{
-    
-            let mut intua = Thm::new(MyRole::Initiator, &vec![gamma;k_len])?;
-
-            let mut passve = Thm::new(MyRole::Passive, &vec![gamma;k_len])?;
-
-            if ! intua.file_sheme()[0].is_initiator(){
-                                #[cfg(test)]{
-                    println!("Initiator:   {:?}",intua.file_sheme());
-
+            if !intua.file_sheme()[0].is_initiator() {
+                #[cfg(test)]
+                {
+                    println!("Initiator:   {:?}", intua.file_sheme());
                 }
-                return  Err("error in initiator in file_sheme()[0], initiator must always send data first!");
+                return Err(
+                    "error in initiator in file_sheme()[0], initiator must always send data first!",
+                );
             }
-            if ! passve.file_sheme()[0].is_initiator(){
-                                #[cfg(test)]{
-                    println!("Passive:   {:?}",passve.file_sheme());
+            if !passve.file_sheme()[0].is_initiator() {
+                #[cfg(test)]
+                {
+                    println!("Passive:   {:?}", passve.file_sheme());
                 }
-                return  Err("error in passive in file_sheme()[0], initiator must always send data first!");
+                return Err(
+                    "error in passive in file_sheme()[0], initiator must always send data first!",
+                );
             }
 
             let p_s = passve.file_sheme().to_vec().into_boxed_slice();
             let i_s = intua.file_sheme().to_vec().into_boxed_slice();
-            
-            if p_s != i_s{
-                #[cfg(test)]{
-                    println!("Initiator: {:?}",i_s);
-                    println!("Passive:   {:?}",p_s);
+
+            if p_s != i_s {
+                #[cfg(test)]
+                {
+                    println!("Initiator: {:?}", i_s);
+                    println!("Passive:   {:?}", p_s);
                 }
-                return Err("file_sheme() of the initiator differs from file_sheme() of the passive");
+                return Err(
+                    "file_sheme() of the initiator differs from file_sheme() of the passive",
+                );
             }
 
-            for cur in p_s{
+            for cur in p_s {
+                println!("len seed: {} , fill seed {} , cur {:?}", k_len, gamma, cur);
 
-                println!("len seed: {} , fill seed {} , cur {:?}",k_len,gamma,cur);
-
-                if cur.is_initiator(){
-
+                if cur.is_initiator() {
                     passve.recv(intua.send()?)?;
-
-                }else {
+                } else {
                     intua.recv(passve.send()?)?;
                 }
-
             }
 
             let i_pas = intua.get_private_key()?;
             let p_pas = passve.get_private_key()?;
 
-            if i_pas != p_pas{
-                 #[cfg(test)]{
-                    println!("Initiator: {:?}",i_pas);
-                    println!("Passive:   {:?}",p_pas);
+            if i_pas != p_pas {
+                #[cfg(test)]
+                {
+                    println!("Initiator: {:?}", i_pas);
+                    println!("Passive:   {:?}", p_pas);
                 }
                 return Err("At the end of the exchange of all files, 
                 when generating the final private key,
                  the initiator and passive keys do not match");
             }
-
-            
         }
     }
 
-
-    
-    
     Ok(())
 }
 
@@ -937,20 +930,14 @@ mod tests_rsa {
     }
 }
 
-
-
 #[cfg(test)]
-mod test_for_hand_maker_tester{
+mod test_for_hand_maker_tester {
     use super::*;
     use crate::t1dumps_struct::DumpHandMaker;
     #[test]
-    fn t1_(){
-
-    assert_eq!(hand_maker_tester::<DumpHandMaker>(),Ok(()));
-
+    fn t1_() {
+        assert_eq!(hand_maker_tester::<DumpHandMaker>(), Ok(()));
     }
-
-
 }
 
 #[cfg(test)]

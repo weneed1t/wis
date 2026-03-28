@@ -1,5 +1,5 @@
-use crate::wutils;
 use crate::wt1types::InFile;
+use crate::wutils;
 
 const FILE_HEAD_LEN: usize = 9;
 
@@ -606,7 +606,7 @@ mod tests_wudp {
         ];
 
         for file_size_in_iter in fs_vec {
-            let rc= InFile::new((0..file_size_in_iter).map(|x| x as u8).collect());
+            let rc = InFile::new((0..file_size_in_iter).map(|x| x as u8).collect());
 
             assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
