@@ -313,35 +313,6 @@ impl HandMaker for DumpHandMaker {
         })
     }
 
-    fn recv(&mut self, file: InFile<u8>) -> Result<(), &'static str> {
-        let curent_step = self
-            .in_state
-            .get(self.ptr_in_state)
-            .ok_or("too many steps, step index outside the bounds of the circuit array")?;
-
-        println!(" {:?}  {:?}", curent_step, self.role);
-        if (curent_step.is_passive() && self.role.is_initiator())
-            || (curent_step.is_passive() && self.role.is_initiator())
-        {
-            self.private_key = self.private_key.rotate_left(file[0] as u32);
-            self.private_key = self.private_key.wrapping_mul(file[1] as u64);
-
-            if file.len() == 3 {
-                self.private_key = self.private_key.wrapping_add(file[2] as u64);
-            }
-            if file.len() == 2 || file.len() == 3 {
-                return Ok(());
-            }
-            self.ptr_in_state += 1;
-        }
-
-        Err(
-            "Recv order error: The initiator cannot accept files from the initiator, 
-        and the passive cannot accept files from the passive!
-        The correct order is for the initiator to accept files from the passive,
-        or for the passive to send files to the initiator!",
-        )
-    }
     fn send(&mut self) -> Result<InFile<u8>, &'static str> {
         let curent_step = self
             .in_state
@@ -349,9 +320,8 @@ impl HandMaker for DumpHandMaker {
             .ok_or("too many steps, step index outside the bounds of the circuit array")?;
 
         println!(" {:?}  {:?}", curent_step, self.role);
-        if (curent_step.is_initiator() && self.role.is_initiator())
-            || (curent_step.is_passive() && self.role.is_passive())
-        {
+
+        if curent_step.is_initiator() ^ self.role.is_passive() {
             let t1 = (self.ptr_in_state * 17) as u8;
             let t2 = ((self.ptr_in_state + 2) * 17) as u8;
             let t3 = self.ptr_in_state as u8;
@@ -380,6 +350,36 @@ impl HandMaker for DumpHandMaker {
         or for the passive to send files to the initiator!",
         )
     }
+
+    fn recv(&mut self, file: InFile<u8>) -> Result<(), &'static str> {
+        let curent_step = self
+            .in_state
+            .get(self.ptr_in_state)
+            .ok_or("too many steps, step index outside the bounds of the circuit array")?;
+
+        println!(" {:?}  {:?}", curent_step, self.role);
+
+        if curent_step.is_passive() ^ self.role.is_initiator() {
+            self.private_key = self.private_key.rotate_left(file[0] as u32);
+            self.private_key = self.private_key.wrapping_mul(file[1] as u64);
+
+            if file.len() == 3 {
+                self.private_key = self.private_key.wrapping_add(file[2] as u64);
+            }
+            if file.len() == 2 || file.len() == 3 {
+                return Ok(());
+            }
+            self.ptr_in_state += 1;
+        }
+
+        Err(
+            "Recv order error: The initiator cannot accept files from the initiator, 
+        and the passive cannot accept files from the passive!
+        The correct order is for the initiator to accept files from the passive,
+        or for the passive to send files to the initiator!",
+        )
+    }
+
     fn file_sheme(&self) -> &[AtomHandFile] {
         &self.in_state[..]
     }
