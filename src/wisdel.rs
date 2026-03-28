@@ -563,7 +563,6 @@ mod tests_proc {
             "Order is not be endian"
         );
 
-
         // Compute expected chunk by chunk.
         let mut expected = Vec::with_capacity(192);
         for chunk_start in (0..192).step_by(64) {
@@ -697,7 +696,6 @@ mod tests_proc {
             process_in_place(&mut data, identity);
         }
     }
-
 }
 
 #[cfg(test)]

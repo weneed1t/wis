@@ -1880,7 +1880,6 @@ pub mod recv_queue {
 
                 let ret_ve = test_me.get_ctrs_as_byte_pack_vec();
 
-
                 assert_eq!(test_me.len(), 0);
                 assert_eq!(test_me.get_min_max(), (0, 0));
 
@@ -1917,7 +1916,6 @@ pub mod recv_queue {
                     hm.remove(&remap_ve[x.0]);
                 }
                 assert_eq!(hm.len(), 0)
-
             }
         }
 

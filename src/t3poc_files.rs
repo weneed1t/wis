@@ -481,7 +481,6 @@ mod tests_wudp {
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
-
         assert_eq!(
             tw_s.write_new_rc_file(rc),
             Err("WSFileSplitter already has an unprocessed file ")
@@ -611,8 +610,6 @@ mod tests_wudp {
             .iter()
             .cycle()
             {
-
-
                 let trash_noise = *chunk_size as u8;
                 let mut nw = vec![ /*trash bytes*/ trash_noise ; *chunk_size];
 
@@ -644,12 +641,10 @@ mod tests_wudp {
                     max_me
                 };
 
-
                 for _xxx in get_me.clone() {
                     max_me = 0;
                 }
                 for ggg in get_me {
-
                     let lelel = ggg.len();
 
                     let xo: Vec<u8> = (0..lelel).map(|x| x as u8).collect();
