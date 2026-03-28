@@ -550,7 +550,6 @@ impl WsConnectParamBuilder {
     ///  the packet is sent again,</br>
     ///  and the waiting time for confirmation of this packet is set to this value</br>
     /// 1.0 >= latency_increase_coefficient >0
-
     pub fn latency_increase_coefficient(mut self, value: f64) -> Self {
         self.latency_increase_coefficient = value;
         self

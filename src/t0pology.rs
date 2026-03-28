@@ -45,19 +45,19 @@ pub enum PackFields {
 
 impl PartialEq for PackFields {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::IdSender(_), Self::IdSender(_)) => true,
-            (Self::IdReceiver(_), Self::IdReceiver(_)) => true,
-            (Self::Len(_), Self::Len(_)) => true,
-            (Self::Counter(_), Self::Counter(_)) => true,
-            (Self::UserField(_), Self::UserField(_)) => true,
-            (Self::HeadCRC(_), Self::HeadCRC(_)) => true,
-            (Self::Nonce(_), Self::Nonce(_)) => true,
-            (Self::TTL(_), Self::TTL(_)) => true,
-            (Self::IdConnect(_), Self::IdConnect(_)) => true,
-            (Self::TrickyByte, Self::TrickyByte) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Self::IdSender(_), Self::IdSender(_))
+                | (Self::IdReceiver(_), Self::IdReceiver(_))
+                | (Self::Len(_), Self::Len(_))
+                | (Self::Counter(_), Self::Counter(_))
+                | (Self::UserField(_), Self::UserField(_))
+                | (Self::HeadCRC(_), Self::HeadCRC(_))
+                | (Self::Nonce(_), Self::Nonce(_))
+                | (Self::TTL(_), Self::TTL(_))
+                | (Self::IdConnect(_), Self::IdConnect(_))
+                | (Self::TrickyByte, Self::TrickyByte)
+        )
     }
 }
 
@@ -328,7 +328,7 @@ impl PackTopology {
             data_save,
         };
 
-        #[cfg(any(test))]
+        #[cfg(test)]
         {
             topology.display_layout_with_separators();
         }
@@ -413,7 +413,7 @@ impl PackTopology {
     }
 }
 
-#[cfg(any(test))]
+#[cfg(test)]
 impl PackTopology {
     ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
     ///<h1> !IS TEST ONLY TEST ONLY!

@@ -44,6 +44,7 @@ pub fn set_tricky_byte(
 /// uses a temporary buffer (twice MAXIMAL_CRC_LEN) to store:
 /// - current crc value (from packet) in first half
 /// - recalculated crc value in second half
+///
 /// compares both to determine integrity
 /// warning: calling this function twice on corrupted data may yield false positive on
 /// second call because the first call may overwrite the crc field with correct value —

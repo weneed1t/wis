@@ -348,7 +348,7 @@ pub trait HandMaker: Sized {
 }
 
 pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
-    for k_len in [0, 17, 40] {
+    for k_len in [0, 17, 80] {
         for gamma in [0, 77, 255] {
             let mut intua = Thm::new(MyRole::Initiator, &vec![gamma; k_len])?;
 
@@ -388,12 +388,30 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
             }
 
             for cur in p_s {
+                println!();
+                println!();
                 println!("len seed: {} , fill seed {} , cur {:?}", k_len, gamma, cur);
 
                 if cur.is_initiator() {
+                    let mut temp_passive = passve.clone();
+                    //
                     passve.recv(intua.send()?)?;
+
+                    //ivverse test
+                    if temp_passive.send().is_ok() {
+                        return Err("Passive send() returned the correct value when the \
+                                    Initiator send() was in the queue at that moment");
+                    }
                 } else {
+                    let mut temp_init = intua.clone();
+                    //
                     intua.recv(passve.send()?)?;
+                    //inverse test
+
+                    if temp_init.send().is_ok() {
+                        return Err("Initiator send() returned the correct value when the \
+                                    Passive send() was in the queue at that moment");
+                    }
                 }
             }
 

@@ -420,7 +420,7 @@ pub mod recv_queue {
                 .skip(self.k_mod)
                 .take(self.data.len())
                 .take_while(|opt| opt.is_some())
-                .map(|opt| opt.as_ref().unwrap().clone())
+                .map(|opt| opt.as_ref().expect("unreal state").clone())
                 .collect::<Box<[_]>>();
 
             self.edit_my_state(
@@ -503,7 +503,7 @@ pub mod recv_queue {
         }
 
         fn write(&mut self, bytes: &[u8]) {
-            self.hash = u64::from_ne_bytes(bytes.try_into().unwrap());
+            self.hash = u64::from_ne_bytes(bytes.try_into().expect("unreal state"));
         }
 
         fn write_u64(&mut self, i: u64) {
@@ -1019,7 +1019,7 @@ pub mod recv_queue {
                     ),
                     sls.0,
                 )
-                .unwrap();
+                .expect("unreal state");
             }
             //cleansing of the internal state
             self.ptr = 0;

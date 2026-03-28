@@ -1,8 +1,6 @@
 //pub mod t10_api;
 #![forbid(unsafe_code)]
-#![deny(clippy::unwrap_used)]
-// или более строгий вариант, запрещающий и unwrap, и expect
-#![deny(clippy::all)]
+//#![deny(clippy::all)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 
