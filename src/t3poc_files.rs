@@ -481,7 +481,6 @@ mod tests_wudp {
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
-        //println!("{:?}", tw_s.clone().send_file.unwrap().0);
 
         assert_eq!(
             tw_s.write_new_rc_file(rc),
@@ -546,13 +545,6 @@ mod tests_wudp {
 
         assert_eq!(tw_s.file_to_slices(&mut reta5), None);
         assert!(tw_s.clone().send_file.is_none());
-
-        // println!("{:?}", reta1);
-        //println!("{:?}", reta2);is zero size
-        //println!("{:?}", reta3);
-
-        //println!("{:?}", reta4);
-        //println!("{:?}", reta5);
 
         assert_eq!(
             reta1,
@@ -619,9 +611,7 @@ mod tests_wudp {
             .iter()
             .cycle()
             {
-                //if *infl == 1 {
-                //    print!("INFIL: {}", infl)
-                //}
+
 
                 let trash_noise = *chunk_size as u8;
                 let mut nw = vec![ /*trash bytes*/ trash_noise ; *chunk_size];
@@ -630,12 +620,6 @@ mod tests_wudp {
                     tw_s.file_to_slices(&mut nw),
                     tw_s.remaining_len_of_send_file()
                 );
-
-                //  println!("          real {} | {:?}", nw.len(), nw);
-
-                //if over_len > 200 {
-                // nw[0] = 0;
-                // }
 
                 vecca.extend_from_slice(&nw);
 
@@ -659,20 +643,12 @@ mod tests_wudp {
                 } else {
                     max_me
                 };
-                // println!(
-                //     "rema leng {}   over{}   mm {} chs {}",
-                //     tw_s.remaining_len_of_recv_file().unwrap_or(0),
-                //     over_len,
-                //     max_me,
-                //      chunk_size
-                //  );
+
 
                 for _xxx in get_me.clone() {
-                    //println!("{}", _xxx.len());
                     max_me = 0;
                 }
                 for ggg in get_me {
-                    // println!("----------{}| {:?} ", ggg.len(), ggg);
 
                     let lelel = ggg.len();
 

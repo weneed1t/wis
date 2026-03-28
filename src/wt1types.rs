@@ -388,10 +388,12 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
             }
 
             for cur in p_s {
-                println!();
-                println!();
-                println!("len seed: {} , fill seed {} , cur {:?}", k_len, gamma, cur);
-
+                #[cfg(test)]
+                {
+                    println!();
+                    println!();
+                    println!("len seed: {} , fill seed {} , cur {:?}", k_len, gamma, cur);
+                }
                 if cur.is_initiator() {
                     let mut temp_passive = passve.clone();
                     //

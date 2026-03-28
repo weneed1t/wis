@@ -470,14 +470,6 @@ pub mod recv_queue {
             if let Some(lctr) = self.largest_ctr {
                 let ad = self.last_give_ctr.is_some() as u64 & 1;
 
-                //println!(
-                //    "last {} large {} sub {}  inq {}  gap {}",
-                //    lctr,
-                //    lgctr,
-                //    (lctr - lgctr),
-                //    self.in_queue,
-                //    ex
-                //);
                 (EXPCP!(
                     (self.in_queue as u64).checked_add(ad),
                     "err ad + self.in_queue"
@@ -1184,7 +1176,6 @@ pub mod recv_queue {
                 assert_eq!(waa.max_elem_id_and_p(), Some((x * 2, x as u32)));
                 assert_eq!(waa.min_elem_id_and_p(), Some((addrt * 2, addrt as u32)));
                 assert_eq!(waa.len(), (1 + x - addrt) as usize);
-                //println!("{}", x)
             }
 
             for x in waa.data_map.iter() {
@@ -1219,17 +1210,7 @@ pub mod recv_queue {
                     assert_eq!(waa.min_elem_id_and_p(), Some((0, 0)));
                     assert_eq!(waa.len(), (1 + x) as usize);
                 }
-                /*
-                                for x in waa.data_map.iter() {
-                                    println!(
-                                        " id: {} cb:{:?} cl {:?} p{:?}",
-                                        x.0,
-                                        x.1.cb,
-                                        x.1.cl,
-                                        x.1.p_order.clone()
-                                    );
-                                }
-                */
+
                 assert_eq!(
                     waa.get_elements_to(waa.max_elem_id_and_p().unwrap().1)
                         .iter()
@@ -1425,7 +1406,6 @@ pub mod recv_queue {
 
                 for i in ret.iter() {
                     assert_eq!(i.to_vec(), *arepackets.next().unwrap());
-                    // println!("{:?}", i);
                 }
             }
         }
@@ -1763,26 +1743,6 @@ pub mod recv_queue {
                 .into_boxed_slice()
             );
         }
-        /*
-        use std::time;
-
-        #[test]
-        fn ets() {
-            let std_start = time::Instant::now();
-
-            let mut kd: WSUdpLike<u32> = WSUdpLike::new(100).unwrap();
-
-            for x in 0..23_000_000 {
-                kd.insert((x, 1));
-
-                if x % 90 == 0 {
-                    let _ = kd.get_queue();
-                }
-            }
-
-            println!("{:}", std_start.elapsed().as_secs_f32());
-            //assert!(false)
-        }*/
 
         #[test]
         fn test_gap() {
@@ -1920,7 +1880,6 @@ pub mod recv_queue {
 
                 let ret_ve = test_me.get_ctrs_as_byte_pack_vec();
 
-                //println!("{:?}", ret_ve);
 
                 assert_eq!(test_me.len(), 0);
                 assert_eq!(test_me.get_min_max(), (0, 0));
@@ -1935,7 +1894,6 @@ pub mod recv_queue {
                     &ret_ve, ctr_len, &mut ws_wa,
                 )
                 .unwrap();
-                //println!("{:?}", re_recv);
 
                 assert_eq!(
                     re_recv,
@@ -1959,13 +1917,7 @@ pub mod recv_queue {
                     hm.remove(&remap_ve[x.0]);
                 }
                 assert_eq!(hm.len(), 0)
-                // println!("{:?}", ret_ve);
 
-                // println!(
-                //    "{:?}",
-                //    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&ret_ve[..],
-                // &pack_topology).unwrap()
-                //);
             }
         }
 

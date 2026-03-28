@@ -563,8 +563,6 @@ mod tests_proc {
             "Order is not be endian"
         );
 
-        //println!("{:?}", ds);
-        //return;
 
         // Compute expected chunk by chunk.
         let mut expected = Vec::with_capacity(192);
@@ -699,48 +697,7 @@ mod tests_proc {
             process_in_place(&mut data, identity);
         }
     }
-    /*
-    DEPRECATED TEST!!!  NI USE!
-    #[test]
-    fn multiple_chunks_check_be_endian() {
-        // 3 full chunks (192 bytes)
-        let mut input: Vec<u8> = (0..192).map(|i| i as u8).collect();
 
-        let mut t2: Vec<u8> = (0..13).map(|i| 0 as u8).collect();
-        let mut input1: Vec<u8> = (0..70).map(|i| i as u8).collect();
-
-        let mut input2: Vec<u8> = (70..99).map(|i| i as u8).collect();
-
-        let mut input3: Vec<u8> = (99..192).map(|i| i as u8).collect();
-        process_in_place(&mut t2, add_ottf);
-        process_in_place(&mut input1, add_ottf);
-        process_in_place(&mut input2, add_ottf);
-        process_in_place(&mut input3, add_ottf);
-        process_in_place(&mut input, add_ottf);
-
-        let mut he2 = vec![];
-        he2.append(&mut input1);
-        he2.append(&mut input2);
-        he2.append(&mut input3);
-
-        assert_eq!(he2.len(), input.len());
-
-        for (i, (x, y)) in he2.iter().zip(input.iter()).enumerate() {
-            println!("{i:>3} | {:>3} {:>3}  {:>3} ", *x, *y, *y == *x);
-        }
-
-        assert_eq!(he2, input);
-
-        println!("{:?}", t2);
-        println!("{:?}", input1);
-        println!("{:?}", input2);
-        println!("{:?}", input3);
-        println!("{:?}", input);
-
-        return;
-    }
-
-    */
 }
 
 #[cfg(test)]
