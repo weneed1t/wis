@@ -30,6 +30,7 @@ pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, 
 // communication idconnect field is used to associate packets with a specific connection
 // or session all size constants are defined to support maximum required lengths for
 // secure and flexible packet handling
+
 pub enum PackFields {
     IdSender(usize),
     IdReceiver(usize),
@@ -61,6 +62,8 @@ impl PartialEq for PackFields {
     }
 }
 
+type Fld = Option<(usize, usize, usize)>;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackTopology {
     // _phantom_time:PhantomData<&'a bool>,
@@ -68,19 +71,19 @@ pub struct PackTopology {
     tag_len: usize,
     encrypt_start_pos: usize,
     content_start_pos: usize,
-    counter_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
-    id_of_sender_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
-    id_of_receiver_slice: Option<(usize, usize, usize)>, // (pos_start, pos_end, len)
-    len_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
+    counter_slice: Fld,        // (pos_start, pos_end, len)
+    id_of_sender_slice: Fld,   // (pos_start, pos_end, len)
+    id_of_receiver_slice: Fld, // (pos_start, pos_end, len)
+    len_slice: Fld,            // (pos_start, pos_end, len)
     trash_content_slices_vec: Option<Box<[(usize, usize, usize)]>>, // (pos_start, pos_end, len)
-    crc_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
-    nonce_slice: Option<(usize, usize, usize)>,   // (pos_start, pos_end, len)
-    ttl_slice: Option<(usize, usize, usize)>,     // (pos_start, pos_end, len)
-    idconn_slice: Option<(usize, usize, usize)>,  // (pos_start, pos_end, len)
-    tricky_byte: Option<usize>,                   //(pos)
+    crc_slice: Fld,            // (pos_start, pos_end, len)
+    nonce_slice: Fld,          // (pos_start, pos_end, len)
+    ttl_slice: Fld,            // (pos_start, pos_end, len)
+    idconn_slice: Fld,         // (pos_start, pos_end, len)
+    tricky_byte: Option<usize>, //(pos)
     total_minimal_len: usize,
-    is_tcp_like: bool,
-    data_save: bool,
+    //is_tcp_like: bool,
+    //data_save: bool,
 }
 
 impl PackTopology {
@@ -122,14 +125,14 @@ impl PackTopology {
         data_save: bool,
         tcp_mode: bool,
     ) -> Result<Self, &'static str> {
-        let mut id_of_sender_slice: Option<(usize, usize, usize)> = None;
-        let mut id_of_receiver_slice: Option<(usize, usize, usize)> = None;
-        let mut len_slice: Option<(usize, usize, usize)> = None;
-        let mut crc_slice: Option<(usize, usize, usize)> = None;
-        let mut nonce_slice: Option<(usize, usize, usize)> = None;
-        let mut counter_slice: Option<(usize, usize, usize)> = None;
-        let mut ttl_slice: Option<(usize, usize, usize)> = None;
-        let mut idconn_slice: Option<(usize, usize, usize)> = None;
+        let mut id_of_sender_slice: Fld = None;
+        let mut id_of_receiver_slice: Fld = None;
+        let mut len_slice: Fld = None;
+        let mut crc_slice: Fld = None;
+        let mut nonce_slice: Fld = None;
+        let mut counter_slice: Fld = None;
+        let mut ttl_slice: Fld = None;
+        let mut idconn_slice: Fld = None;
         let mut tricky_byte: Option<usize> = None; //poss
         let mut trash_content_slices_vec = vec![];
         let mut shift: usize = 0_usize;
@@ -324,8 +327,8 @@ impl PackTopology {
             total_minimal_len: content_start_pos
                 .checked_add(tag_len)
                 .ok_or("total packet size exceeds addressable memory")?,
-            is_tcp_like: tcp_mode,
-            data_save,
+            //is_tcp_like: tcp_mode,
+            //data_save,
         };
 
         #[cfg(test)]
@@ -360,27 +363,27 @@ impl PackTopology {
         self.encrypt_start_pos
     }
     /// (start pos, end pos, len of slise)
-    pub fn counter_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn counter_slice(&self) -> Fld {
         self.counter_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn idconn_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn idconn_slice(&self) -> Fld {
         self.idconn_slice
     }
     ///(start pos, end pos, len of slise)
-    pub fn id_of_sender_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn id_of_sender_slice(&self) -> Fld {
         self.id_of_sender_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn ttl_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn ttl_slice(&self) -> Fld {
         self.ttl_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn id_of_receiver_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn id_of_receiver_slice(&self) -> Fld {
         self.id_of_receiver_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn len_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn len_slice(&self) -> Fld {
         self.len_slice
     }
     /// (start pos, end pos, len of slise)
@@ -388,11 +391,11 @@ impl PackTopology {
         self.trash_content_slices_vec.as_ref()
     }
     /// (start pos, end pos, len of slise)
-    pub fn head_crc_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn head_crc_slice(&self) -> Fld {
         self.crc_slice
     }
     /// (start pos, end pos, len of slise)
-    pub fn nonce_slice(&self) -> Option<(usize, usize, usize)> {
+    pub fn nonce_slice(&self) -> Fld {
         self.nonce_slice
     }
     /// head fields len + 1 byte HEAL ken + tag len
@@ -405,19 +408,19 @@ impl PackTopology {
         (0, self.encrypt_start_pos, self.encrypt_start_pos)
     }
 
-    pub fn is_tcp(&self) -> bool {
-        self.is_tcp_like
-    }
-    pub fn data_save(&self) -> bool {
-        self.data_save
-    }
+    //pub fn is_tcp(&self) -> bool {
+    //    self.is_tcp_like
+    //}
+    //pub fn data_save(&self) -> bool {
+    //    self.data_save
+    //}
 }
 
 #[cfg(test)]
 impl PackTopology {
     ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
     ///<h1> !IS TEST ONLY TEST ONLY!
-    pub fn __warning_test_only_force_edit_ctr(&mut self, ctr: Option<(usize, usize, usize)>) {
+    pub fn __warning_test_only_force_edit_ctr(&mut self, ctr: Fld) {
         self.counter_slice = ctr;
     }
 
@@ -429,13 +432,13 @@ impl PackTopology {
 
     ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
     ///<h1> !IS TEST ONLY TEST ONLY!
-    pub fn __warning_test_only_force_edit_ttl(&mut self, ttl: Option<(usize, usize, usize)>) {
+    pub fn __warning_test_only_force_edit_ttl(&mut self, ttl: Fld) {
         self.ttl_slice = ttl;
     }
 
     ///<h1>NO USE IN PROD! IS TEST ONLY TEST ONLY
     ///<h1> !IS TEST ONLY TEST ONLY!
-    pub fn __warning_test_only_force_edit_crc(&mut self, crc: Option<(usize, usize, usize)>) {
+    pub fn __warning_test_only_force_edit_crc(&mut self, crc: Fld) {
         self.crc_slice = crc;
     }
 
@@ -544,6 +547,78 @@ impl PackTopology {
             println!(" [@ ...] - Head Byte");
             println!("|.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-|");
         }
+    }
+}
+
+impl PackTopology {
+    /// compare two packet topologies for protocol-level equality.
+    ///
+    /// this method checks only the fields that affect packet processing:
+    /// `tag_len`, `tricky_byte`, and all slice fields (`counter`, `id_of_sender`,
+    /// `id_of_receiver`, `len`, `crc`, `nonce`, `ttl`, `idconn`).
+    ///
+    /// # important invariants
+    /// - slice equality is based **only on presence and length**, not on start/end
+    ///   positions.
+    /// - fields ignored by the comparison: `all_fields`, `encrypt_start_pos`,
+    ///   `content_start_pos`, `trash_content_slices_vec`, `total_minimal_len`.
+    /// - `tricky_byte` is compared by exact position (or absence).
+    ///
+    /// # examples
+    /// ```
+    /// # use wisleess2::t0pology::PackTopology;
+    /// # use wisleess2::t0pology::PackFields;
+    /// let topo1 = PackTopology::new(16, &[PackFields::Len(4),PackFields::UserField(32),PackFields::Counter(8),PackFields::IdSender(6),PackFields::IdReceiver(6),PackFields::UserField(10),PackFields::HeadCRC(4),PackFields::UserField(1),PackFields::Nonce(8),PackFields::TTL(3),PackFields::UserField(3),PackFields::IdConnect(7)], true, false).unwrap();
+    /// let topo2 = PackTopology::new(16, &[PackFields::IdConnect(7),PackFields::Counter(8),PackFields::UserField(100),PackFields::HeadCRC(4),PackFields::IdReceiver(6),PackFields::TTL(3),PackFields::Len(4),PackFields::Nonce(8),PackFields::IdSender(6),], true, false).unwrap();
+    /// assert!(topo1.is_proto_equal(&topo2));
+    ///
+    /// let topo3 = PackTopology::new(32, &[PackFields::Counter(4)], true, false).unwrap();
+    /// assert!(!topo1.is_proto_equal(&topo3)); // different tag_len
+    /// ```
+    pub fn is_proto_equal(&self, t: &Self) -> bool {
+        let Self {
+            all_fields: _,
+            tag_len,
+            encrypt_start_pos: _,
+            content_start_pos: _,
+            counter_slice,
+            id_of_sender_slice,
+            id_of_receiver_slice,
+            len_slice,
+            trash_content_slices_vec: _,
+            crc_slice,
+            nonce_slice,
+            ttl_slice,
+            idconn_slice,
+            tricky_byte,
+            total_minimal_len: _,
+        } = self;
+
+        self.eq_len_field(idconn_slice, &t.idconn_slice)
+            && self.eq_len_field(ttl_slice, &t.ttl_slice)
+            && self.eq_len_field(nonce_slice, &t.nonce_slice)
+            && self.eq_len_field(crc_slice, &t.crc_slice)
+            && self.eq_len_field(len_slice, &t.len_slice)
+            && self.eq_len_field(id_of_receiver_slice, &t.id_of_receiver_slice)
+            && self.eq_len_field(id_of_sender_slice, &t.id_of_sender_slice)
+            && self.eq_len_field(counter_slice, &t.counter_slice)
+            //other
+            && tricky_byte == &t.tricky_byte
+            && tag_len == &t.tag_len
+    }
+
+    fn eq_len_field(&self, t1: &Fld, t2: &Fld) -> bool {
+        if t1.is_none() && t2.is_none() {
+            return true;
+        }
+
+        if let (Some(tt1), Some(tt2)) = (*t1, *t2)
+            && tt1.2 == tt2.2
+        {
+            return true;
+        }
+
+        false
     }
 }
 
@@ -771,8 +846,8 @@ mod tests {
             "total_minimal_len mismatch"
         );
 
-        assert!(topology.data_save());
-        assert!(topology.is_tcp());
+        //assert!(topology.data_save());
+        // assert!(topology.is_tcp());
     }
 
     #[test]
@@ -1056,8 +1131,8 @@ mod tests {
 
         // Verify static config
         assert_eq!(topology.tag_len(), 5);
-        assert!(topology.data_save());
-        assert!(topology.is_tcp());
+        //assert!(topology.data_save());
+        //assert!(topology.is_tcp());
 
         // Verify mandatory fields via getters
         assert_eq!(topology.len_slice(), Some((0, 4, 4)));
@@ -1655,33 +1730,33 @@ mod tests_coverage_gaps {
     // ========================================================================
     // 12. IS_TCP AND DATA_SAVE GETTERS
     // ========================================================================
+    /*
+        #[test]
+        fn test_is_tcp_getter() {
+            let fields = vec![PackFields::Len(2), PackFields::Counter(3)];
 
-    #[test]
-    fn test_is_tcp_getter() {
-        let fields = vec![PackFields::Len(2), PackFields::Counter(3)];
+            let topo_tcp = PackTopology::new(5, &fields, true, true).unwrap();
+            assert!(topo_tcp.is_tcp());
 
-        let topo_tcp = PackTopology::new(5, &fields, true, true).unwrap();
-        assert!(topo_tcp.is_tcp());
+             let topo_udp = PackTopology::new(5, &fields, true, false).unwrap();
+            assert!(!topo_udp.is_tcp());
+        }
 
-        let topo_udp = PackTopology::new(5, &fields, true, false).unwrap();
-        assert!(!topo_udp.is_tcp());
-    }
+        #[test]
+        fn test_data_save_getter() {
+            let fields = vec![
+                PackFields::HeadCRC(4),
+                PackFields::Counter(3),
+                PackFields::Len(1),
+            ];
 
-    #[test]
-    fn test_data_save_getter() {
-        let fields = vec![
-            PackFields::HeadCRC(4),
-            PackFields::Counter(3),
-            PackFields::Len(1),
-        ];
+            let topo_save = PackTopology::new(5, &fields, true, true).unwrap();
+            assert!(topo_save.data_save());
 
-        let topo_save = PackTopology::new(5, &fields, true, true).unwrap();
-        assert!(topo_save.data_save());
-
-        let topo_nosave = PackTopology::new(5, &fields, false, false).unwrap();
-        assert!(!topo_nosave.data_save());
-    }
-
+            let topo_nosave = PackTopology::new(5, &fields, false, false).unwrap();
+             assert!(!topo_nosave.data_save());
+        }
+    */
     // ========================================================================
     // 13. MULTIPLE USERFIELDS POSITION VERIFICATION
     // ========================================================================
@@ -1748,8 +1823,8 @@ mod tests_coverage_gaps {
         let _ = topo.ttl_slice();
         let _ = topo.total_head_slice();
         let _ = topo.total_minimal_len();
-        let _ = topo.is_tcp();
-        let _ = topo.data_save();
+        //let _ = topo.is_tcp();
+        //let _ = topo.data_save();
         let _ = topo.tricky_byte();
 
         // Basic sanity check
@@ -1888,5 +1963,327 @@ mod packfields_tests {
         // Different variant should not be flagged as duplicate
         let other = PackFields::Nonce(8);
         assert_ne!(existing, other, "Different variants are not duplicates");
+    }
+}
+
+#[cfg(test)]
+mod test_equal {
+    use super::*;
+
+    // ========== validation: equal cases ==========
+
+    #[test]
+    fn test_proto_equal_position_invariant_and_ignored_fields() {
+        // same protocol fields, different order/positions + different ignored fields → equal
+        let t1 = PackTopology::new(
+            16,
+            &[
+                PackFields::Counter(4),
+                PackFields::IdSender(6),
+                PackFields::TrickyByte,
+                PackFields::IdReceiver(6),
+                PackFields::Len(2),
+                PackFields::HeadCRC(16),
+                PackFields::Nonce(12),
+                PackFields::TTL(4),
+                PackFields::IdConnect(6),
+                PackFields::UserField(10),
+            ],
+            false,
+            false,
+        )
+        .unwrap();
+
+        let mut t2 = PackTopology::new(
+            16,
+            &[
+                PackFields::IdConnect(6),
+                PackFields::TTL(4),
+                PackFields::TrickyByte,
+                PackFields::Nonce(12),
+                PackFields::HeadCRC(16),
+                PackFields::Len(2),
+                PackFields::Counter(4),
+                PackFields::IdReceiver(6),
+                PackFields::IdSender(6),
+                PackFields::UserField(50), // different trash content
+            ],
+            false,
+            false,
+        )
+        .unwrap();
+
+        // mutate ignored metadata
+        t2.__warning_test_only_force_total_minimum_len_edit(999);
+
+        assert!(
+            t1.is_proto_equal(&t2) && t2.is_proto_equal(&t1),
+            "position/ignored-field invariant"
+        );
+    }
+
+    #[test]
+    fn test_proto_equal_minimal_and_maximal() {
+        // minimal: only counter
+        let a = PackTopology::new(16, &[PackFields::Counter(1)], true, false).unwrap();
+        let b = PackTopology::new(16, &[PackFields::Counter(1)], true, false).unwrap();
+        assert!(a.is_proto_equal(&b));
+
+        // maximal: all fields at max length, different order
+        let fields = [
+            PackFields::Counter(8),
+            PackFields::IdSender(8),
+            PackFields::IdReceiver(8),
+            PackFields::Len(8),
+            PackFields::HeadCRC(32),
+            PackFields::Nonce(32),
+            PackFields::TTL(8),
+            PackFields::IdConnect(8),
+            //PackFields::TrickyByte,
+        ];
+        let m1 = PackTopology::new(32, &fields, true, false).unwrap();
+        let mut rev = fields.to_vec();
+        rev.reverse();
+        let m2 = PackTopology::new(32, &rev, false, false).unwrap();
+        assert!(m1.is_proto_equal(&m2));
+    }
+
+    // ========== error generation: inequality cases ==========
+
+    #[test]
+    fn test_proto_not_equal_all_significant_fields() {
+        macro_rules! assert_ne_proto {
+            ($fields1:expr, $fields2:expr, $tag1:expr, $tag2:expr, $msg:expr) => {
+                let t1 = PackTopology::new($tag1, $fields1, true, false).unwrap();
+                let t2 = PackTopology::new($tag2, $fields2, true, false).unwrap();
+                assert!(!t1.is_proto_equal(&t2) && !t2.is_proto_equal(&t1), $msg);
+            };
+        }
+
+        // tag_len mismatch
+        assert_ne_proto!(
+            &[PackFields::Counter(4)],
+            &[PackFields::Counter(4)],
+            16,
+            32,
+            "tag_len"
+        );
+
+        // tricky_byte: position mismatch / presence mismatch
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::TrickyByte],
+            &[PackFields::TrickyByte, PackFields::Counter(4)],
+            16,
+            16,
+            "tricky_byte pos"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::TrickyByte],
+            &[PackFields::Counter(4)],
+            16,
+            16,
+            "tricky_byte presence"
+        );
+
+        // each slice field: length mismatch
+        assert_ne_proto!(
+            &[PackFields::Counter(4)],
+            &[PackFields::Counter(8)],
+            16,
+            16,
+            "counter len"
+        );
+        assert_ne_proto!(
+            &[
+                PackFields::Counter(4),
+                PackFields::IdSender(4),
+                PackFields::IdReceiver(4)
+            ],
+            &[
+                PackFields::Counter(4),
+                PackFields::IdSender(6),
+                PackFields::IdReceiver(6)
+            ],
+            16,
+            16,
+            "id_sender/receiver len"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::Len(2)],
+            &[PackFields::Counter(4), PackFields::Len(4)],
+            16,
+            16,
+            "len field"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::HeadCRC(16)],
+            &[PackFields::Counter(4), PackFields::HeadCRC(32)],
+            16,
+            16,
+            "crc len"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::Nonce(16)],
+            &[PackFields::Counter(4), PackFields::Nonce(24)],
+            16,
+            16,
+            "nonce len"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::TTL(4)],
+            &[PackFields::Counter(4), PackFields::TTL(8)],
+            16,
+            16,
+            "ttl len"
+        );
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::IdConnect(4)],
+            &[PackFields::Counter(4), PackFields::IdConnect(8)],
+            16,
+            16,
+            "idconn len"
+        );
+
+        // field presence mismatch (one has field, other doesn't)
+        assert_ne_proto!(
+            &[PackFields::Counter(4), PackFields::Nonce(16)],
+            &[PackFields::Counter(4)],
+            16,
+            16,
+            "field presence"
+        );
+    }
+
+    // ========== cross-mutation: validate → mutate → invalidate ==========
+
+    #[test]
+    fn test_proto_cross_mutation() {
+        macro_rules! mutate_and_check {
+            ($topo:ident, $mutator:ident, $new_val:expr, $other:expr) => {
+                assert!($topo.is_proto_equal(&$other));
+                $topo.$mutator($new_val);
+                assert!(
+                    !$topo.is_proto_equal(&$other),
+                    "mutation should break equality"
+                );
+            };
+        }
+
+        let mut t1 = PackTopology::new(
+            16,
+            &[
+                PackFields::Counter(4),
+                PackFields::TTL(4),
+                PackFields::HeadCRC(16),
+            ],
+            false,
+            false,
+        )
+        .unwrap();
+        let t2 = PackTopology::new(
+            16,
+            &[
+                PackFields::Counter(4),
+                PackFields::TTL(4),
+                PackFields::HeadCRC(16),
+            ],
+            false,
+            false,
+        )
+        .unwrap();
+
+        mutate_and_check!(t1, __warning_test_only_force_edit_ctr, Some((0, 8, 8)), t2);
+
+        let mut t3 = PackTopology::new(
+            16,
+            &[PackFields::Counter(4), PackFields::TTL(4)],
+            true,
+            false,
+        )
+        .unwrap();
+        let t4 = PackTopology::new(
+            16,
+            &[PackFields::Counter(4), PackFields::TTL(4)],
+            true,
+            false,
+        )
+        .unwrap();
+        mutate_and_check!(t3, __warning_test_only_force_edit_ttl, Some((0, 8, 8)), t4);
+
+        let mut t5 = PackTopology::new(
+            16,
+            &[PackFields::Counter(4), PackFields::HeadCRC(16)],
+            false,
+            false,
+        )
+        .unwrap();
+        let t6 = PackTopology::new(
+            16,
+            &[PackFields::Counter(4), PackFields::HeadCRC(16)],
+            false,
+            false,
+        )
+        .unwrap();
+        mutate_and_check!(
+            t5,
+            __warning_test_only_force_edit_crc,
+            Some((0, 32, 32)),
+            t6
+        );
+    }
+
+    // ========== fundamental properties ==========
+
+    #[test]
+    fn test_proto_equal_properties() {
+        // reflexivity
+        let t = PackTopology::new(
+            16,
+            &[
+                PackFields::Counter(4),
+                PackFields::Len(2),
+                PackFields::Nonce(16),
+            ],
+            true,
+            true,
+        )
+        .unwrap();
+        assert!(t.is_proto_equal(&t), "reflexivity");
+
+        // symmetry & transitivity via permutation
+        let fields = [
+            PackFields::Counter(4),
+            PackFields::Len(2),
+            PackFields::Nonce(16),
+        ];
+        let perms = [
+            &fields.clone()[..],
+            &[fields[1].clone(), fields[0].clone(), fields[2].clone()],
+            &[fields[2].clone(), fields[1].clone(), fields[0].clone()],
+        ];
+        let tops: Vec<_> = perms
+            .iter()
+            .map(|f| PackTopology::new(16, f, true, true).unwrap())
+            .collect();
+
+        for i in 0..3 {
+            for j in 0..3 {
+                assert_eq!(
+                    tops[i].is_proto_equal(&tops[j]),
+                    tops[j].is_proto_equal(&tops[i]),
+                    "symmetry i={},j={}",
+                    i,
+                    j
+                );
+                if i < 2 && j < 2 {
+                    // transitivity check subset
+                    assert!(
+                        tops[i].is_proto_equal(&tops[j])
+                            && tops[j].is_proto_equal(&tops[2]) == tops[i].is_proto_equal(&tops[2]),
+                        "transitivity"
+                    );
+                }
+            }
+        }
     }
 }
