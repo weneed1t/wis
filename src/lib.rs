@@ -50,8 +50,6 @@ rustup toolchain install nightly
 rustup run nightly cargo fmt
 
 
-
-
 cargo clippy --fix  --allow-dirty &&
 cargo fix --allow-dirty &&
 cargo clippy --fix --allow-dirty --broken-code &&
