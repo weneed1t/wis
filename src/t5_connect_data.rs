@@ -728,12 +728,14 @@ mod test_new {
 
                 id_conn: None,
             },
-            false,
+            true,
         );
 
         assert!(te1.is_ok());
+        let ty2 = &te1.unwrap();
+        assert!(ty2.non_alloc_buf.as_ref().unwrap().len() == result.mtu());
 
-        assert_eq!(te1.unwrap().nonce_gener.unwrap().v, vec![1, 1, 1, 1])
+        assert_eq!(ty2.nonce_gener.as_ref().unwrap().v, vec![1, 1, 1, 1])
     }
 
     #[test]
@@ -844,8 +846,9 @@ mod test_new {
         );
 
         assert!(te1.is_ok());
-
-        assert_eq!(te1.unwrap().user_field_gener.unwrap().v, vec![4, 4, 4, 4])
+        let ty2 = &te1.unwrap();
+        assert_eq!(ty2.non_alloc_buf.as_ref(), None);
+        assert_eq!(ty2.user_field_gener.as_ref().unwrap().v, vec![4, 4, 4, 4]);
     }
 
     #[test]
