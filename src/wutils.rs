@@ -18,6 +18,60 @@ impl PartialEq for WNotification {
     }
 }
 */
+
+/// a fixed-size buffer that stores only the last written data.
+/// when writing a new block, old data becomes inaccessible, even if the new block is shorter.
+pub struct SafeBuffer<const N: usize> {
+    data: [u8; N],
+    len: usize,
+}
+
+impl<const N: usize> SafeBuffer<N> {
+    /// creates a new empty buffer.
+    pub fn new() -> Self {
+        Self {
+            data: [0; N],
+            len: 0,
+        }
+    }
+
+    /// writes new data, completely replacing the content.
+    /// panics if `input` is longer than n.
+    pub fn write(&mut self, input: &[u8]) {
+        assert!(input.len() <= N, "input too large for buffer");
+        self.data[..input.len()].copy_from_slice(input);
+        self.len = input.len();
+    }
+
+    /// returns a slice with the actual data (exactly `len` bytes).
+    pub fn get(&self) -> &[u8] {
+        &self.data[..self.len]
+    }
+
+    /// modifies a part of the already written data.
+    /// panics if the range `offset..offset+new_data.len()` exceeds `self.len`.
+    pub fn modify(&mut self, offset: usize, new_data: &[u8]) {
+        let end = offset + new_data.len();
+        assert!(end <= self.len, "modify range out of bounds");
+        self.data[offset..end].copy_from_slice(new_data);
+    }
+
+    /// returns a mutable slice for modifying data (only within the written length).
+    pub fn get_mut(&mut self) -> &mut [u8] {
+        &mut self.data[..self.len]
+    }
+
+    /// returns the current length of written data.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// logically clears the buffer (physical bytes remain but are inaccessible).
+    pub fn clear(&mut self) {
+        self.len = 0;
+    }
+}
+
 pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() must be between 1 and 8");
@@ -982,5 +1036,260 @@ mod tests_ema {
         let res = ema.next(20.0);
 
         assert!(res.is_finite());
+    }
+}
+
+// ============================================================================
+// harsh test suite – trying to break the code in every possible way
+// ============================================================================
+
+#[cfg(test)]
+mod tests_safe_buffer {
+    use super::*;
+
+    #[test]
+    fn new_buffer_is_empty() {
+        let buf = SafeBuffer::<10>::new();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.get(), &[]);
+    }
+
+    #[test]
+    fn write_full_capacity() {
+        let mut buf = SafeBuffer::<5>::new();
+        buf.write(b"hello");
+        assert_eq!(buf.get(), b"hello");
+        assert_eq!(buf.len(), 5);
+    }
+
+    #[test]
+    fn write_less_than_capacity() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"hi");
+        assert_eq!(buf.get(), b"hi");
+        assert_eq!(buf.len(), 2);
+    }
+
+    #[test]
+    fn write_overwrites_previous_data_completely() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"first long");
+        assert_eq!(buf.get(), b"first long");
+        buf.write(b"short");
+        assert_eq!(buf.get(), b"short");
+        assert_eq!(buf.len(), 5);
+        // even though underlying bytes at positions 5..9 still contain 'long',
+        // they are not exposed
+        assert_eq!(&buf.data[5..9], b"long"); // direct access for test only
+        assert_eq!(buf.get(), b"short");
+    }
+
+    #[test]
+    fn write_empty_slice() {
+        let mut buf = SafeBuffer::<5>::new();
+        buf.write(b"abc");
+        assert_eq!(buf.len(), 3);
+        buf.write(b"");
+        assert_eq!(buf.get(), b"");
+        assert_eq!(buf.len(), 0);
+        // next write after empty works
+        buf.write(b"de");
+        assert_eq!(buf.get(), b"de");
+    }
+
+    #[test]
+    #[should_panic(expected = "input too large for buffer")]
+    fn write_panics_when_input_exceeds_capacity() {
+        let mut buf = SafeBuffer::<3>::new();
+        buf.write(b"four");
+    }
+
+    #[test]
+    fn modify_within_bounds() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"abcdefgh");
+        buf.modify(2, b"12");
+        assert_eq!(buf.get(), b"ab12efgh");
+        assert_eq!(buf.len(), 8);
+    }
+
+    #[test]
+    fn modify_at_start() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"hello");
+        buf.modify(0, b"HE");
+        assert_eq!(buf.get(), b"HEllo");
+    }
+
+    #[test]
+    fn modify_at_end() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"hello");
+        buf.modify(4, b"!");
+        assert_eq!(buf.get(), b"hell!");
+    }
+
+    #[test]
+    fn modify_with_empty_data_does_nothing() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"abc");
+        buf.modify(1, b"");
+        assert_eq!(buf.get(), b"abc");
+        assert_eq!(buf.len(), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "modify range out of bounds")]
+    fn modify_panics_when_offset_beyond_len() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"abc");
+        buf.modify(3, b"d"); // offset == len -> end = 4 > len=3
+    }
+
+    #[test]
+    #[should_panic(expected = "modify range out of bounds")]
+    fn modify_panics_when_end_exceeds_len() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"abc");
+        buf.modify(2, b"de"); // offset=2, len=2 -> end=4 > 3
+    }
+
+    #[test]
+    fn get_mut_allows_in_place_modification() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"abcdef");
+        {
+            let slice = buf.get_mut();
+            slice[2..5].copy_from_slice(b"XYZ");
+        }
+        assert_eq!(buf.get(), b"abXYZf");
+    }
+
+    #[test]
+    fn get_mut_respects_current_len() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"short");
+        let slice = buf.get_mut();
+        assert_eq!(slice.len(), 5);
+        // trying to access beyond len is a compile-time or runtime panic (slice bounds)
+    }
+
+    #[test]
+    fn clear_makes_buffer_empty() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"data");
+        assert_eq!(buf.len(), 4);
+        buf.clear();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.get(), b"");
+        // writing after clear works
+        buf.write(b"new");
+        assert_eq!(buf.get(), b"new");
+    }
+
+    #[test]
+    fn clear_does_not_affect_subsequent_write() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"one");
+        buf.clear();
+        buf.write(b"two");
+        assert_eq!(buf.get(), b"two");
+    }
+
+    #[test]
+    fn multiple_writes_never_leak_old_data_via_get() {
+        let mut buf = SafeBuffer::<30>::new();
+        buf.write(b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); // 30 bytes
+        assert_eq!(buf.get().len(), 30);
+        buf.write(b"bbb");
+        assert_eq!(buf.get(), b"bbb");
+        buf.write(b"c");
+        assert_eq!(buf.get(), b"c");
+        buf.write(b"");
+        assert_eq!(buf.get(), b"");
+    }
+
+    #[test]
+    fn zero_capacity_buffer() {
+        let mut buf = SafeBuffer::<0>::new();
+        assert_eq!(buf.len(), 0);
+        assert_eq!(buf.get(), b"");
+        buf.write(b""); // ok
+        assert_eq!(buf.len(), 0);
+        // get_mut returns empty slice
+        assert_eq!(buf.get_mut(), b"");
+        // modify would panic because len is 0
+        // write with any non-empty panics
+    }
+
+    #[test]
+    #[should_panic(expected = "input too large for buffer")]
+    fn zero_capacity_write_panics_on_non_empty() {
+        let mut buf = SafeBuffer::<0>::new();
+        buf.write(b"x");
+    }
+
+    #[test]
+    fn one_byte_buffer_edge_cases() {
+        let mut buf = SafeBuffer::<1>::new();
+        buf.write(b"a");
+        assert_eq!(buf.get(), b"a");
+        buf.modify(0, b"b");
+        assert_eq!(buf.get(), b"b");
+        buf.write(b"");
+        assert_eq!(buf.get(), b"");
+        buf.write(b"c");
+        assert_eq!(buf.get(), b"c");
+        // modify with offset 0 and length 1 works
+        buf.modify(0, b"d");
+        assert_eq!(buf.get(), b"d");
+        // modify beyond bounds panics
+    }
+
+    #[test]
+    #[should_panic(expected = "modify range out of bounds")]
+    fn one_byte_modify_out_of_bounds() {
+        let mut buf = SafeBuffer::<1>::new();
+        buf.write(b"a");
+        buf.modify(1, b"b"); // offset == len -> end=2 > len=1
+    }
+
+    #[test]
+    fn get_mut_after_clear_returns_empty() {
+        let mut buf = SafeBuffer::<5>::new();
+        buf.write(b"data");
+        buf.clear();
+        assert_eq!(buf.get_mut(), b"");
+    }
+
+    #[test]
+    fn write_then_get_mut_then_write_works() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"first");
+        {
+            let _ = buf.get_mut(); // immutable borrow? actually mutable but dropped
+        }
+        buf.write(b"second"); // works because previous mutable borrow ended
+        assert_eq!(buf.get(), b"second");
+    }
+
+    #[test]
+    fn modify_does_not_change_len() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"123456");
+        assert_eq!(buf.len(), 6);
+        buf.modify(0, b"ab");
+        assert_eq!(buf.len(), 6);
+        buf.modify(4, b"xy");
+        assert_eq!(buf.len(), 6);
+    }
+
+    #[test]
+    fn get_and_get_mut_are_consistent() {
+        let mut buf = SafeBuffer::<10>::new();
+        buf.write(b"rust");
+        assert_eq!(buf.get(), b"rust");
+        buf.get_mut()[2] = b'p';
+        assert_eq!(buf.get(), b"rupr");
     }
 }

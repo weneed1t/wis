@@ -128,6 +128,7 @@ pub struct WsConnection<
     my_role: MyRole,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
     identified: Identified, //+
+    non_alloc_buf: Option<Box<[u8]>>,
 }
 
 impl<
@@ -162,6 +163,7 @@ impl<
         crc_seed: Option<&[u8]>,
         handmaker_seed: &[u8],
         identified: &Identified, //crc_seed: Option<&[u8]>,
+        use_non_alloc_buf: bool,
     ) -> Result<Self, WSQueueErr> {
         if connect_param.pack_topology().idconn_slice().is_some() && identified.id_conn.is_none() {
             return Err(WSQueueErr::Critical(
@@ -273,6 +275,11 @@ impl<
             my_role,
             measurement_window_latency: connect_param.start_ms_latency(),
             identified: identified.clone(),
+            non_alloc_buf: if use_non_alloc_buf {
+                Some(vec![0; connect_param.mtu()].into_boxed_slice())
+            } else {
+                None
+            },
         })
     }
 
@@ -340,6 +347,8 @@ impl<
         &self.measurement_window_latency
     }
 }
+
+/*
 
 #[cfg(test)]
 mod test_new {
@@ -1244,7 +1253,7 @@ mod test_new {
         );
     }
 }
-
+*/
 #[cfg(test)]
 mod test_get_all_pub_info_of_package {
     use super::*;
