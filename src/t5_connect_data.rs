@@ -1,5 +1,5 @@
 use crate::t0pology::*;
-use crate::t1fields::{self, get_id_conn, get_id_sender_and_recv, get_len};
+use crate::t1fields::*;
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
@@ -8,13 +8,13 @@ use crate::wt1types::{
 };
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Ids {
     pub id_sender: u64,
     pub id_receiver: u64,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Identified {
     my_metall_id: u64,
     my_s_r_id: Option<Ids>,
@@ -22,33 +22,45 @@ pub struct Identified {
 }
 
 ///check crc + get idc/ids/idr + get len + get TrickyByte
-pub fn get_all_pub_info_of_package<Tcrc: Cfcser>(
+pub fn get_all_pub_info_of_package<'a, Tcrc>(
     metal_id: u64,
-    pack: &mut [u8],
+    pack: &'a mut [u8],
     topology: &PackTopology,
-    check_head_crc_if_pack_not_from_tls_like_queue: Option<Tcrc>,
-) -> Result<(Identified, usize, u8), WTypeErr>
+    check_head_crc_if_pack_not_from_tls_like_queue: Option<&mut Tcrc>,
+) -> Result<(Identified, usize, Option<u64>, Option<u8>, &'a mut [u8]), WTypeErr>
 where
-    Tcrc: FnMut(&[u8], &mut [u8]) -> Result<(), &'static str>,
+    Tcrc: Cfcser,
 {
-    if check_head_crc_if_pack_not_from_tls_like_queue.is_none()
-        && topology.head_crc_slice().is_some()
-        && !t1fields::set_get_head_crc(
-            false,
-            pack,
-            topology,
-            check_head_crc_if_pack_not_from_tls_like_queue.expect(""),
-        )?
-    {
-        return Err(WTypeErr::PackageDamaged("crc of head is incorrect"));
+    // HEAR CRC
+    //
+    // if let Some(chrss) = check_head_crc_if_pack_not_from_tls_like_queue{
+    //     if topology.head_crc_slice().is_some(){
+    //
+    //     }
+    ////
+    //   else{
+    //      return Err(WTypeErr::PackageDamaged("crc of head is incorrect"));
+    //  }
+
+    if let Some(chrss) = check_head_crc_if_pack_not_from_tls_like_queue {
+        let lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
+            chrss.gen_crc(da1ta, out)?;
+            Ok(())
+        };
+
+        set_get_head_crc(false, pack, topology, lbo)?;
     }
 
-    let _len_of_pack = if topology.len_slice().is_some() {
+    // LEN
+    //
+    let len_of_pack = if topology.len_slice().is_some() {
         get_len(pack, topology)?
     } else {
         pack.len()
     };
 
+    //IDS
+    //
     let mut ids_mys = Identified {
         my_metall_id: metal_id,
         my_s_r_id: None,
@@ -62,13 +74,31 @@ where
             id_receiver: recv,
         })
     }
-
+    //ID CON
+    //
     if topology.idconn_slice().is_some() {
         let (id_conn, role) = get_id_conn(pack, topology)?;
         ids_mys.id_conn = Some((id_conn, role));
     }
 
-    Err(WTypeErr::WorkTimeErr(""))
+    Ok((
+        ids_mys,
+        len_of_pack,
+        if topology.ttl_slice().is_some() {
+            //TTL
+            //
+            Some(get_ttl(pack, topology)?)
+        } else {
+            None
+        },
+        if topology.tricky_byte().is_some() {
+            //TrickyByte
+            Some(get_tricky_byte(pack, topology)?)
+        } else {
+            None
+        },
+        &mut pack[..len_of_pack],
+    ))
 }
 
 pub struct WsConnection<
@@ -1050,5 +1080,57 @@ mod test_new {
                  closed!"
             ))
         );
+    }
+}
+
+#[cfg(test)]
+mod test_get_all_pub_info_of_package {
+    use super::*;
+    use crate::t1dumps_struct::DumpCfcser;
+    #[test]
+    fn t1() {
+        let fields = vec![PackFields::Counter(3)];
+
+        for a_len in vec![vec![PackFields::Len(4)], vec![]] {
+            for a_sr in vec![
+                vec![PackFields::IdSender(6), PackFields::IdReceiver(6)],
+                vec![],
+            ] {
+                for a_crc in vec![vec![PackFields::HeadCRC(4)], vec![]] {
+                    for a_tb in vec![vec![PackFields::TrickyByte], vec![]] {
+                        for a_ttl in vec![vec![PackFields::TTL(3)], vec![]] {
+                            for a_idc in vec![vec![PackFields::IdConnect(7)], vec![]] {
+                                let fields: Vec<PackFields> = fields
+                                    .clone()
+                                    .into_iter()
+                                    .chain(a_crc.clone())
+                                    .chain(a_tb.clone())
+                                    .chain(a_ttl.clone())
+                                    .chain(a_len.clone())
+                                    .chain(a_sr.clone())
+                                    .chain(a_idc.clone())
+                                    .collect();
+
+                                //println!("{:?}", fields);
+
+                                let mut pack = vec![0; 100];
+
+                                let topology = PackTopology::new(5, &fields, true, false).unwrap();
+
+                                //  println!(
+                                //     "{:?}",
+                                //     get_all_pub_info_of_package<DumpCfcser>(
+                                //         1337,
+                                //         &mut pack[..],
+                                //         &topology,
+                                // None
+                                //     )
+                                //);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

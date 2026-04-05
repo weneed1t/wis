@@ -1320,25 +1320,10 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wtcp {
-
         use super::*;
         use crate::t0pology::{PackFields, PackTopology};
+        use crate::t1dumps_struct::DumpCfcser;
         use crate::t1fields;
-
-        struct Cfcstuct {}
-
-        impl Cfcser for Cfcstuct {
-            fn new(_key: &[u8]) -> Result<Self, &'static str> {
-                Ok(Self {})
-            }
-            fn gen_crc(
-                &mut self,
-                payload: &[u8],
-                crc_field: &mut [u8],
-            ) -> Result<(), &'static str> {
-                dummy_crc_gen(payload, crc_field)
-            }
-        }
 
         fn datas() -> (Vec<Vec<u8>>, Vec<u8>, Vec<usize>, Box<[u8]>, PackTopology) {
             let packet_specs = (0..100_000u64)
@@ -1364,8 +1349,15 @@ pub mod recv_queue {
             let pack_topology = PackTopology::new(2, &fields, true, true).unwrap();
 
             let mut pkks: Vec<u8> = Vec::new();
+            let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+
+            let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
+                d_crc.gen_crc(da1ta, out)?;
+                Ok(())
+            };
+
             for packet in packets.iter_mut() {
-                t1fields::set_get_head_crc(true, packet, &pack_topology, dummy_crc_gen).unwrap();
+                t1fields::set_get_head_crc(true, packet, &pack_topology, &mut lbo).unwrap();
                 pkks.append(&mut packet.clone());
             }
 
@@ -1389,7 +1381,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
                 WSTcpLike::new(41, &datas_x.4, Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
@@ -1418,7 +1410,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
                 WSTcpLike::new(39, &datas_x.4, Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
@@ -1455,7 +1447,7 @@ pub mod recv_queue {
 
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
-            let mut w_tcp: WSTcpLike<'_, Cfcstuct> =
+            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
                 WSTcpLike::new(39, &datas_x.4, Some(&[0])).unwrap();
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
@@ -1485,20 +1477,6 @@ pub mod recv_queue {
                 false,
                 "there should have been a buffer size error, but it didn't happen!"
             );
-        }
-
-        fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-            if crc.is_empty() {
-                return Err("CRC  crc.len() == 0");
-            }
-            crc.fill(77);
-            for (i, &byte) in inp.iter().enumerate() {
-                for (ii, byteii) in crc.iter_mut().enumerate() {
-                    *byteii = byteii.wrapping_add(byte.wrapping_mul((i + 1) as u8));
-                    *byteii = byteii.rotate_left(ii as u32 & 0x111);
-                }
-            }
-            Ok(())
         }
     }
 

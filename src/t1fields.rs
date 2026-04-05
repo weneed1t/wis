@@ -769,7 +769,7 @@ mod tests {
 
         if let Some((start, end, _)) = result.head_crc_slice() {
             println!("{:?}", &bb[start..end]);
-            assert_eq!(&bb[start..end], [114, 43, 158, 131, 240, 132, 173, 255]);
+            assert_eq!(&bb[start..end], [45, 22, 151, 232, 151, 44, 216, 206]);
         } else {
             panic!(
                 "result.head_crc_slice() is er {:?}",
@@ -997,11 +997,11 @@ mod tests {
 
         assert_eq!(set_len(&mut bb, &result, 100), Ok(()));
 
-        let mut noncex = NonceStruct::new(&[0]).unwrap();
+        let mut noncex = DumpNonser::new(&[0]).unwrap();
 
         let ctr_n = Some(1000);
 
-        let cs = CyptStruct::new(&[1, 2, 3, 4, 5, 6]).unwrap();
+        let cs = DumpEnc::new(&[1, 2, 3, 4, 5, 6]).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
@@ -1686,7 +1686,7 @@ mod tests {
             true
         )
         ;*/
-        let cs = CyptStruct::new(&[1, 2, 3, 4, 45]).unwrap();
+        let cs = DumpEnc::new(&[1, 2, 3, 4, 45]).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
             pack.clone_into(&mut ttt);
@@ -1694,7 +1694,7 @@ mod tests {
             let llen = pack.len();
 
             pack[topology.content_start_pos()..llen - topology.tag_len()].fill(0x71);
-            let mut noncex = NonceStruct::new(&[0]).unwrap();
+            let mut noncex = DumpNonser::new(&[0]).unwrap();
 
             let none_nonse: Option<&mut DumpNonser> = None;
             assert_ne!(
@@ -1758,7 +1758,7 @@ mod tests {
         let crsrsr = topology
             .head_crc_slice()
             .unwrap_or((9999999999, 9999999999, 0));
-        let mut noncex = NonceStruct::new(&[0]).unwrap();
+        let mut noncex = DumpNonser::new(&[0]).unwrap();
         for x in 0..topology.encrypt_start_pos() {
             let mut t = vec![0; pack.len()];
             for x in t.iter_mut().zip(pack.iter()) {
@@ -1928,195 +1928,8 @@ mod tests {
     }
 
     fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-        if crc.is_empty() {
-            return Err("CRC  crc.len() == 0");
-        }
-        crc.fill(0);
-
-        let mut first_byte_value: u64 = 124252211;
-        let mut nvalue: u64 = 763232243643;
-
-        for (i, &byte) in inp.iter().enumerate() {
-            first_byte_value += {
-                let first_byte = crc.first_mut().unwrap();
-                (*first_byte ^ (((byte as usize + 17) + i) as u8) ^ crc.last().unwrap()) as u64
-            };
-            nvalue += (i as u64) * (byte as u64);
-            nvalue = nvalue.rotate_left(3);
-
-            first_byte_value ^=
-                first_byte_value.wrapping_add(first_byte_value.rotate_left(i as u32 % 61));
-
-            nvalue ^= nvalue.wrapping_mul(first_byte_value);
-            first_byte_value = first_byte_value.wrapping_add(nvalue.rotate_left((i & 11111) as u32))
-        }
-
-        first_byte_value ^= nvalue;
-
-        for y in crc.iter_mut().enumerate() {
-            *y.1 = first_byte_value
-                .rotate_left(y.0 as u32 % 61)
-                .wrapping_add(first_byte_value.rotate_right(y.0 as u32 * 17 / 63))
-                as u8;
-        }
+        DumpCfcser::new(&[0]).unwrap().gen_crc(inp, crc)?;
 
         Ok(())
-    }
-
-    struct CyptStruct {
-        key: Vec<u8>,
-    }
-
-    impl EncWis for CyptStruct {
-        fn new(key: &[u8]) -> Result<Self, &'static str> {
-            Ok(Self {
-                key: Vec::from(key),
-            })
-        }
-
-        fn encrypt(
-            &self,
-            non_enc_head: &[u8],
-            enc_payload: &mut [u8],
-            auth_tag: &mut [u8],
-            _nonce_countr: u64,
-            nonce: Option<&[u8]>,
-        ) -> Result<(), &'static str> {
-            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
-            //enc
-            let mut keee = self.key.iter().cycle();
-            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x = (*x).wrapping_add(i as u8);
-                *x ^= 0x2a_u8.wrapping_add(*n) ^ (*keee.next().unwrap());
-            }
-            let mut tag = 0_u32;
-            let mut tag_index = 0_usize;
-            //tag
-            for x in non_enc_head.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tag
-            for x in enc_payload.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tagin
-            for x in auth_tag.iter_mut() {
-                *x = tag as u8;
-                tag = tag.rotate_left(1);
-            }
-
-            Ok(())
-        }
-
-        fn decrypt(
-            &self,
-            non_enc_head: &[u8],
-            enc_payload: &mut [u8],
-            auth_tag: &mut [u8],
-            _nonce_countr: u64,
-            nonce: Option<&[u8]>,
-        ) -> Result<StatusDecrypt, &'static str> {
-            let mut tag = 0_u32;
-            let mut tag_index = 0_usize;
-            //tag
-            for x in non_enc_head.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tag
-            for x in enc_payload.iter() {
-                tag = tag.wrapping_add(*x as u32);
-                tag = tag.rotate_left(tag_index as u32 & 0b11111);
-                tag_index += 1;
-            }
-            //tagin
-            for x in auth_tag.iter_mut() {
-                if *x != tag as u8 {
-                    return Ok(StatusDecrypt::PackageDamaged);
-                }
-                *x = tag as u8;
-                tag = tag.rotate_left(1);
-            }
-
-            let nonce = if let Some(x) = nonce { x } else { &[0; 1] };
-            let mut keee = self.key.iter().cycle();
-            //enc
-            for (i, (x, n)) in enc_payload.iter_mut().zip(nonce.iter().cycle()).enumerate() {
-                *x ^= 0x2a_u8.wrapping_add(*n) ^ (*keee.next().unwrap());
-
-                *x = (*x).wrapping_sub(i as u8);
-            }
-
-            Ok(StatusDecrypt::DecodedCorrectly)
-        }
-    }
-
-    struct NonceStruct {}
-
-    impl Noncer for NonceStruct {
-        fn new(_key: &[u8]) -> Result<Self, &'static str> {
-            Ok(Self {})
-        }
-
-        fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str> {
-            nonce_gener.fill(21);
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn test_dumm() {
-        for ingame_2 in 0..2 {
-            for ingame in 0..32 {
-                let mut h = [0_u8; 32]; //
-                let mut e = [0_u8; 32]; //
-                let mut nonce = [0_u8; 32];
-                let mut tag = [0_u8; 32];
-
-                for (i, he) in h.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 213) as u8);
-                }
-
-                for (i, he) in e.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 43) as u8);
-                }
-
-                for (i, he) in nonce.iter_mut().enumerate() {
-                    *he = he.wrapping_add((i * 254) as u8);
-                }
-
-                let cs = CyptStruct::new(&[1, 2, 3, 5]).unwrap();
-
-                if ingame == 0 {
-                    assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                    assert_eq!(
-                        cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                        Ok(StatusDecrypt::DecodedCorrectly)
-                    );
-                } else {
-                    if ingame_2 == 0 {
-                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                        h[ingame] = !h[ingame];
-                        assert_eq!(
-                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Ok(StatusDecrypt::PackageDamaged)
-                        );
-                    }
-                    if ingame_2 == 1 {
-                        assert_eq!(cs.encrypt(&h, &mut e, &mut tag, 100, Some(&nonce)), Ok(()));
-                        e[ingame] = !e[ingame];
-                        assert_eq!(
-                            cs.decrypt(&h, &mut e, &mut tag, 100, Some(&nonce)),
-                            Ok(StatusDecrypt::PackageDamaged)
-                        );
-                    }
-                }
-            }
-        }
     }
 }

@@ -82,11 +82,10 @@ impl Cfcser for DumpCfcser {
         }
         #[cfg(test)]
         {
-            let mut tt: u64 = _payload
-                .iter()
-                .enumerate()
-                .map(|(u, &x)| (x as u64).rotate_left(((u as u32) * 17) % 64))
-                .sum();
+            let mut tt: u64 = _payload.iter().enumerate().fold(0u64, |acc, (u, &x)| {
+                let rotated = (x as u64).rotate_left(((u as u32).wrapping_mul(17)) % 64);
+                acc.wrapping_add(rotated)
+            });
             bpg(&mut tt, _crc_field);
             Ok(())
         }
