@@ -428,7 +428,7 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                 }
                 return Err("At the end of the exchange of all files, 
                 when generating the final private key,
-                 the initiator and passive keys do not match");
+                the initiator and passive keys do not match");
             }
         }
     }
