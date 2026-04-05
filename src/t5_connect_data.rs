@@ -1,8 +1,11 @@
+use std::clone;
+
 use crate::t0pology::*;
 use crate::t1fields::*;
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
+use crate::wt1types::HandMaker;
 use crate::wt1types::{
     Cfcser, EncWis, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
@@ -102,6 +105,7 @@ pub struct WsConnection<
     Tencrypt: EncWis,
     TRandomer: Randomer,
     TCfcser: Cfcser,
+    Hmaker: HandMaker,
 > {
     file_proc: WSFileSplitter,           //-
     udp_queue: WSUdpLike<Tudp>,          //-
@@ -113,7 +117,7 @@ pub struct WsConnection<
     network_latency: f64,
     encrypt: Tencrypt,
     connect_param: WsConnectParam,
-    enrypaaa: bool,
+    enrypaaa: Hmaker,
     is_active: bool,
     nonce_gener: Option<Tnoncer>, //+
 
@@ -135,7 +139,18 @@ impl<
     Tencrypt: EncWis,
     TRandomer: Randomer,
     TCfcser: Cfcser,
-> WsConnection</* TCfcser, */ Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser>
+    Hmaker: HandMaker,
+>
+    WsConnection<
+        /* TCfcser, */ Tnoncer,
+        TThrasher,
+        Tudp,
+        Twait,
+        Tencrypt,
+        TRandomer,
+        TCfcser,
+        Hmaker,
+    >
 {
     pub fn new(
         connect_param: &WsConnectParam,
@@ -145,6 +160,7 @@ impl<
         random_seed: Option<&[u8]>,
         user_field_seed: Option<&[u8]>,
         crc_seed: Option<&[u8]>,
+        handmaker_seed: &[u8],
         identified: &Identified, //crc_seed: Option<&[u8]>,
     ) -> Result<Self, WSQueueErr> {
         if connect_param.pack_topology().idconn_slice().is_some() && identified.id_conn.is_none() {
@@ -211,7 +227,7 @@ impl<
             network_latency: 0.0,
             encrypt: Tencrypt::new(default_enc_key).map_err(WSQueueErr::Critical)?,
             connect_param: connect_param.clone(),
-            enrypaaa: true, //in progress
+            enrypaaa: Hmaker::new(my_role.clone(), handmaker_seed).map_err(WSQueueErr::Critical)?, //in progress
             is_active: true,
             intermediate_questionable_packages_queue: connect_param
                 .intermediate_questionable_packages_queue()
@@ -285,7 +301,8 @@ impl<
     Tencrypt: EncWis,
     TRandomer: Randomer,
     TCfcser: Cfcser,
-> WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser>
+    Hmaker: HandMaker,
+> WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
     pub fn is_active(&self) -> bool {
         self.is_active
@@ -344,9 +361,19 @@ mod test_new {
         let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
 
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
+        //Hmaker: HandMaker,
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -356,6 +383,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[6, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: None,
@@ -389,7 +417,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -399,6 +436,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: None,
@@ -426,7 +464,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -436,6 +483,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: None,
@@ -470,7 +518,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -480,6 +537,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -517,7 +575,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -527,6 +594,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[6, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -559,7 +627,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -569,6 +646,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -607,7 +685,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -617,6 +704,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -649,7 +737,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -659,6 +756,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             None,
             None,
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -697,7 +795,16 @@ mod test_new {
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -707,6 +814,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -747,7 +855,16 @@ mod test_new {
         assert!(result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -757,6 +874,7 @@ mod test_new {
             None,
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -800,7 +918,16 @@ mod test_new {
         assert!(result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -810,6 +937,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -848,7 +976,16 @@ mod test_new {
         assert!(!result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -858,6 +995,7 @@ mod test_new {
             Some(&[3, 3, 3, 3]),
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -896,7 +1034,16 @@ mod test_new {
         assert!(!result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -906,6 +1053,7 @@ mod test_new {
             None,
             Some(&[4, 4, 4, 4]),
             None,
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -950,7 +1098,16 @@ mod test_new {
         assert!(!result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -960,6 +1117,7 @@ mod test_new {
             None,
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -997,7 +1155,16 @@ mod test_new {
         assert!(!result.need_init_random());
 
         let te1: Result<
-            WsConnection<DumpNonser, DumpThrasher, u32, u32, DumpEnc, DumpRandomer, DumpCfcser>,
+            WsConnection<
+                DumpNonser,
+                DumpThrasher,
+                u32,
+                u32,
+                DumpEnc,
+                DumpRandomer,
+                DumpCfcser,
+                DumpHandMaker,
+            >,
             WSQueueErr,
         > = WsConnection::new(
             &result,
@@ -1007,6 +1174,7 @@ mod test_new {
             None,
             Some(&[4, 4, 4, 4]),
             Some(&[5, 5, 5, 5]),
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: Some(Ids {
@@ -1040,6 +1208,7 @@ mod test_new {
             DumpEnc,
             DumpRandomer,
             DumpCfcser,
+            DumpHandMaker,
         > = WsConnection::new(
             &result,
             &[1, 1, 1, 1],
@@ -1048,6 +1217,7 @@ mod test_new {
             None,
             None,
             None,
+            &[1, 2, 3, 4, 5, 6, 7],
             &Identified {
                 my_metall_id: 999,
                 my_s_r_id: None,
