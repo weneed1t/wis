@@ -130,6 +130,7 @@ pub struct WsConnection<
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
     identified: Identified, //+
     non_alloc_buf: Option<SafeBuffer>,
+    was_killed: bool,
 }
 
 impl<
@@ -281,6 +282,7 @@ impl<
             } else {
                 None
             },
+            was_killed: false,
         })
     }
 
@@ -735,6 +737,8 @@ mod test_new {
         let ty2 = &te1.unwrap();
         assert_eq!(ty2.non_alloc_buf.as_ref().unwrap().capacity(), result.mtu());
 
+        assert_eq!(ty2.was_killed, false);
+
         assert_eq!(ty2.nonce_gener.as_ref().unwrap().v, vec![1, 1, 1, 1])
     }
 
@@ -848,6 +852,9 @@ mod test_new {
         assert!(te1.is_ok());
         let ty2 = &te1.unwrap();
         assert_eq!(ty2.non_alloc_buf.as_ref(), None);
+
+        assert_eq!(ty2.was_killed, false);
+
         assert_eq!(ty2.user_field_gener.as_ref().unwrap().v, vec![4, 4, 4, 4]);
     }
 
