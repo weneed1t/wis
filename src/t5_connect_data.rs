@@ -9,6 +9,7 @@ use crate::wt1types::HandMaker;
 use crate::wt1types::{
     Cfcser, EncWis, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
+use crate::wutils::SafeBuffer;
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
 #[derive(Clone, Debug)]
@@ -128,7 +129,7 @@ pub struct WsConnection<
     my_role: MyRole,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
     identified: Identified, //+
-    non_alloc_buf: Option<Box<[u8]>>,
+    non_alloc_buf: Option<SafeBuffer>,
 }
 
 impl<
@@ -276,7 +277,7 @@ impl<
             measurement_window_latency: connect_param.start_ms_latency(),
             identified: identified.clone(),
             non_alloc_buf: if use_non_alloc_buf {
-                Some(vec![0; connect_param.mtu()].into_boxed_slice())
+                Some(SafeBuffer::new(connect_param.mtu()))
             } else {
                 None
             },
@@ -348,8 +349,6 @@ impl<
     }
 }
 
-/*
-
 #[cfg(test)]
 mod test_new {
     use super::*;
@@ -398,6 +397,7 @@ mod test_new {
                 my_s_r_id: None,
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -451,6 +451,7 @@ mod test_new {
                 my_s_r_id: None,
                 id_conn: Some((999, MyRole::Initiator)),
             },
+            false,
         );
 
         assert!(te1.is_ok());
@@ -498,6 +499,7 @@ mod test_new {
                 my_s_r_id: None,
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -556,6 +558,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -613,6 +616,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert!(te1.is_ok());
@@ -665,6 +669,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -723,6 +728,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert!(te1.is_ok());
@@ -775,6 +781,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -833,6 +840,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert!(te1.is_ok());
@@ -893,6 +901,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -956,6 +965,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(te1.unwrap().random_gener.unwrap().v, vec![3, 3, 3, 3]);
@@ -1014,6 +1024,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert!(te1.unwrap().random_gener.is_none());
@@ -1072,6 +1083,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(
@@ -1136,6 +1148,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert_eq!(te1.unwrap().crc_gener.unwrap().v, vec![5, 5, 5, 5]);
@@ -1193,6 +1206,7 @@ mod test_new {
 
                 id_conn: None,
             },
+            false,
         );
 
         assert!(te1.unwrap().random_gener.is_none());
@@ -1232,6 +1246,7 @@ mod test_new {
                 my_s_r_id: None,
                 id_conn: None,
             },
+            false,
         )
         .unwrap();
 
@@ -1253,7 +1268,7 @@ mod test_new {
         );
     }
 }
-*/
+
 #[cfg(test)]
 mod test_get_all_pub_info_of_package {
     use super::*;
