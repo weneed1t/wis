@@ -2,7 +2,7 @@ use crate::t0pology::PackTopology;
 use crate::wt1types::*;
 use crate::{t0pology, wutils};
 
-pub fn get_tricky_byte(pack: &mut [u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
+pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
         if pack.len() <= star {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -701,17 +701,17 @@ mod tests {
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
-        assert_eq!(get_tricky_byte(&mut tets1[..], &result), Ok(7));
+        assert_eq!(get_tricky_byte(&tets1[..], &result), Ok(7));
 
         assert_eq!(
-            get_tricky_byte(&mut tets1[..100 - 60], &result),
+            get_tricky_byte(&tets1[..100 - 60], &result),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         for i in 0..15 {
             set_tricky_byte(&mut tets1[..], &result, i).expect("");
 
-            assert_eq!(get_tricky_byte(&mut tets1[..], &result), Ok(i));
+            assert_eq!(get_tricky_byte(&tets1[..], &result), Ok(i));
         }
 
         let fields = vec![
@@ -725,7 +725,7 @@ mod tests {
         let result = PackTopology::new(59, &fields, true, false).unwrap();
 
         assert_eq!(
-            get_tricky_byte(&mut tets1[..100 - 60], &result),
+            get_tricky_byte(&tets1[..100 - 60], &result),
             Err(WTypeErr::CompileFieldsErr(
                 "tricky_byte not in PackTopology"
             ))

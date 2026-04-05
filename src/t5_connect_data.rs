@@ -33,14 +33,6 @@ where
 {
     // HEAR CRC
     //
-    // if let Some(chrss) = check_head_crc_if_pack_not_from_tls_like_queue{
-    //     if topology.head_crc_slice().is_some(){
-    //
-    //     }
-    ////
-    //   else{
-    //      return Err(WTypeErr::PackageDamaged("crc of head is incorrect"));
-    //  }
 
     if let Some(chrss) = check_head_crc_if_pack_not_from_tls_like_queue {
         let lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
@@ -1100,6 +1092,7 @@ mod test_get_all_pub_info_of_package {
                     for a_tb in vec![vec![PackFields::TrickyByte], vec![]] {
                         for a_ttl in vec![vec![PackFields::TTL(3)], vec![]] {
                             for a_idc in vec![vec![PackFields::IdConnect(7)], vec![]] {
+                                //
                                 let fields: Vec<PackFields> = fields
                                     .clone()
                                     .into_iter()
@@ -1116,16 +1109,109 @@ mod test_get_all_pub_info_of_package {
                                 let mut pack = vec![0; 100];
 
                                 let topology = PackTopology::new(5, &fields, true, false).unwrap();
+                                //
+                                //
+                                //
+                                //
+                                //
+                                if a_len.len() > 0 {
+                                    set_len(&mut pack[..90], &topology, 1000).unwrap();
+                                }
+                                if a_sr.len() > 0 {
+                                    set_id_sender_and_recv(&mut pack, &topology, 7890, 123456)
+                                        .unwrap();
+                                }
+                                if a_ttl.len() > 0 {
+                                    set_ttl(&mut pack, &topology, 100, 200, true).unwrap();
+                                }
+                                if a_idc.len() > 0 {
+                                    set_id_conn(&mut pack, &topology, 3213, MyRole::Passive)
+                                        .unwrap();
+                                }
+                                if a_tb.len() > 0 {
+                                    set_tricky_byte(&mut pack, &topology, 123).unwrap();
+                                }
+                                //
+                                //
+                                //
+                                //
+                                //
+                                let mut pa_2 = pack.clone();
+                                let omygood = &get_all_pub_info_of_package(
+                                    1337,
+                                    &mut pa_2[..],
+                                    &topology,
+                                    Some(&mut DumpCfcser::new(&[0]).unwrap()),
+                                );
 
-                                //  println!(
-                                //     "{:?}",
-                                //     get_all_pub_info_of_package<DumpCfcser>(
-                                //         1337,
-                                //         &mut pack[..],
-                                //         &topology,
-                                // None
-                                //     )
-                                //);
+                                if a_crc.len() == 0 {
+                                    let t = omygood.as_ref().unwrap_err();
+                                    assert_eq!(
+                                        *t,
+                                        WTypeErr::CompileFieldsErr(
+                                            "head_crc_slice not in PackTopology"
+                                        )
+                                    );
+                                } else {
+                                    let orew = omygood.as_ref().unwrap();
+
+                                    if a_len.len() > 0 {
+                                        assert_eq!(orew.1, 90);
+                                    } else {
+                                        assert_eq!(orew.1, 100);
+                                    }
+
+                                    if a_sr.len() > 0 {
+                                        let ids = orew.0.my_s_r_id.as_ref().unwrap();
+                                        let rr = ids.id_receiver;
+                                        let ss = ids.id_sender;
+
+                                        assert_eq!(rr, 123456);
+                                        assert_eq!(ss, 7890);
+                                    } else {
+                                        assert!(orew.0.my_s_r_id.is_none());
+                                    }
+                                    //
+                                    //
+                                    if a_idc.len() > 0 {
+                                        assert_eq!(
+                                            get_id_conn(&pack, &topology).unwrap(),
+                                            *orew.0.id_conn.as_ref().unwrap()
+                                        );
+                                    } else {
+                                        assert!(get_id_conn(&pack, &topology).is_err());
+                                        assert!(orew.0.id_conn.as_ref().is_none());
+                                    }
+                                    //
+                                    //
+
+                                    if a_ttl.len() > 0 {
+                                        assert_eq!(
+                                            get_ttl(&pack, &topology).unwrap(),
+                                            *orew.2.as_ref().unwrap()
+                                        );
+
+                                        assert_eq!(get_ttl(&pack, &topology).unwrap(), 100);
+                                    } else {
+                                        assert!(get_ttl(&pack, &topology).is_err());
+                                        assert!(orew.2.as_ref().is_none());
+                                    }
+                                    //
+                                    //
+
+                                    if a_tb.len() > 0 {
+                                        assert_eq!(
+                                            get_tricky_byte(&pack, &topology).unwrap(),
+                                            *orew.3.as_ref().unwrap()
+                                        );
+                                        assert_eq!(get_tricky_byte(&pack, &topology).unwrap(), 123);
+                                    } else {
+                                        assert!(get_tricky_byte(&pack, &topology).is_err());
+                                        assert!(orew.3.as_ref().is_none());
+                                    }
+
+                                    println!("{:?}", omygood);
+                                }
                             }
                         }
                     }
