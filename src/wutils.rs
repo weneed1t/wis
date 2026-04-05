@@ -45,6 +45,9 @@ impl SafeBuffer {
         self.data[..input.len()].copy_from_slice(input);
         self.len = input.len();
     }
+    pub fn capacity(&self) -> usize {
+        self.data.len()
+    }
 
     /// returns a slice with the actual data (exactly `len` bytes).
     pub fn get(&self) -> &[u8] {
@@ -1076,6 +1079,7 @@ mod tests_safe_buffer {
     #[test]
     fn write_empty_slice() {
         let mut buf = SafeBuffer::new(5);
+        assert_eq!(buf.capacity(), 5);
         buf.write(b"abc");
         assert_eq!(buf.len(), 3);
         buf.write(b"");
@@ -1090,6 +1094,7 @@ mod tests_safe_buffer {
     #[should_panic(expected = "input too large for buffer")]
     fn write_panics_when_input_exceeds_capacity() {
         let mut buf = SafeBuffer::new(3);
+        assert_eq!(buf.capacity(), 3);
         buf.write(b"four");
     }
 
@@ -1179,6 +1184,7 @@ mod tests_safe_buffer {
     #[test]
     fn clear_does_not_affect_subsequent_write() {
         let mut buf = SafeBuffer::new(10);
+        assert_eq!(buf.capacity(), 10);
         buf.write(b"one");
         buf.clear();
         buf.write(b"two");
@@ -1188,6 +1194,7 @@ mod tests_safe_buffer {
     #[test]
     fn multiple_writes_never_leak_old_data_via_get() {
         let mut buf = SafeBuffer::new(30);
+        assert_eq!(buf.capacity(), 30);
         buf.write(b"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); // 30 bytes
         assert_eq!(buf.get().len(), 30);
         buf.write(b"bbb");
@@ -1215,12 +1222,15 @@ mod tests_safe_buffer {
     #[should_panic(expected = "input too large for buffer")]
     fn zero_capacity_write_panics_on_non_empty() {
         let mut buf = SafeBuffer::new(0);
+        assert_eq!(buf.capacity(), 0);
         buf.write(b"x");
     }
 
     #[test]
     fn one_byte_buffer_edge_cases() {
         let mut buf = SafeBuffer::new(1);
+
+        assert_eq!(buf.capacity(), 1);
         buf.write(b"a");
         assert_eq!(buf.get(), b"a");
         buf.modify(0, b"b");
@@ -1246,6 +1256,7 @@ mod tests_safe_buffer {
     #[test]
     fn get_mut_after_clear_returns_empty() {
         let mut buf = SafeBuffer::new(5);
+        assert_eq!(buf.capacity(), 5);
         buf.write(b"data");
         buf.clear();
         assert_eq!(buf.get_mut(), b"");
@@ -1254,6 +1265,7 @@ mod tests_safe_buffer {
     #[test]
     fn write_then_get_mut_then_write_works() {
         let mut buf = SafeBuffer::new(10);
+        assert_eq!(buf.capacity(), 10);
         buf.write(b"first");
         {
             let _ = buf.get_mut(); // immutable borrow? actually mutable but dropped
@@ -1265,6 +1277,7 @@ mod tests_safe_buffer {
     #[test]
     fn modify_does_not_change_len() {
         let mut buf = SafeBuffer::new(10);
+        assert_eq!(buf.capacity(), 10);
         buf.write(b"123456");
         assert_eq!(buf.len(), 6);
         buf.modify(0, b"ab");

@@ -733,7 +733,7 @@ mod test_new {
 
         assert!(te1.is_ok());
         let ty2 = &te1.unwrap();
-        assert!(ty2.non_alloc_buf.as_ref().unwrap().len() == result.mtu());
+        assert_eq!(ty2.non_alloc_buf.as_ref().unwrap().capacity(), result.mtu());
 
         assert_eq!(ty2.nonce_gener.as_ref().unwrap().v, vec![1, 1, 1, 1])
     }
