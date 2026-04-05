@@ -351,6 +351,47 @@ pub fn smpp_no_crypt_hash128(input: &[u64]) -> (u64, u64) {
     )
 }
 
+/// exponential moving average (ema) state
+/// uses constant memory regardless of window size
+pub struct Ema {
+    alpha: f64,
+    current_avg: f64,
+    is_initialized: bool,
+}
+
+impl Ema {
+    /// creates a new ema filter
+    /// n - the virtual window size (period)
+    pub fn new(n: usize) -> Self {
+        Self {
+            alpha: 2.0 / (n as f64 + 1.0),
+            current_avg: 0.0,
+            is_initialized: false,
+        }
+    }
+
+    /// updates the average with a new value and returns it
+    /// uses the formula: s = s_prev + alpha * (x - s_prev)
+    pub fn next(&mut self, value: f64) -> f64 {
+        if value.is_nan() || value.is_infinite() {
+            return self.current_avg;
+        }
+
+        if !self.is_initialized {
+            self.current_avg = value;
+            self.is_initialized = true;
+        } else {
+            self.current_avg += self.alpha * (value - self.current_avg);
+        }
+        self.current_avg
+    }
+
+    /// returns the current average value without updating it
+    pub fn get(&self) -> f64 {
+        self.current_avg
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -835,30 +876,111 @@ mod tests_f32 {
     }
 }
 
-pub struct Ema {
-    prev_avg: f64,
-    alpha: f64,
-    is_non_first: bool,
-}
+#[cfg(test)]
+mod tests_ema {
+    use super::*;
 
-impl Ema {
-    pub fn new(alpha: f64) -> Self {
-        Self {
-            prev_avg: 0.0,
-            alpha,
-            is_non_first: true,
-        }
+    #[test]
+    fn test_ema_initialization() {
+        let mut ema = Ema::new(9); // alpha = 2 / (9 + 1) = 0.2
+        let first_val = 10.0;
+        let result = shadow_ema_next(&mut ema, first_val);
+
+        assert!(ema.is_initialized);
+        assert_eq!(result, first_val);
+        assert_eq!(ema.get(), first_val);
     }
-    pub fn next(&mut self, new_value: f64) -> f64 {
-        if self.is_non_first {
-            // first value - initialize
-            self.prev_avg = new_value;
-            self.is_non_first = false;
-        } else {
-            // EMA formula: avg = alpha * new_value + (1 - alpha) * prev_avg
-            self.prev_avg = self.alpha * new_value + (1.0 - self.alpha) * self.prev_avg;
-        }
 
-        self.prev_avg
+    #[test]
+    fn test_ema_mathematics() {
+        let mut ema = Ema::new(3);
+
+        ema.next(10.0);
+
+        let res2 = ema.next(20.0);
+        assert_eq!(res2, 15.0);
+
+        let res3 = ema.next(30.0);
+        assert_eq!(res3, 22.5);
+    }
+
+    #[test]
+    fn test_ema_get_without_update() {
+        let mut ema = Ema::new(10);
+        ema.next(100.0);
+        let val_before = ema.get();
+        let val_after = ema.get();
+
+        assert_eq!(val_before, val_after);
+        assert_eq!(val_after, 100.0);
+    }
+
+    #[test]
+    fn test_ema_alpha_calculation() {
+        let ema = Ema::new(1); // alpha = 2 / (1 + 1) = 1.0
+        assert_eq!(ema.alpha, 1.0);
+
+        let ema_large = Ema::new(199); // alpha = 2 / 200 = 0.01
+        assert!((ema_large.alpha - 0.01).abs() < f64::EPSILON);
+    }
+
+    fn shadow_ema_next(ema: &mut Ema, val: f64) -> f64 {
+        ema.next(val)
+    }
+
+    #[test]
+    fn test_nan_protection() {
+        let mut ema = Ema::new(10);
+        ema.next(42.0);
+
+        let last_valid = ema.get();
+        // передаем NaN
+        let result = ema.next(f64::NAN);
+
+        assert_eq!(result, last_valid);
+        assert!(!result.is_nan());
+    }
+
+    #[test]
+    fn test_infinity_protection() {
+        let mut ema = Ema::new(10);
+        ema.next(100.0);
+
+        let last_valid = ema.get();
+        ema.next(f64::INFINITY);
+        ema.next(f64::NEG_INFINITY);
+
+        assert_eq!(ema.get(), last_valid);
+    }
+
+    #[test]
+    fn test_uninitialized_with_garbage() {
+        let mut ema = Ema::new(10);
+
+        ema.next(f64::NAN);
+        assert!(!ema.is_initialized);
+
+        ema.next(10.0);
+        assert!(ema.is_initialized);
+        assert_eq!(ema.get(), 10.0);
+    }
+
+    #[test]
+    fn test_large_values_stability() {
+        let mut ema = Ema::new(2); // alpha = 0.666...
+        ema.next(f64::MAX / 2.0);
+
+        let result = ema.next(f64::MAX / 4.0);
+        assert!(result.is_finite());
+        assert!(result > 0.0);
+    }
+
+    #[test]
+    fn test_zero_window() {
+        let mut ema = Ema::new(0); // alpha = 2.0 / (0 + 1) = 2.0
+        ema.next(10.0);
+        let res = ema.next(20.0);
+
+        assert!(res.is_finite());
     }
 }
