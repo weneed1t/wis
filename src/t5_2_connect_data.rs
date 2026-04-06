@@ -1,7 +1,6 @@
 use crate::t5_connect_data::*;
 use crate::wt1types::*;
 
-
 impl<
     Tnoncer: Noncer,
     TThrasher: Thrasher,

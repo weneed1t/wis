@@ -22,7 +22,8 @@ impl PartialEq for WNotification {
 */
 
 /// a fixed-size buffer that stores only the last written data.
-/// when writing a new block, old data becomes inaccessible, even if the new block is shorter.
+/// when writing a new block, old data becomes inaccessible, even if the new block is
+/// shorter.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SafeBuffer {
     data: Box<[u8]>,

@@ -1,13 +1,10 @@
-use std::clone;
-
 use crate::t0pology::*;
 use crate::t1fields::*;
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::wt1types::HandMaker;
 use crate::wt1types::{
-    Cfcser, EncWis, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
+    Cfcser, EncWis, HandMaker, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
 use crate::wutils::SafeBuffer;
 const FBACK_START_CTR: u64 = 1;
@@ -231,7 +228,7 @@ impl<
             network_latency: 0.0,
             encrypt: Tencrypt::new(default_enc_key).map_err(WSQueueErr::Critical)?,
             connect_param: connect_param.clone(),
-            enrypaaa: Hmaker::new(my_role.clone(), handmaker_seed).map_err(WSQueueErr::Critical)?, //in progress
+            enrypaaa: Hmaker::new(my_role.clone(), handmaker_seed).map_err(WSQueueErr::Critical)?, /* in progress */
             is_active: true,
             intermediate_questionable_packages_queue: connect_param
                 .intermediate_questionable_packages_queue()

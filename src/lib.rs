@@ -18,6 +18,8 @@ pub mod t5_connect_data;
 pub mod wt1types;
 pub mod wutils; //utils //topology
 
+pub mod t0_parsel;
+
 #[cfg(feature = "wisdel")]
 pub mod wisdel;
 
@@ -31,6 +33,7 @@ pub mod private_core {
 }
 /*
 delete this in prod dapgp
+
 rustup component add clippy
 cargo clippy --fix
 cargo fix --allow-dirty
@@ -57,4 +60,7 @@ cargo clippy --fix --all --allow-dirty &&
 rustup run nightly cargo fmt &&
 cargo fmt
 
+
+if a have crush
+rustup component add rust-analyzer
 */
