@@ -53,7 +53,8 @@ impl GroupTopology {
             if let Some(ttbb) = ret.tricky_byte() {
                 if ttbb != pos_tbyte.unwrap_or(ttbb) {
                     return Err(
-                        "in all topology variants, tricky_byte must occupy the same position relative to the beginning of the packet",
+                        "in all topology variants, tricky_byte must occupy the same position \
+                         relative to the beginning of the packet",
                     );
                 }
                 pos_tbyte = Some(ttbb)
@@ -87,30 +88,32 @@ impl GroupTopology {
         })
     }
 
-    /// Finds the smallest prime table size (from a predefined list) that can accommodate all given
-    /// `u8` values without collisions, using a simple modulo hash function.
+    /// Finds the smallest prime table size (from a predefined list) that can accommodate
+    /// all given `u8` values without collisions, using a simple modulo hash function.
     ///
-    /// The function takes a slice of `(Box<[PackFields]>, u8)` pairs, extracts the `u8` values,
-    /// and attempts to assign each to a slot in a table of size `p` (where `p` is a prime number).
-    /// A collision occurs if two values map to the same slot (`value % p`). The search starts from
-    /// the smallest prime that is at least as large as the number of input elements (to guarantee
-    /// a chance of being collision‑free) and continues through the list of predefined primes up to
-    /// `u8::MAX`. The first prime that yields no collisions is returned. If no such prime exists,
-    /// an error is returned.
+    /// The function takes a slice of `(Box<[PackFields]>, u8)` pairs, extracts the `u8`
+    /// values, and attempts to assign each to a slot in a table of size `p` (where
+    /// `p` is a prime number). A collision occurs if two values map to the same slot
+    /// (`value % p`). The search starts from the smallest prime that is at least as
+    /// large as the number of input elements (to guarantee a chance of being
+    /// collision‑free) and continues through the list of predefined primes up to
+    /// `u8::MAX`. The first prime that yields no collisions is returned. If no such prime
+    /// exists, an error is returned.
     ///
     /// # Arguments
-    /// * `input_topoler` - A slice of tuples. The first component is an owned boxed slice of
-    ///   `PackFields` (ignored by the algorithm), the second component is a `u8` key to be hashed.
+    /// * `input_topoler` - A slice of tuples. The first component is an owned boxed slice
+    ///   of `PackFields` (ignored by the algorithm), the second component is a `u8` key
+    ///   to be hashed.
     ///
     /// # Returns
     /// * `Ok(usize)` - The size (prime number) of a collision‑free table.
-    /// * `Err(&'static str)` - If the input length exceeds 255 (the largest prime in the list) or
-    ///   if every prime candidate leads to at least one collision.
+    /// * `Err(&'static str)` - If the input length exceeds 255 (the largest prime in the
+    ///   list) or if every prime candidate leads to at least one collision.
     ///
     /// # Panics
-    /// This function does not panic (unless the `partition_point` or indexing is out of bounds,
-    /// which cannot happen because the prime list is non‑empty and the input length is bounded).
-    ///
+    /// This function does not panic (unless the `partition_point` or indexing is out of
+    /// bounds, which cannot happen because the prime list is non‑empty and the input
+    /// length is bounded).
     fn find_minimal_table_size(
         input_topoler: &[(Box<[PackFields]>, u8)],
     ) -> Result<usize, &'static str> {
@@ -201,13 +204,6 @@ impl GroupTopology {
 mod tests_find_minimal_table_size {
     use super::*;
 
-    // ---------- dummy PackFields definition for tests ----------
-    #[derive(Debug, Clone, Copy)]
-    pub enum PackFields {
-        Counter(u8),
-        HeadCRC(u16),
-    }
-
     // ---------- deterministic pseudo‑random generator (xorshift) ----------
     struct XorShift32(u32);
     impl XorShift32 {
@@ -230,9 +226,10 @@ mod tests_find_minimal_table_size {
     // helper to create a random input vector with given length and optional forced collisions
     fn random_input(len: usize, seed: u32, forced_collision: bool) -> Vec<(Box<[PackFields]>, u8)> {
         let mut rng = XorShift32::new(seed);
-        let mut values = Vec::with_capacity(len);
+        let mut values: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(len);
         if forced_collision && len > 0 {
-            // first value arbitrary, then all others same as first (guaranteed collision for any size > 1)
+            // first value arbitrary, then all others same as first (guaranteed collision for any
+            // size > 1)
             let first = rng.next_u8();
             values.push((Box::new([]), first));
             for _ in 1..len {
@@ -250,7 +247,7 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn empty_input() {
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = vec![];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // minimal prime that is >= 0 is 2
         assert_eq!(result, Ok(2));
@@ -258,7 +255,7 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn single_element() {
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = vec![(Box::new([]), 123)];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 123)];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // any prime >= 1 works, smallest is 2
         assert_eq!(result, Ok(2));
@@ -267,8 +264,7 @@ mod tests_find_minimal_table_size {
     #[test]
     fn two_distinct_elements_collision_free_at_2() {
         // values 0 and 1: 0%2=0, 1%2=1 -> no collision
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> =
-            vec![(Box::new([]), 0), (Box::new([]), 1)];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 1)];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(result, Ok(2));
     }
@@ -276,16 +272,14 @@ mod tests_find_minimal_table_size {
     #[test]
     fn two_distinct_elements_collision_at_2_but_3_works() {
         // values 0 and 2: 0%2=0, 2%2=0 -> collision at size 2; 0%3=0, 2%3=2 -> ok
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> =
-            vec![(Box::new([]), 0), (Box::new([]), 2)];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 2)];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(result, Ok(3));
     }
 
     #[test]
     fn all_equal_values_always_collision() {
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> =
-            vec![(Box::new([]), 7), (Box::new([]), 7)];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 7), (Box::new([]), 7)];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(
             result,
@@ -296,7 +290,7 @@ mod tests_find_minimal_table_size {
     #[test]
     fn input_length_exceeds_max_supported() {
         // 256 elements (u8::MAX + 1)
-        let mut data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = Vec::with_capacity(256);
+        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(256);
         for i in 0..256 {
             data.push((Box::new([]), i as u8));
         }
@@ -309,12 +303,13 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn exact_max_length_works() {
-        let mut data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = Vec::with_capacity(255);
+        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(255);
         for i in 0..255 {
             data.push((Box::new([]), i as u8));
         }
         // with distinct values from 0..254, the smallest prime >= 255 is 255 (u8::MAX)
-        // but we must check if collisions occur: modulo 255 with distinct values 0..254 gives 0..254 -> no collisions
+        // but we must check if collisions occur: modulo 255 with distinct values 0..254 gives
+        // 0..254 -> no collisions
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(result, Ok(255));
     }
@@ -327,7 +322,7 @@ mod tests_find_minimal_table_size {
             let len = 1 + (seed % 50); // up to 50 elements
             let data = random_input(len, seed as u32, false);
             let result = GroupTopology::find_minimal_table_size(&data);
-            
+
             if let Ok(size) = result {
                 // size must be a prime from our list
                 const PRIMES: &[u8] = &[
@@ -352,8 +347,8 @@ mod tests_find_minimal_table_size {
                 }
             } else {
                 // if error, it must be because all primes had collisions
-                // for random distinct values it's unlikely, but possible with many collisions?
-                // We'll just accept error as valid.
+                // for random distinct values it's unlikely, but possible with many
+                // collisions? We'll just accept error as valid.
             }
         }
     }
@@ -374,7 +369,7 @@ mod tests_find_minimal_table_size {
     #[test]
     fn deterministic_collision_test_known_values() {
         // values that collide for size=2,3,5 but work for 7
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> =
+        let data: Vec<(Box<[PackFields]>, u8)> =
             vec![(Box::new([]), 0), (Box::new([]), 2), (Box::new([]), 4)];
         // size=2: collisions (0%2=0,2%2=0,4%2=0)
         // size=3: 0%3=0,2%3=2,4%3=1 -> no collision actually? 0,2,1 all distinct -> ok at size=3.
@@ -386,12 +381,13 @@ mod tests_find_minimal_table_size {
     #[test]
     fn stress_large_len_near_limit() {
         let len = 250;
-        let mut data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = Vec::with_capacity(len);
+        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(len);
         for i in 0..len {
             data.push((Box::new([]), i as u8));
         }
         let result = GroupTopology::find_minimal_table_size(&data);
-        // The smallest prime >=250 is 251 (since 251 is in the list). Should work because values 0..249 distinct.
+        // The smallest prime >=250 is 251 (since 251 is in the list). Should work because values
+        // 0..249 distinct.
         assert_eq!(result, Ok(251));
     }
 
@@ -403,16 +399,16 @@ mod tests_find_minimal_table_size {
         // For simplicity, use values that are multiples of all small primes? Not feasible.
         // Instead, we rely on the forced-collision test above.
         // We'll just ensure that the function returns Err for some pathological case.
-        let data = vec![(Box::new([]), 0), (Box::new([]), 0)]; // two identical values
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 0)]; // two identical values
         assert_eq!(
-            GroupTopology::find_minimal_table_size(data),
+            GroupTopology::find_minimal_table_size(&data),
             Err("no collision‑free prime size found (all have conflicts)")
         );
     }
 
     #[test]
     fn edge_case_size_255_and_255_elements() {
-        let mut data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> = Vec::with_capacity(255);
+        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(255);
         for i in 0..255 {
             data.push((Box::new([]), i as u8));
         }
@@ -423,8 +419,7 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn edge_case_size_2_with_max_u8() {
-        let data: Vec<(Box<[crate::t0pology::PackFields]>, u8)> =
-            vec![(Box::new([]), 255), (Box::new([]), 1)];
+        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 255), (Box::new([]), 1)];
         // 255%2=1, 1%2=1 -> collision at size2
         // 255%3=0, 1%3=1 -> ok, so result 3
         let result = GroupTopology::find_minimal_table_size(&data);
