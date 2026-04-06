@@ -18,6 +18,7 @@ pub mod t5_connect_data;
 pub mod wt1types;
 pub mod wutils; //utils //topology
 
+pub mod t0_grouper;
 pub mod t0_parsel;
 
 #[cfg(feature = "wisdel")]
