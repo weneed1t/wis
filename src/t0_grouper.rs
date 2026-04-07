@@ -1,10 +1,15 @@
 // specific imports for clarity and to avoid namespace pollution
 use crate::t0pology::{PackFields, PackTopology};
 
+const PRIMES: &[u16] = &[
+    1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
+    97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191,
+    193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 256,
+];
+
 #[derive(Debug, Clone)]
 pub struct GroupTopology {
-    topologs: Box<[PackTopology]>,
-    indexer: usize,
+    topologs: Box<[Option<PackTopology>]>,
     max_min_len: usize,
     min_min_len: usize,
     //
@@ -70,7 +75,6 @@ impl GroupTopology {
         let mut min_min_len = usize::MAX;
 
         let mut pos_tbyte: Option<usize> = None;
-        let mut ret_ve = Vec::with_capacity(input_topoler.len());
 
         // track field lengths for uniformity validation across all topologies
         let mut counter_len: Option<usize> = None;
@@ -82,8 +86,25 @@ impl GroupTopology {
         let mut id_sender_len: Option<usize> = None;
         let mut id_receiver_len: Option<usize> = None;
 
-        for (fields, _key) in input_topoler.iter() {
-            let topology = PackTopology::new(tag_len, fields, data_save, tcp_mode)?;
+        let mut topologs =
+            vec![None; Self::find_minimal_table_size(input_topoler)?].into_boxed_slice();
+
+        for (fields, key) in input_topoler.iter() {
+            let temp = &mut topologs[*key as usize % topologs.len()];
+
+            let topology = if temp.is_some() {
+                panic!(
+                    "This is an impossible situation. Create a ticket for the developers so they \
+                     can fix it, as there should be a check beforehand to ensure there won't be \
+                     any issues."
+                )
+            } else {
+                *temp = Some(PackTopology::new(tag_len, fields, data_save, tcp_mode)?);
+                &temp.as_ref().expect(
+                    "this is an impossible state since the assignment of this element was on the \
+                     line above",
+                )
+            };
 
             // update universal presence flags
             all_have_crc &= topology.head_crc_slice().is_some();
@@ -117,110 +138,111 @@ impl GroupTopology {
 
             // validate field length uniformity across all topologies
             // counter: mandatory field, must have consistent length
-            if let Some((_, _, len)) = topology.counter_slice() {
-                if let Some(expected) = counter_len {
-                    if len != expected {
-                        return Err("counter field length mismatch across topologies");
+            {
+                if let Some((_, _, len)) = topology.counter_slice() {
+                    if let Some(expected) = counter_len {
+                        if len != expected {
+                            return Err("counter field length mismatch across topologies");
+                        }
+                    } else {
+                        counter_len = Some(len);
                     }
-                } else {
-                    counter_len = Some(len);
                 }
-            }
 
-            // len: if present in any topology, must have consistent length everywhere
-            if let Some((_, _, len)) = topology.len_slice() {
-                if let Some(expected) = len_field_len {
-                    if len != expected {
-                        return Err("len field length mismatch across topologies");
+                // len: if present in any topology, must have consistent length everywhere
+                if let Some((_, _, len)) = topology.len_slice() {
+                    if let Some(expected) = len_field_len {
+                        if len != expected {
+                            return Err("len field length mismatch across topologies");
+                        }
+                    } else {
+                        len_field_len = Some(len);
                     }
-                } else {
-                    len_field_len = Some(len);
                 }
-            }
 
-            // head_crc: if present, must have consistent length
-            if let Some((_, _, len)) = topology.head_crc_slice() {
-                if let Some(expected) = crc_len {
-                    if len != expected {
-                        return Err("head_crc field length mismatch across topologies");
+                // head_crc: if present, must have consistent length
+                if let Some((_, _, len)) = topology.head_crc_slice() {
+                    if let Some(expected) = crc_len {
+                        if len != expected {
+                            return Err("head_crc field length mismatch across topologies");
+                        }
+                    } else {
+                        crc_len = Some(len);
                     }
-                } else {
-                    crc_len = Some(len);
                 }
-            }
 
-            // nonce: if present, must have consistent length
-            if let Some((_, _, len)) = topology.nonce_slice() {
-                if let Some(expected) = nonce_len {
-                    if len != expected {
-                        return Err("nonce field length mismatch across topologies");
+                // nonce: if present, must have consistent length
+                if let Some((_, _, len)) = topology.nonce_slice() {
+                    if let Some(expected) = nonce_len {
+                        if len != expected {
+                            return Err("nonce field length mismatch across topologies");
+                        }
+                    } else {
+                        nonce_len = Some(len);
                     }
-                } else {
-                    nonce_len = Some(len);
                 }
-            }
 
-            // ttl: if present, must have consistent length
-            if let Some((_, _, len)) = topology.ttl_slice() {
-                if let Some(expected) = ttl_len {
-                    if len != expected {
-                        return Err("ttl field length mismatch across topologies");
+                // ttl: if present, must have consistent length
+                if let Some((_, _, len)) = topology.ttl_slice() {
+                    if let Some(expected) = ttl_len {
+                        if len != expected {
+                            return Err("ttl field length mismatch across topologies");
+                        }
+                    } else {
+                        ttl_len = Some(len);
                     }
-                } else {
-                    ttl_len = Some(len);
                 }
-            }
 
-            // idconn: if present, must have consistent length
-            if let Some((_, _, len)) = topology.idconn_slice() {
-                if let Some(expected) = idconn_len {
-                    if len != expected {
-                        return Err("idconn field length mismatch across topologies");
+                // idconn: if present, must have consistent length
+                if let Some((_, _, len)) = topology.idconn_slice() {
+                    if let Some(expected) = idconn_len {
+                        if len != expected {
+                            return Err("idconn field length mismatch across topologies");
+                        }
+                    } else {
+                        idconn_len = Some(len);
                     }
-                } else {
-                    idconn_len = Some(len);
                 }
-            }
 
-            // id_sender: if present, must have consistent length
-            if let Some((_, _, len)) = topology.id_of_sender_slice() {
-                if let Some(expected) = id_sender_len {
-                    if len != expected {
-                        return Err("id_sender field length mismatch across topologies");
+                // id_sender: if present, must have consistent length
+                if let Some((_, _, len)) = topology.id_of_sender_slice() {
+                    if let Some(expected) = id_sender_len {
+                        if len != expected {
+                            return Err("id_sender field length mismatch across topologies");
+                        }
+                    } else {
+                        id_sender_len = Some(len);
                     }
-                } else {
-                    id_sender_len = Some(len);
                 }
-            }
 
-            // id_receiver: if present, must have consistent length AND match sender length
-            if let Some((_, _, len)) = topology.id_of_receiver_slice() {
-                if let Some(expected) = id_receiver_len {
-                    if len != expected {
-                        return Err("id_receiver field length mismatch across topologies");
+                // id_receiver: if present, must have consistent length AND match sender length
+                if let Some((_, _, len)) = topology.id_of_receiver_slice() {
+                    if let Some(expected) = id_receiver_len {
+                        if len != expected {
+                            return Err("id_receiver field length mismatch across topologies");
+                        }
+                    } else {
+                        id_receiver_len = Some(len);
                     }
-                } else {
-                    id_receiver_len = Some(len);
+                    // cross-check: sender and receiver must have equal length within each topology
+                    if let Some(sender_len) = id_sender_len
+                        && len != sender_len
+                    {
+                        return Err(
+                            "id_receiver and id_sender must have equal length within each topology",
+                        );
+                    }
                 }
-                // cross-check: sender and receiver must have equal length within each topology
-                if let Some(sender_len) = id_sender_len
-                    && len != sender_len
+                // reciprocal check in case sender was processed after receiver
+                if let Some((_, _, len)) = topology.id_of_sender_slice()
+                    && let Some(receiver_len) = id_receiver_len
+                    && len != receiver_len
                 {
                     return Err(
-                        "id_receiver and id_sender must have equal length within each topology",
+                        "id_sender and id_receiver must have equal length within each topology",
                     );
                 }
             }
-            // reciprocal check in case sender was processed after receiver
-            if let Some((_, _, len)) = topology.id_of_sender_slice()
-                && let Some(receiver_len) = id_receiver_len
-                && len != receiver_len
-            {
-                return Err(
-                    "id_sender and id_receiver must have equal length within each topology",
-                );
-            }
-
             // update min/max minimal packet lengths
             let total_min = topology.total_minimal_len();
             if total_min > max_min_len {
@@ -230,7 +252,7 @@ impl GroupTopology {
                 min_min_len = total_min;
             }
 
-            ret_ve.push(topology);
+            //end for
         }
 
         // sanity check: min_min_len should have been updated (empty input already rejected)
@@ -243,8 +265,7 @@ impl GroupTopology {
         }
 
         Ok(Self {
-            topologs: ret_ve.into_boxed_slice(),
-            indexer: Self::find_minimal_table_size(input_topoler)?,
+            topologs,
             max_min_len,
             min_min_len,
             all_have_len,
@@ -255,6 +276,10 @@ impl GroupTopology {
             all_have_ctr,
             all_have_nonce,
         })
+    }
+
+    pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
+        self.topologs[trikly_byte as usize % self.topologs.len()].as_ref()
     }
 
     /// finds the smallest prime table size (from a predefined list) that can accommodate
@@ -286,68 +311,12 @@ impl GroupTopology {
     fn find_minimal_table_size(
         input_topoler: &[(Box<[PackFields]>, u8)],
     ) -> Result<usize, &'static str> {
-        const PRIMES: &[u8] = &[
-            2,
-            3,
-            5,
-            7,
-            11,
-            13,
-            17,
-            19,
-            23,
-            29,
-            31,
-            37,
-            41,
-            43,
-            47,
-            53,
-            59,
-            61,
-            67,
-            71,
-            73,
-            79,
-            83,
-            89,
-            97,
-            101,
-            103,
-            107,
-            109,
-            113,
-            127,
-            131,
-            137,
-            139,
-            149,
-            151,
-            157,
-            163,
-            167,
-            173,
-            179,
-            181,
-            191,
-            193,
-            197,
-            199,
-            211,
-            223,
-            227,
-            229,
-            233,
-            239,
-            241,
-            251,
-            u8::MAX,
-        ];
-
         let target_len = input_topoler.len();
         if target_len > u8::MAX as usize {
             return Err("input length exceeds maximum supported prime (255)");
         }
+
+        //let mut for_debug = 99999;
 
         let start_idx = PRIMES.partition_point(|&p| (p as usize) < target_len);
         for &size in &PRIMES[start_idx..] {
@@ -357,6 +326,9 @@ impl GroupTopology {
                 let h = *val as usize % size as usize;
                 if seen[h] {
                     ok = false;
+
+                    //for_debug = h;
+
                     break;
                 }
                 seen[h] = true;
@@ -368,6 +340,101 @@ impl GroupTopology {
         Err("no collision‑free prime size found (all have conflicts)")
     }
 }
+
+impl GroupTopology {
+    /// returns the maximum minimal packet length among all grouped topologies.
+    ///
+    /// this value represents the largest `total_minimal_len` across all individual
+    /// `PackTopology` instances in the group. it can be used to pre-allocate buffers
+    /// that are guaranteed to fit any packet from any topology in the group.
+
+    pub fn max_minimal_len(&self) -> usize {
+        self.max_min_len
+    }
+
+    /// returns the minimum minimal packet length among all grouped topologies.
+    ///
+    /// this value represents the smallest `total_minimal_len` across all individual
+    /// `PackTopology` instances in the group. it can be used for optimistic buffer
+    /// sizing or to detect unusually small packets that may belong to a subset of
+    /// topologies.
+
+    pub fn min_minimal_len(&self) -> usize {
+        self.min_min_len
+    }
+
+    /// returns `true` if every topology in the group contains a `Len` field.
+    ///
+    /// the `Len` field is required for tcp-like (stream-oriented) protocols to delimit
+    /// packet boundaries. if this method returns `true`, the group can safely assume
+    /// that all packets have an explicit length header.
+    pub fn all_have_len_field(&self) -> bool {
+        self.all_have_len
+    }
+
+    /// returns `true` if every topology in the group contains a `HeadCRC` field.
+    ///
+    /// the `HeadCRC` field protects header integrity in unreliable transport channels
+    /// (e.g., udp-like). if this method returns `true`, all packets in the group can
+    /// be validated for header corruption before decryption.
+    pub fn all_have_crc_field(&self) -> bool {
+        self.all_have_crc
+    }
+
+    /// returns `true` if every topology in the group contains an `IdConnect` field.
+    ///
+    /// the `IdConnect` field associates packets with a specific connection or session.
+    /// if this method returns `true`, all packets in the group support connection-level
+    /// multiplexing or session tracking.
+
+    pub fn all_have_idconn_field(&self) -> bool {
+        self.all_have_idconn
+    }
+
+    /// returns `true` if every topology in the group contains both `IdSender` and
+    /// `IdReceiver` fields.
+    ///
+    /// these fields enable mesh-network routing by identifying the source and destination
+    /// of each packet at the protocol level. if this method returns `true`, all packets
+    /// in the group support explicit sender/receiver addressing.
+    ///
+    /// note: the presence of one without the other is rejected during
+    /// `GroupTopology::new`, so this flag reflects a consistent, validated state.
+
+    pub fn all_have_id_sender_receiver_fields(&self) -> bool {
+        self.all_have_id_rec_send
+    }
+
+    /// returns `true` if every topology in the group contains a `TTL` field.
+    ///
+    /// the `TTL` (time-to-live) field limits packet lifetime in multi-hop networks to
+    /// prevent infinite loops. if this method returns `true`, all packets in the group
+    /// support hop-count expiration semantics.
+
+    pub fn all_have_ttl_field(&self) -> bool {
+        self.all_have_ttl
+    }
+
+    /// returns `true` if every topology in the group contains a `Counter` field.
+    ///
+    /// the `Counter` field is **mandatory** for all topologies and holds a unique,
+    /// incrementing packet sequence number (1–8 bytes). this method will always return
+    /// `true` for any successfully constructed `GroupTopology`, but is provided for
+    /// api symmetry and future extensibility.
+    pub fn all_have_counter_field(&self) -> bool {
+        self.all_have_ctr
+    }
+
+    /// returns `true` if every topology in the group contains a `Nonce` field.
+    ///
+    /// the `Nonce` field provides a unique cryptographic nonce for authenticated
+    /// encryption (e.g., aes-gcm, chacha20-poly1305). if this method returns `true`,
+    /// all packets in the group support per-packet nonce-based encryption.
+    pub fn all_have_nonce_field(&self) -> bool {
+        self.all_have_nonce
+    }
+}
+
 #[cfg(test)]
 mod tests_find_minimal_table_size {
     use super::*;
@@ -418,7 +485,7 @@ mod tests_find_minimal_table_size {
         let data: Vec<(Box<[PackFields]>, u8)> = vec![];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // minimal prime that is >= 0 is 2
-        assert_eq!(result, Ok(2));
+        assert_eq!(result, Ok(1));
     }
 
     #[test]
@@ -426,7 +493,7 @@ mod tests_find_minimal_table_size {
         let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 123)];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // any prime >= 1 works, smallest is 2
-        assert_eq!(result, Ok(2));
+        assert_eq!(result, Ok(1));
     }
 
     #[test]
@@ -494,8 +561,8 @@ mod tests_find_minimal_table_size {
             if let Ok(size) = result {
                 // size must be a prime from our list
                 const PRIMES: &[u8] = &[
-                    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73,
-                    79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157,
+                    1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+                    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157,
                     163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233, 239, 241,
                     251, 255,
                 ];
@@ -687,6 +754,10 @@ mod tests_new {
     fn t03_tag_len_valid_minimum() {
         let result = GroupTopology::new(&[(minimal_with_tricky(), 1)], 1, true, false);
         assert!(result.is_ok());
+        assert_eq!(
+            *result.unwrap().get_from_u8(1).unwrap(),
+            PackTopology::new(1, &minimal_with_tricky()[..], true, false).unwrap()
+        )
     }
 
     #[test]
@@ -1136,12 +1207,17 @@ mod tests_new {
         let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
         assert!(result.is_ok());
 
+        assert_eq!(
+            *result.as_ref().unwrap().get_from_u8(1).unwrap(),
+            PackTopology::new(1, &minimal_with_tricky()[..], true, false).unwrap()
+        );
+
         let gt = result.unwrap();
         assert_eq!(gt.topologs.len(), 1);
         assert_eq!(gt.max_min_len, gt.min_min_len); // single topology -> equal
         assert!(!gt.all_have_len);
         assert!(!gt.all_have_crc);
-        assert!(gt.indexer >= 2); // smallest prime in list
+        //assert!(gt.indexer >= 2); // smallest prime in list
     }
 
     #[test]
@@ -1156,9 +1232,23 @@ mod tests_new {
         ]);
         let fields2 = Box::new([PackFields::Counter(8), PackFields::TrickyByte]);
 
-        let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+        let result = GroupTopology::new(
+            &[(fields1.clone(), 1), (fields2.clone(), 2)],
+            16,
+            true,
+            false,
+        );
 
         assert!(result.is_ok());
+        assert_eq!(
+            *result.as_ref().unwrap().get_from_u8(1).unwrap(),
+            PackTopology::new(16, &fields1[..], true, false).unwrap()
+        );
+
+        assert_eq!(
+            *result.as_ref().unwrap().get_from_u8(2).unwrap(),
+            PackTopology::new(16, &fields2[..], true, false).unwrap()
+        );
 
         let gt = result.unwrap();
         assert!(gt.min_min_len <= gt.max_min_len);
@@ -1448,4 +1538,212 @@ mod tests_new {
             "internal invariant violated: min not initialized"
         );
     }
+}
+
+#[cfg(test)]
+mod test_get {
+    use super::*;
+
+    #[test]
+    fn test_get() {
+        let mut print_len = vec![];
+
+        let mut result_mdsa: Vec<Vec<u8>> =
+            Vec::with_capacity(TEST_SLICES_NON_SPLIT_16.len() + TEST_SLICES_NON_SPLIT.len());
+
+        result_mdsa.extend(TEST_SLICES_NON_SPLIT_16.iter().map(|s| s.to_vec()));
+        result_mdsa.extend(TEST_SLICES_NON_SPLIT.iter().map(|s| s.to_vec()));
+        for dicodim in result_mdsa.iter().enumerate() {
+            let mut vecta = vec![];
+
+            for incom in dicodim.1.iter() {
+                vecta.push((
+                    vec![
+                        PackFields::Counter(1),
+                        PackFields::UserField(300 - *incom as usize),
+                        PackFields::UserField((*incom as usize) + 1),
+                        PackFields::TrickyByte,
+                    ]
+                    .into_boxed_slice(),
+                    *incom,
+                ));
+            }
+
+            let tester = GroupTopology::new(&vecta[..], 30, true, false).unwrap();
+            print_len.push(tester.topologs.len());
+            for incom in dicodim.1.iter() {
+                let fields_len = vec![
+                    PackFields::Counter(1),
+                    PackFields::UserField(300 - *incom as usize),
+                    PackFields::UserField((*incom as usize) + 1),
+                    PackFields::TrickyByte,
+                ];
+
+                let b = PackTopology::new(30, &fields_len, true, false).unwrap();
+
+                assert_eq!(*tester.get_from_u8(*incom).unwrap(), b);
+            }
+        }
+
+        println!("lens {:?}", print_len);
+    }
+
+    const TEST_SLICES_NON_SPLIT: [[u8; 100]; 15] = [
+        [
+            181, 172, 57, 108, 47, 115, 145, 247, 102, 61, 163, 48, 66, 109, 138, 200, 128, 197,
+            37, 233, 3, 58, 170, 130, 226, 41, 97, 187, 231, 95, 141, 77, 40, 158, 146, 33, 232,
+            239, 162, 135, 236, 67, 80, 225, 209, 198, 228, 88, 71, 113, 90, 129, 78, 164, 149, 94,
+            13, 39, 19, 20, 120, 152, 60, 166, 213, 52, 148, 63, 127, 224, 79, 153, 64, 0, 136,
+            132, 147, 218, 38, 91, 96, 11, 36, 53, 32, 126, 176, 190, 124, 50, 188, 214, 169, 211,
+            150, 30, 246, 6, 205, 112,
+        ],
+        [
+            168, 115, 61, 110, 250, 254, 93, 48, 116, 195, 177, 90, 147, 249, 63, 76, 157, 14, 241,
+            106, 211, 79, 159, 118, 94, 26, 187, 1, 75, 57, 80, 235, 197, 8, 220, 96, 83, 70, 120,
+            150, 149, 132, 27, 15, 112, 176, 49, 44, 200, 141, 248, 225, 167, 12, 22, 156, 204,
+            102, 207, 11, 0, 84, 239, 210, 206, 69, 100, 193, 162, 56, 66, 203, 39, 152, 36, 29, 5,
+            43, 237, 97, 99, 133, 148, 227, 103, 32, 95, 35, 217, 107, 6, 117, 53, 226, 9, 165,
+            184, 245, 105, 230,
+        ],
+        [
+            84, 7, 241, 4, 216, 51, 46, 56, 182, 149, 101, 194, 202, 208, 85, 105, 26, 0, 112, 10,
+            45, 135, 99, 93, 134, 52, 3, 224, 172, 159, 255, 123, 195, 58, 156, 193, 50, 228, 136,
+            24, 117, 70, 231, 38, 78, 125, 211, 153, 43, 98, 140, 155, 66, 111, 71, 5, 76, 196, 94,
+            110, 87, 141, 35, 13, 150, 178, 81, 253, 144, 72, 122, 143, 39, 151, 154, 185, 92, 100,
+            61, 183, 179, 239, 203, 82, 139, 64, 114, 11, 29, 222, 244, 199, 250, 31, 18, 237, 95,
+            128, 79, 16,
+        ],
+        [
+            13, 4, 200, 78, 145, 187, 16, 221, 35, 147, 237, 74, 76, 34, 239, 91, 60, 157, 175,
+            172, 233, 211, 168, 27, 129, 185, 188, 101, 57, 108, 93, 189, 216, 115, 142, 23, 106,
+            1, 44, 144, 43, 190, 158, 225, 170, 99, 246, 50, 126, 226, 184, 66, 92, 240, 54, 248,
+            231, 195, 6, 193, 153, 122, 214, 182, 48, 82, 186, 250, 227, 41, 164, 138, 118, 79, 77,
+            75, 191, 85, 249, 100, 213, 131, 38, 67, 207, 31, 70, 46, 26, 9, 156, 116, 73, 68, 140,
+            209, 255, 22, 5, 179,
+        ],
+        [
+            8, 84, 108, 56, 245, 249, 30, 129, 85, 19, 2, 27, 132, 134, 212, 244, 135, 59, 64, 222,
+            178, 14, 1, 93, 39, 226, 33, 194, 189, 210, 181, 109, 58, 66, 246, 180, 248, 15, 106,
+            192, 53, 214, 240, 44, 111, 105, 216, 45, 143, 156, 201, 150, 170, 63, 175, 117, 7, 11,
+            119, 21, 147, 61, 114, 34, 54, 115, 6, 247, 179, 38, 96, 29, 231, 193, 215, 191, 95,
+            152, 159, 198, 164, 171, 139, 118, 101, 239, 254, 52, 124, 154, 79, 151, 167, 166, 31,
+            131, 155, 99, 142, 252,
+        ],
+        [
+            4, 21, 193, 58, 210, 90, 34, 5, 220, 158, 46, 200, 98, 57, 86, 41, 8, 125, 198, 117,
+            61, 243, 199, 101, 145, 88, 68, 30, 87, 83, 132, 246, 36, 147, 240, 80, 217, 172, 162,
+            195, 11, 35, 50, 106, 213, 91, 22, 179, 154, 97, 191, 118, 177, 16, 155, 75, 250, 194,
+            166, 55, 149, 186, 254, 64, 180, 54, 205, 114, 148, 96, 144, 65, 218, 232, 109, 221,
+            176, 104, 71, 76, 175, 224, 135, 239, 161, 94, 197, 142, 231, 134, 81, 93, 29, 92, 113,
+            33, 74, 111, 187, 130,
+        ],
+        [
+            211, 85, 75, 14, 250, 112, 145, 208, 118, 182, 69, 157, 54, 44, 11, 188, 233, 56, 88,
+            243, 137, 207, 169, 134, 246, 162, 68, 150, 241, 84, 175, 129, 153, 123, 200, 103, 236,
+            178, 32, 232, 60, 216, 163, 203, 105, 181, 3, 198, 248, 136, 202, 221, 87, 27, 36, 196,
+            57, 82, 158, 206, 113, 220, 142, 61, 74, 65, 132, 193, 186, 9, 62, 244, 48, 15, 10,
+            167, 165, 168, 126, 73, 231, 234, 209, 128, 17, 146, 205, 122, 91, 16, 249, 119, 0,
+            138, 13, 35, 49, 227, 24, 109,
+        ],
+        [
+            171, 180, 198, 186, 201, 182, 160, 174, 124, 143, 123, 210, 115, 134, 14, 144, 178,
+            188, 220, 192, 168, 177, 179, 176, 221, 74, 151, 204, 185, 142, 25, 33, 125, 30, 165,
+            150, 107, 153, 131, 137, 132, 246, 211, 3, 225, 149, 90, 133, 60, 213, 47, 120, 24,
+            202, 32, 235, 104, 86, 227, 206, 95, 105, 193, 219, 130, 231, 197, 5, 127, 50, 80, 48,
+            34, 155, 253, 110, 39, 148, 58, 118, 208, 99, 250, 69, 240, 239, 51, 85, 136, 75, 109,
+            72, 113, 161, 238, 244, 20, 138, 42, 77,
+        ],
+        [
+            183, 20, 121, 9, 153, 187, 164, 139, 193, 108, 47, 24, 70, 224, 236, 49, 151, 252, 99,
+            250, 91, 81, 14, 123, 124, 219, 13, 172, 5, 155, 131, 168, 23, 241, 19, 104, 12, 122,
+            100, 59, 253, 113, 202, 74, 69, 127, 96, 129, 17, 83, 189, 28, 77, 226, 85, 220, 128,
+            50, 10, 30, 200, 111, 3, 181, 93, 88, 217, 71, 160, 161, 0, 119, 95, 132, 254, 190,
+            221, 64, 114, 179, 63, 191, 54, 1, 169, 22, 25, 141, 58, 223, 134, 87, 80, 79, 174,
+            209, 117, 148, 90, 222,
+        ],
+        [
+            82, 104, 70, 75, 197, 232, 110, 31, 215, 13, 44, 102, 14, 58, 245, 231, 193, 79, 52,
+            40, 78, 114, 143, 88, 95, 196, 214, 227, 86, 55, 148, 111, 189, 158, 242, 17, 194, 9,
+            201, 34, 156, 2, 83, 248, 60, 198, 172, 28, 225, 117, 162, 160, 155, 238, 46, 126, 103,
+            118, 8, 33, 151, 161, 236, 62, 125, 94, 255, 47, 185, 96, 139, 15, 180, 0, 50, 195,
+            119, 247, 175, 77, 200, 36, 179, 81, 209, 233, 99, 177, 213, 228, 66, 220, 76, 53, 38,
+            216, 218, 98, 84, 91,
+        ],
+        [
+            108, 55, 40, 62, 95, 127, 53, 220, 151, 80, 46, 224, 122, 79, 72, 9, 249, 150, 153,
+            117, 99, 172, 101, 199, 167, 207, 144, 4, 173, 128, 177, 194, 92, 85, 244, 170, 54,
+            189, 110, 23, 218, 136, 125, 225, 47, 175, 209, 165, 59, 8, 77, 2, 227, 76, 52, 195,
+            159, 238, 215, 201, 164, 106, 152, 203, 241, 130, 149, 145, 147, 250, 49, 78, 90, 176,
+            84, 179, 44, 31, 202, 146, 20, 178, 15, 35, 102, 28, 113, 246, 81, 112, 10, 204, 13,
+            154, 48, 61, 19, 73, 42, 211,
+        ],
+        [
+            78, 213, 85, 37, 27, 229, 202, 249, 39, 8, 28, 219, 34, 167, 29, 18, 111, 123, 137, 54,
+            107, 140, 50, 87, 205, 112, 230, 130, 26, 61, 238, 117, 195, 182, 94, 214, 235, 160,
+            138, 132, 216, 218, 133, 12, 30, 116, 239, 131, 33, 42, 67, 168, 52, 113, 76, 223, 237,
+            196, 201, 0, 134, 151, 104, 231, 120, 63, 1, 173, 215, 22, 3, 175, 209, 228, 47, 84,
+            141, 44, 166, 143, 185, 97, 56, 232, 98, 16, 146, 77, 217, 220, 142, 155, 99, 68, 164,
+            184, 206, 145, 189, 255,
+        ],
+        [
+            22, 220, 182, 4, 57, 138, 34, 60, 227, 117, 44, 204, 255, 102, 236, 129, 178, 140, 136,
+            133, 206, 125, 207, 1, 38, 165, 173, 77, 234, 45, 142, 179, 108, 122, 197, 177, 184,
+            230, 191, 31, 7, 37, 28, 98, 47, 251, 229, 78, 144, 155, 169, 159, 127, 33, 86, 71, 56,
+            132, 30, 174, 135, 250, 17, 65, 247, 6, 116, 148, 8, 101, 24, 106, 246, 73, 237, 150,
+            134, 219, 67, 223, 52, 241, 76, 109, 48, 167, 62, 93, 103, 0, 27, 228, 245, 75, 46,
+            226, 89, 244, 26, 70,
+        ],
+        [
+            106, 54, 65, 227, 216, 75, 192, 250, 94, 140, 229, 43, 157, 24, 255, 100, 207, 55, 41,
+            7, 121, 79, 88, 111, 98, 77, 89, 115, 170, 200, 33, 5, 199, 35, 145, 167, 233, 190,
+            223, 44, 150, 198, 251, 9, 155, 59, 92, 86, 37, 224, 243, 0, 40, 141, 152, 103, 36,
+            181, 83, 4, 244, 122, 143, 49, 166, 8, 230, 149, 96, 84, 64, 112, 71, 219, 61, 148, 46,
+            176, 85, 242, 160, 97, 214, 113, 57, 66, 178, 34, 119, 124, 107, 114, 47, 252, 221, 21,
+            191, 28, 235, 188,
+        ],
+        [
+            108, 171, 59, 229, 119, 26, 36, 2, 151, 247, 111, 217, 152, 133, 170, 0, 224, 62, 44,
+            61, 222, 221, 165, 83, 191, 78, 94, 63, 173, 208, 64, 55, 12, 181, 145, 194, 32, 131,
+            58, 121, 246, 168, 51, 18, 27, 103, 15, 239, 3, 199, 238, 114, 132, 220, 16, 74, 86,
+            160, 104, 209, 107, 195, 159, 148, 50, 192, 39, 89, 189, 184, 213, 231, 147, 71, 69,
+            225, 4, 76, 174, 201, 252, 197, 175, 60, 150, 80, 125, 248, 11, 130, 136, 158, 52, 123,
+            211, 31, 124, 234, 166, 90,
+        ],
+    ];
+
+    const TEST_SLICES_NON_SPLIT_16: [[u8; 16]; 11] = [
+        [
+            123, 40, 49, 100, 53, 99, 71, 111, 170, 50, 28, 171, 192, 155, 16, 43,
+        ],
+        [
+            148, 84, 133, 234, 175, 230, 19, 44, 212, 100, 92, 55, 137, 195, 2, 117,
+        ],
+        [
+            191, 247, 171, 69, 208, 244, 5, 80, 98, 122, 49, 136, 113, 173, 26, 160,
+        ],
+        [
+            60, 93, 145, 105, 224, 119, 48, 127, 185, 227, 221, 209, 117, 182, 239, 244,
+        ],
+        [
+            148, 95, 144, 191, 211, 26, 65, 48, 73, 245, 184, 123, 20, 127, 67, 149,
+        ],
+        [
+            244, 183, 179, 139, 45, 121, 213, 165, 176, 217, 234, 237, 186, 110, 52, 202,
+        ],
+        [
+            209, 110, 89, 193, 144, 98, 97, 40, 235, 178, 172, 128, 114, 159, 96, 158,
+        ],
+        [
+            45, 14, 246, 132, 7, 15, 244, 125, 89, 164, 140, 170, 189, 225, 78, 230,
+        ],
+        [
+            226, 121, 123, 219, 243, 212, 76, 78, 8, 216, 200, 88, 33, 14, 120, 22,
+        ],
+        [
+            22, 32, 161, 2, 56, 202, 5, 85, 57, 191, 145, 108, 28, 195, 143, 203,
+        ],
+        [
+            182, 74, 158, 102, 197, 117, 23, 145, 63, 40, 220, 252, 109, 178, 166, 238,
+        ],
+    ];
 }
