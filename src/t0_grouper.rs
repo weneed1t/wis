@@ -301,7 +301,7 @@ impl GroupTopology {
     ///
     /// # returns
     /// * `Ok(usize)` - the size (prime number) of a collision‑free table.
-    /// * `Err(&'static str)` - if the input length exceeds 255 (the largest prime in the
+    /// * `Err(&'static str)` - if the input length exceeds 256 (the largest prime in the
     ///   list) or if every prime candidate leads to at least one collision.
     ///
     /// # panics
@@ -546,7 +546,7 @@ mod tests_find_minimal_table_size {
         // but we must check if collisions occur: modulo 255 with distinct values 0..254 gives
         // 0..254 -> no collisions
         let result = GroupTopology::find_minimal_table_size(&data);
-        assert_eq!(result, Ok(255));
+        assert_eq!(result, Ok(256));
     }
 
     // ---------- randomised property tests ----------
@@ -649,7 +649,7 @@ mod tests_find_minimal_table_size {
         }
         // all values 0..254, modulo 255 gives 0..254 -> no collisions
         let result = GroupTopology::find_minimal_table_size(&data);
-        assert_eq!(result, Ok(255));
+        assert_eq!(result, Ok(256));
     }
 
     #[test]
@@ -1209,7 +1209,7 @@ mod tests_new {
 
         assert_eq!(
             *result.as_ref().unwrap().get_from_u8(1).unwrap(),
-            PackTopology::new(1, &minimal_with_tricky()[..], true, false).unwrap()
+            PackTopology::new(16, &minimal_with_tricky()[..], true, false).unwrap()
         );
 
         let gt = result.unwrap();
@@ -1545,14 +1545,15 @@ mod test_get {
     use super::*;
 
     #[test]
-    fn test_get() {
+    fn test_get_rand() {
         let mut print_len = vec![];
 
         let mut result_mdsa: Vec<Vec<u8>> =
             Vec::with_capacity(TEST_SLICES_NON_SPLIT_16.len() + TEST_SLICES_NON_SPLIT.len());
-
+        result_mdsa.extend(TEST_SLICES_NON_SPLIT_4.iter().map(|s| s.to_vec()));
         result_mdsa.extend(TEST_SLICES_NON_SPLIT_16.iter().map(|s| s.to_vec()));
         result_mdsa.extend(TEST_SLICES_NON_SPLIT.iter().map(|s| s.to_vec()));
+
         for dicodim in result_mdsa.iter().enumerate() {
             let mut vecta = vec![];
 
@@ -1586,6 +1587,31 @@ mod test_get {
         }
 
         println!("lens {:?}", print_len);
+    }
+
+    #[test]
+    fn test_get_no_one() {
+        let mut vecta = vec![];
+        vecta.push((
+            vec![PackFields::Counter(1), PackFields::TrickyByte].into_boxed_slice(),
+            113,
+        ));
+
+        let tester = GroupTopology::new(&vecta[..], 30, true, false).unwrap();
+
+        assert_eq!(tester.topologs.len(), 1);
+        assert_eq!(
+            tester.get_from_u8(1).unwrap(),
+            tester.get_from_u8(121).unwrap()
+        );
+        assert_eq!(
+            tester.get_from_u8(121).unwrap(),
+            tester.get_from_u8(4).unwrap()
+        );
+        assert_eq!(
+            tester.get_from_u8(4).unwrap(),
+            tester.get_from_u8(255).unwrap()
+        );
     }
 
     const TEST_SLICES_NON_SPLIT: [[u8; 100]; 15] = [
@@ -1745,5 +1771,19 @@ mod test_get {
         [
             182, 74, 158, 102, 197, 117, 23, 145, 63, 40, 220, 252, 109, 178, 166, 238,
         ],
+    ];
+
+    const TEST_SLICES_NON_SPLIT_4: [[u8; 4]; 11] = [
+        [123, 40, 49, 100],
+        [148, 84, 133, 234],
+        [191, 247, 171, 11],
+        [60, 93, 145, 105],
+        [148, 95, 144, 191],
+        [244, 183, 179, 139],
+        [209, 110, 89, 193],
+        [45, 14, 246, 132],
+        [226, 121, 123, 219],
+        [22, 32, 161, 2],
+        [182, 74, 158, 8],
     ];
 }
