@@ -1,7 +1,7 @@
 //Gaoo~~~ :3
 
 use crate::t0pology::PackTopology;
-use crate::{EXPCP, wutils};
+use crate::{EXPCP, w1utils};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct WsConnectParam {
@@ -128,7 +128,7 @@ impl WsConnectParam {
             }
         }
         let ctr_max_capacity_real = {
-            let ctr_max_capacity = wutils::len_byte_maximal_capacity_check(
+            let ctr_max_capacity = w1utils::len_byte_maximal_capacity_check(
                 pack_topology
                     .counter_slice()
                     .ok_or(
@@ -196,7 +196,7 @@ impl WsConnectParam {
         //ttl
         if let Some(ttl_me) = ttl_max_start_cost {
             if let Some(ttl_in_topology) = pack_topology.ttl_slice() {
-                let max_cap = wutils::len_byte_maximal_capacity_check(ttl_in_topology.2);
+                let max_cap = w1utils::len_byte_maximal_capacity_check(ttl_in_topology.2);
 
                 if ttl_me.0 < ttl_me.1 {
                     return Err(

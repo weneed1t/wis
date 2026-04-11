@@ -184,22 +184,22 @@ pub fn len_byte_maximal_capacity_check(len: usize) -> (u64, usize) {
 
 /// # Examples
 /// ```
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x00), 1);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF), 1);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF), 2);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00), 2);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF), 3);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00), 3);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF), 4);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00), 4);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF), 5);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00), 5);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF), 6);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00_00), 6);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF), 7);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x01_00_00_00_00_00_00), 7);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF_FF), 8);
-/// assert_eq!(wisleess2::wutils::len_u64_as_bytes(0x10_FF_FF_FF_FF_FF_FF_FF), 8);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x00), 1);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF), 1);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF), 2);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00), 2);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF), 3);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00), 3);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF), 4);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00), 4);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF), 5);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00), 5);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF), 6);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00), 6);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF), 7);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00_00), 7);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF_FF), 8);
+/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x10_FF_FF_FF_FF_FF_FF_FF), 8);
 /// ```
 pub fn len_u64_as_bytes(num: u64) -> usize {
     if 0b1u64 << (1 << 3) > num {
@@ -242,7 +242,7 @@ pub fn len_u64_as_bytes(num: u64) -> usize {
 ///
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
-/// let result = wisleess2::wutils::split_by_lengths(&mut data, &lengths, false).unwrap();
+/// let result = wisleess2::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
 /// assert_eq!(result[0],[1,2,3,4]);
 /// assert_eq!(result[1],[5]);
 /// assert_eq!(result[2],[6,7]);
@@ -304,7 +304,7 @@ pub fn split_by_lengths<'a, T>(
 /// ```
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
-/// let result = wisleess2::wutils::split_by_lengths(&mut data, &lengths, false).unwrap();
+/// let result = wisleess2::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
 /// assert_eq!(result.len(), 4);
 /// ```
 pub fn split_by_positions<'a, T>(

@@ -20,6 +20,7 @@ pub struct GroupTopology {
     all_have_ttl: bool,
     all_have_ctr: bool,
     all_have_nonce: bool,
+    pos_tbyte: Option<usize>,
 }
 
 impl GroupTopology {
@@ -275,6 +276,7 @@ impl GroupTopology {
             all_have_ttl,
             all_have_ctr,
             all_have_nonce,
+            pos_tbyte,
         })
     }
 
@@ -432,6 +434,18 @@ impl GroupTopology {
     /// all packets in the group support per-packet nonce-based encryption.
     pub fn all_have_nonce_field(&self) -> bool {
         self.all_have_nonce
+    }
+
+    pub fn tricky_position(&self) -> Option<usize> {
+        self.pos_tbyte
+    }
+
+    pub fn max_min_len(&self) -> usize {
+        self.max_min_len
+    }
+
+    pub fn min_min_len(&self) -> usize {
+        self.min_min_len
     }
 }
 

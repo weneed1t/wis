@@ -3,10 +3,10 @@ use crate::t1fields::*;
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
+use crate::w1utils::SafeBuffer;
 use crate::wt1types::{
     Cfcser, EncWis, HandMaker, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
-use crate::wutils::SafeBuffer;
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
 #[derive(Clone, Debug)]

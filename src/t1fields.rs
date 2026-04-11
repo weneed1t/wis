@@ -1,6 +1,6 @@
 use crate::t0pology::PackTopology;
 use crate::wt1types::*;
-use crate::{t0pology, wutils};
+use crate::{t0pology, w1utils};
 
 pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
@@ -125,7 +125,7 @@ pub fn set_ttl(
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
 
-        let temp = wutils::add_u64_i64(
+        let temp = w1utils::add_u64_i64(
             if is_start_ttl {
                 if ttl_i_edit < 0 {
                     return Err(WTypeErr::WorkTimeErr(
@@ -136,7 +136,7 @@ pub fn set_ttl(
                 0
             } else {
                 let ttl_before =
-                    wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
+                    w1utils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
                 if ttl_before > ttl_max {
                     return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
                 }
@@ -149,12 +149,12 @@ pub fn set_ttl(
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
         }
-        if temp > wutils::len_byte_maximal_capacity_check(len).0 {
+        if temp > w1utils::len_byte_maximal_capacity_check(len).0 {
             return Err(WTypeErr::PackageDamaged(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
         }
-        wutils::u64_to_1_8bytes(temp, &mut pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
+        w1utils::u64_to_1_8bytes(temp, &mut pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok(temp);
     }
@@ -173,7 +173,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        return wutils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
+        return w1utils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
     }
     Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
@@ -202,13 +202,13 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
-    if plen > wutils::len_byte_maximal_capacity_check(sls.2).0 as usize {
+    if plen > w1utils::len_byte_maximal_capacity_check(sls.2).0 as usize {
         return Err(WTypeErr::LenSizeErr(
             "pack.len()> len_byte_maximal_capacity_cheak(len)",
         ));
     }
 
-    wutils::u64_to_1_8bytes(pack.len() as u64, &mut pack[sls.0..sls.1])
+    w1utils::u64_to_1_8bytes(pack.len() as u64, &mut pack[sls.0..sls.1])
         .map_err(WTypeErr::WorkTimeErr)?;
 
     Ok(())
@@ -227,7 +227,7 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
     if pack.len() <= sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
-    Ok(wutils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(WTypeErr::WorkTimeErr)? as usize)
+    Ok(w1utils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(WTypeErr::WorkTimeErr)? as usize)
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
@@ -250,12 +250,12 @@ pub fn set_id_conn(
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        if id_conn > wutils::len_byte_maximal_capacity_check(x.2).0 >> 1 {
+        if id_conn > w1utils::len_byte_maximal_capacity_check(x.2).0 >> 1 {
             return Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1",
             ));
         }
-        wutils::u64_to_1_8bytes(
+        w1utils::u64_to_1_8bytes(
             (id_conn << 1) | role.sate_to_bit() as u64,
             &mut pack[x.0..x.1],
         )
@@ -278,7 +278,7 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let reta = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+        let reta = w1utils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
         return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
     Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
@@ -302,7 +302,7 @@ pub fn set_id_sender_and_recv(
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
-        let maxim = wutils::len_byte_maximal_capacity_check(x_s.2).0;
+        let maxim = w1utils::len_byte_maximal_capacity_check(x_s.2).0;
         if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
@@ -312,8 +312,9 @@ pub fn set_id_sender_and_recv(
             ));
         }
 
-        wutils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?;
-        wutils::u64_to_1_8bytes(id_sender, &mut pack[x_s.0..x_s.1])
+        w1utils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1])
+            .map_err(WTypeErr::WorkTimeErr)?;
+        w1utils::u64_to_1_8bytes(id_sender, &mut pack[x_s.0..x_s.1])
             .map_err(WTypeErr::WorkTimeErr)?;
         return Ok(());
     }
@@ -342,8 +343,8 @@ pub fn get_id_sender_and_recv(
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         return Ok((
-            wutils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(WTypeErr::WorkTimeErr)?,
-            wutils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
+            w1utils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(WTypeErr::WorkTimeErr)?,
+            w1utils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
         ));
     }
     Err(WTypeErr::CompileFieldsErr(
@@ -371,11 +372,11 @@ pub fn set_counter(
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let max_cap = wutils::len_byte_maximal_capacity_check(x.2).0 >> 1;
+        let max_cap = w1utils::len_byte_maximal_capacity_check(x.2).0 >> 1;
 
         let pack_ctr = ((max_cap & countr) << 1) | my_type.sate_to_bit() as u64;
 
-        wutils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+        w1utils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok((pack_ctr, max_cap));
     }
@@ -417,8 +418,8 @@ pub fn get_counter(
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let ctr_in_pack = wutils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
-        let (max_cap, _) = wutils::len_byte_maximal_capacity_check(x.2);
+        let ctr_in_pack = w1utils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+        let (max_cap, _) = w1utils::len_byte_maximal_capacity_check(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
         let my_type = PackType::bit_to_state((ctr_in_pack & 1) as u8);

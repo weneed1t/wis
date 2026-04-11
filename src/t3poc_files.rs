@@ -1,5 +1,5 @@
+use crate::w1utils;
 use crate::wt1types::InFile;
-use crate::wutils;
 
 const FILE_HEAD_LEN: usize = 9;
 
@@ -68,7 +68,7 @@ impl WSFileSplitter {
             );
         }
         //Calculates how many bytes the file size will fit into
-        let cap_head_of_rc = wutils::len_u64_as_bytes(rc_file.len() as u64);
+        let cap_head_of_rc = w1utils::len_u64_as_bytes(rc_file.len() as u64);
 
         if cap_head_of_rc > u8::MAX as usize {
             panic!(
@@ -95,7 +95,7 @@ impl WSFileSplitter {
         // | 1 byte length counter |length of user data (from 1 to 8 bytes)|bytes of user data|
         // |-----------------------|---------------------------------------|------------------|
         new_file.head[0] = cap_head_of_rc as u8;
-        wutils::u64_to_1_8bytes(
+        w1utils::u64_to_1_8bytes(
             rc_file.len() as u64,
             &mut new_file.head[1..1 + cap_head_of_rc],
         )?;
@@ -281,7 +281,7 @@ impl WSFileSplitter {
                 if recv_me.1.is_none() {
                     //calculation of payload length
                     let len_vec = EXPCP!(
-                        wutils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]),
+                        w1utils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]),
                         "impossible state Slice lengths and boundaries are static, verified at \
                          compile time, and do not change dynamically."
                     );
@@ -632,7 +632,7 @@ mod tests_wudp {
                     assert_eq!(
                         tw_s.remaining_len_of_recv_file().unwrap_or(0) + chunk_size,
                         file_size_in_iter as usize
-                            + wutils::len_u64_as_bytes(file_size_in_iter)
+                            + w1utils::len_u64_as_bytes(file_size_in_iter)
                             + 1
                     );
 

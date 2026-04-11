@@ -15,8 +15,8 @@ pub mod t3poc_files;
 pub mod t4algo_param;
 pub mod t5_2_connect_data;
 pub mod t5_connect_data;
-pub mod wt1types;
-pub mod wutils; //utils //topology
+pub mod w1utils;
+pub mod wt1types; //utils //topology
 
 pub mod t0_grouper;
 pub mod t0_parsel;
