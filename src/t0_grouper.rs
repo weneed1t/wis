@@ -1801,3 +1801,235 @@ mod test_get {
         [182, 74, 158, 8],
     ];
 }
+
+#[cfg(test)]
+mod flag_verification_tests {
+    use super::*;
+
+    /// Helper to create a valid field list for a single topology.
+    /// `include_tricky` must be true for multi‑topology groups.
+    fn make_fields(
+        include_len: bool,
+        include_crc: bool,
+        include_idconn: bool,
+        include_id_sender_receiver: bool,
+        include_ttl: bool,
+        include_nonce: bool,
+        include_tricky: bool,
+    ) -> Box<[PackFields]> {
+        let mut fields = Vec::new();
+        // Counter is mandatory
+        fields.push(PackFields::Counter(4));
+        if include_tricky {
+            fields.push(PackFields::TrickyByte);
+        }
+        if include_len {
+            fields.push(PackFields::Len(4));
+        }
+        if include_crc {
+            fields.push(PackFields::HeadCRC(4));
+        }
+        if include_idconn {
+            fields.push(PackFields::IdConnect(4));
+        }
+        if include_id_sender_receiver {
+            fields.push(PackFields::IdSender(4));
+            fields.push(PackFields::IdReceiver(4));
+        }
+        if include_ttl {
+            fields.push(PackFields::TTL(4));
+        }
+        if include_nonce {
+            fields.push(PackFields::Nonce(4));
+        }
+        fields.into_boxed_slice()
+    }
+
+    // ------------------------------------------------------------------------
+    // Single topology – flags must reflect exactly the fields present
+    // ------------------------------------------------------------------------
+    #[test]
+    fn single_topology_flags_match_fields() {
+        let fields = make_fields(
+            true,  // len
+            true,  // crc
+            true,  // idconn
+            true,  // id_sender_receiver
+            true,  // ttl
+            true,  // nonce
+            false, // tricky not required for single
+        );
+        let group = GroupTopology::new(&[(fields, 42)], 16, true, false).unwrap();
+
+        assert!(group.all_have_len_field());
+        assert!(group.all_have_crc_field());
+        assert!(group.all_have_idconn_field());
+        assert!(group.all_have_id_sender_receiver_fields());
+        assert!(group.all_have_ttl_field());
+        assert!(group.all_have_counter_field());
+        assert!(group.all_have_nonce_field());
+
+        // Now a topology with none of the optional fields (only counter)
+        let minimal = Box::new([PackFields::Counter(4)]);
+        let group2 = GroupTopology::new(&[(minimal, 42)], 16, true, false).unwrap();
+        assert!(!group2.all_have_len_field());
+        assert!(!group2.all_have_crc_field());
+        assert!(!group2.all_have_idconn_field());
+        assert!(!group2.all_have_id_sender_receiver_fields());
+        assert!(!group2.all_have_ttl_field());
+        assert!(group2.all_have_counter_field()); // always true
+        assert!(!group2.all_have_nonce_field());
+    }
+
+    // ------------------------------------------------------------------------
+    // Multi‑topology – all flags true only when every topology contains the field
+    // ------------------------------------------------------------------------
+    #[test]
+    fn all_flags_true_when_all_topologies_have_all_fields() {
+        let fields1 = make_fields(true, true, true, true, true, true, true);
+        let fields2 = make_fields(true, true, true, true, true, true, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(group.all_have_len_field());
+        assert!(group.all_have_crc_field());
+        assert!(group.all_have_idconn_field());
+        assert!(group.all_have_id_sender_receiver_fields());
+        assert!(group.all_have_ttl_field());
+        assert!(group.all_have_counter_field());
+        assert!(group.all_have_nonce_field());
+    }
+
+    #[test]
+    fn all_have_len_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(true, false, false, false, false, false, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_len_field());
+        // other flags remain false because no topology has them
+        assert!(!group.all_have_crc_field());
+        assert!(!group.all_have_idconn_field());
+        assert!(!group.all_have_id_sender_receiver_fields());
+        assert!(!group.all_have_ttl_field());
+        assert!(group.all_have_counter_field());
+        assert!(!group.all_have_nonce_field());
+    }
+
+    #[test]
+    fn all_have_crc_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(false, true, false, false, false, false, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_crc_field());
+        assert!(!group.all_have_len_field());
+        assert!(group.all_have_counter_field());
+    }
+
+    #[test]
+    fn all_have_idconn_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(false, false, true, false, false, false, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_idconn_field());
+    }
+
+    #[test]
+    fn all_have_id_sender_receiver_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(false, false, false, true, false, false, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_id_sender_receiver_fields());
+    }
+
+    #[test]
+    fn all_have_ttl_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(false, false, false, false, true, false, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_ttl_field());
+    }
+
+    #[test]
+    fn all_have_nonce_false_when_missing_in_one_topology() {
+        let fields1 = make_fields(false, false, false, false, false, true, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_nonce_field());
+    }
+
+    // ------------------------------------------------------------------------
+    // Counter flag – always true for any valid GroupTopology
+    // ------------------------------------------------------------------------
+    #[test]
+    fn all_have_counter_always_true() {
+        // Minimal valid topology (only counter)
+        let minimal = Box::new([PackFields::Counter(4)]);
+        let group = GroupTopology::new(&[(minimal, 1)], 16, true, false).unwrap();
+        assert!(group.all_have_counter_field());
+
+        // Multi‑topology with various fields
+        let fields1 = make_fields(true, true, true, true, true, true, true);
+        let fields2 = make_fields(false, false, false, false, false, false, true);
+        let group2 = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        assert!(group2.all_have_counter_field());
+    }
+
+    // ------------------------------------------------------------------------
+    // Mixed presence – each flag independent
+    // ------------------------------------------------------------------------
+    #[test]
+    fn mixed_presence_multiple_fields() {
+        // Topology A: has len, crc, ttl
+        // Topology B: has idconn, nonce, id_sender_receiver
+        let fields_a = make_fields(true, true, false, false, true, false, true);
+        let fields_b = make_fields(false, false, true, true, false, true, true);
+
+        let group = GroupTopology::new(&[(fields_a, 1), (fields_b, 2)], 16, true, false).unwrap();
+
+        assert!(!group.all_have_len_field()); // only A has len
+        assert!(!group.all_have_crc_field()); // only A has crc
+        assert!(!group.all_have_idconn_field()); // only B has idconn
+        assert!(!group.all_have_id_sender_receiver_fields()); // only B has both
+        assert!(!group.all_have_ttl_field()); // only A has ttl
+        assert!(!group.all_have_nonce_field()); // only B has nonce
+        assert!(group.all_have_counter_field()); // always true
+    }
+
+    // ------------------------------------------------------------------------
+    // Edge case: three topologies, field present in two out of three
+    // ------------------------------------------------------------------------
+    #[test]
+    fn flag_false_if_not_present_in_every_topology() {
+        let fields_all = make_fields(true, true, true, true, true, true, true);
+        let fields_missing_len = make_fields(false, true, true, true, true, true, true);
+        let fields_missing_crc = make_fields(true, false, true, true, true, true, true);
+
+        let group = GroupTopology::new(
+            &[
+                (fields_all, 1),
+                (fields_missing_len, 2),
+                (fields_missing_crc, 3),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+
+        // len missing in second topology
+        assert!(!group.all_have_len_field());
+        // crc missing in third topology
+        assert!(!group.all_have_crc_field());
+        // idconn, sender/receiver, ttl, nonce are present in all three
+        assert!(group.all_have_idconn_field());
+        assert!(group.all_have_id_sender_receiver_fields());
+        assert!(group.all_have_ttl_field());
+        assert!(group.all_have_nonce_field());
+        assert!(group.all_have_counter_field());
+    }
+}

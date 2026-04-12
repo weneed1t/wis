@@ -70,7 +70,7 @@ where
             return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
-        if pack.len() <= end {
+        if pack.len() <= topology.encrypt_start_pos() || pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
         let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
@@ -862,6 +862,16 @@ mod tests {
                 set_get_head_crc(
                     false,
                     &mut bb[..result.head_crc_slice().unwrap().1],
+                    &result,
+                    dummy_crc_gen
+                ),
+                Err(WTypeErr::LenSizeErr("pack len non correct"))
+            );
+
+            assert_eq!(
+                set_get_head_crc(
+                    false,
+                    &mut bb[..result.encrypt_start_pos()],
                     &result,
                     dummy_crc_gen
                 ),

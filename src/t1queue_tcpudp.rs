@@ -99,7 +99,7 @@ pub mod recv_queue {
                     //if the package has a crc signature of the head data,
                     // then it must be checked. if the data is intact, add it to ret_paks
 
-                    if let Some(fina_top) = self.read_or_not(&elem_in_buf_quque)? {
+                    if let Some(fina_top) = self.read_or_not(&elem_in_buf_quque, &ptr_to_start)? {
                         if !self.read_fields(
                             fina_top,
                             &mut ptr_to_start,
@@ -122,25 +122,35 @@ pub mod recv_queue {
         fn read_or_not(
             &self,
             elem_in_buf_quque: &usize,
+            ptr_to_start: &usize,
         ) -> Result<Option<&PackTopology>, WSQueueErr> {
             let sheme_lock = self.sheme_topology.borrow();
             let final_topol = match *sheme_lock {
                 TcpSheme::GroupPack(x_group) => {
                     // check if the group uses a specific byte as a topology selector
                     if let Some(tricly_pos) = x_group.tricky_position() {
-                        // if a selector position is defined, ensure we have enough data to read it
-                        if let Some(tp_num) = self.u_buf.borrow().get(tricly_pos) {
-                            // retrieve the specific topology from the group using the index from
-                            // the buffer
-                            Some(x_group.get_from_u8(*tp_num).ok_or(WSQueueErr::Critical(
-                                "
-                    error: there is no topology with this index
-                    in the topology group. most likely, the bytes of this packet are corrupted. \
-                                 critical error.",
-                            ))?)
-                        } else {
-                            // not enough data in buffer to determine the topology yet
+                        if tricly_pos >= *elem_in_buf_quque {
                             None
+                        } else {
+                            // if a selector position is defined, ensure we have enough data to read
+                            // it
+                            if let Some(tp_num) = self.u_buf.borrow().get(
+                                tricly_pos.checked_add(*ptr_to_start).ok_or(
+                                    WSQueueErr::Critical("ptr_to_start+tricly_pos overwlow"),
+                                )?,
+                            ) {
+                                // retrieve the specific topology from the group using the index
+                                // from the buffer
+                                Some(x_group.get_from_u8(*tp_num).ok_or(WSQueueErr::Critical(
+                                    "
+                                error: there is no topology with this index
+                                in the topology group. most likely, the bytes of this packet are \
+                                     corrupted. critical error.",
+                                ))?)
+                            } else {
+                                // not enough data in buffer to determine the topology yet
+                                None
+                            }
                         }
                     } else {
                         // if tricky_position is none, the group contains only one universal
@@ -272,6 +282,7 @@ pub mod recv_queue {
             ]
             .into_boxed_slice();
             boxed_slice.copy_from_slice(&self.u_buf.borrow()[*old_ret_pos..*ptr_to_start]);
+            //println!("pusher: {:?}", boxed_slice);
             ret_paks.push(boxed_slice);
 
             *old_ret_pos = *ptr_to_start;
@@ -1425,6 +1436,96 @@ pub mod recv_queue {
             (packets, pkks, data_slises, buf, pack_topology)
         }
 
+        fn datas_multi() -> (Vec<Vec<u8>>, Vec<u8>, Vec<usize>, GroupTopology, Vec<u8>) {
+            let packets_specs_lens = (0..100_000u64)
+                .map(|x| {
+                    let b = 40 + ((x.wrapping_mul(347)) % 20);
+                    (b as u8 ^ (0x0), b as usize)
+                })
+                .collect::<Vec<_>>();
+
+            let mut packets_pride: Vec<Vec<u8>> = packets_specs_lens
+                .iter()
+                .map(|&(value, len)| vec![value; len])
+                .collect();
+
+            let mut vec_of_tryli_bytes_num: Vec<u8> = vec![];
+            let mut num_iter_trikly = 100;
+            let mut ffilders = vec![];
+            for x1 in vec![PackFields::HeadCRC(3), PackFields::UserField(2)].iter() {
+                for x2 in vec![PackFields::UserField(7), PackFields::UserField(3)].iter() {
+                    for x3 in vec![PackFields::TTL(3), PackFields::UserField(1)].iter() {
+                        for x4 in vec![PackFields::UserField(3), PackFields::UserField(4)].iter() {
+                            for x5 in
+                                vec![PackFields::IdConnect(2), PackFields::UserField(1)].iter()
+                            {
+                                let mut temp =
+                                    vec![PackFields::UserField(2), PackFields::TrickyByte];
+
+                                temp.push(x1.clone());
+                                temp.push(x2.clone());
+                                temp.push(x3.clone());
+                                temp.push(x4.clone());
+                                temp.push(PackFields::Len(7));
+                                temp.push(x5.clone());
+                                temp.push(PackFields::Counter(4));
+
+                                //let test = PackTopology::new(3, &temp, true, true).unwrap();
+                                //temp.push(PackFields::UserField(40 - test.total_minimal_len()));
+
+                                ffilders.push((temp.into_boxed_slice(), num_iter_trikly));
+                                vec_of_tryli_bytes_num.push(num_iter_trikly);
+                                num_iter_trikly += 1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let pack_topology_group = GroupTopology::new(&ffilders[..], 3, true, true).unwrap();
+
+            let mut pkks: Vec<u8> = Vec::new();
+            let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+
+            let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
+                d_crc.gen_crc(da1ta, out)?;
+                Ok(())
+            };
+
+            for (ii, packet) in packets_pride.iter_mut().enumerate() {
+                let tbute = vec_of_tryli_bytes_num[(ii + 13) % vec_of_tryli_bytes_num.len()];
+
+                let my_top = pack_topology_group.get_from_u8(tbute).unwrap();
+
+                let paaake = &mut packet[..];
+
+                t1fields::set_tricky_byte(paaake, my_top, tbute).unwrap();
+                t1fields::set_len(paaake, my_top, 1000).unwrap();
+                if my_top.head_crc_slice().is_some() {
+                    t1fields::set_get_head_crc(true, paaake, my_top, &mut lbo).unwrap();
+                }
+
+                pkks.append(&mut paaake.to_vec().clone());
+                //println!("l {}   {:?}", ii, paaake.len());
+            }
+
+            let data_slises = (0..9999)
+                .map(|x| {
+                    ((x as u64 * 347 * 499 * 809).wrapping_add((x as u64 * 21337).rotate_left(17))
+                        % 500) as usize
+                })
+                .collect::<Vec<usize>>();
+
+            //let mut data_slises = data_slises.iter().cycle();
+
+            (
+                packets_pride,
+                pkks,
+                data_slises,
+                pack_topology_group,
+                vec_of_tryli_bytes_num,
+            )
+        }
         #[test]
         fn test_bufpack() {
             let datas_x = datas();
@@ -1451,6 +1552,7 @@ pub mod recv_queue {
 
                 for i in ret.iter() {
                     assert_eq!(i.to_vec(), *arepackets.next().unwrap());
+                    println!("{:?}", i);
                 }
             }
         }
@@ -1483,7 +1585,7 @@ pub mod recv_queue {
                 let ret = ret.unwrap();
                 for i in ret.iter() {
                     assert_eq!(i.to_vec(), *arepackets.next().unwrap());
-                    // println!("{:?}", i);
+                    //println!("{:?}", i);
                 }
             }
             assert!(
@@ -1530,6 +1632,68 @@ pub mod recv_queue {
                 false,
                 "there should have been a buffer size error, but it didn't happen!"
             );
+        }
+
+        #[test]
+        fn test_bufpack_grooup() {
+            let mut datas_x = datas_multi();
+
+            for vi in datas_x.0.iter_mut() {
+                let tpos = datas_x.3.tricky_position().unwrap();
+
+                let te1 = datas_x.3.get_from_u8(vi[tpos]).unwrap();
+
+                assert_eq!(vi.len(), t1fields::get_len(&vi[..], te1).unwrap());
+
+                let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+
+                let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
+                    d_crc.gen_crc(da1ta, out)?;
+                    Ok(())
+                };
+
+                if te1.head_crc_slice().is_some() {
+                    assert_eq!(
+                        true,
+                        t1fields::set_get_head_crc(false, &mut vi[..], te1, &mut lbo).unwrap()
+                    );
+                }
+                /*
+                println!(
+                    " tb:{}  Pack:  {:?}",
+                    vi[datas_x.3.tricky_position().unwrap()],
+                    vi
+                );
+                */
+            }
+
+            //println!("==============================");
+
+            let mut index = 0;
+
+            let mut arepackets = datas_x.0.iter();
+            let mut data_slises = datas_x.2.iter().cycle();
+
+            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
+                WSTcpLike::new(311, TcpSheme::GroupPack(&datas_x.3), Some(&[0])).unwrap();
+
+            while index < datas_x.1.len() {
+                let s = data_slises.next().unwrap();
+                let data = if s + index < datas_x.1.len() {
+                    datas_x.1[index..index + *s].to_vec()
+                } else {
+                    datas_x.1[index..].to_vec()
+                };
+                index += *s;
+                let ret = w_tcp
+                    .split_byte_stream_into_packages(&data.into_boxed_slice())
+                    .unwrap();
+
+                for i in ret.iter() {
+                    assert_eq!(i.to_vec(), *arepackets.next().unwrap());
+                    //println!("{:?}", &i[..20]);
+                }
+            }
         }
     }
 
