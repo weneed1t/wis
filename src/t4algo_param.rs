@@ -4,6 +4,7 @@ use crate::t0pology::PackTopology;
 use crate::{EXPCP, w1utils};
 
 #[derive(Debug, PartialEq, Clone)]
+///static algorithm settings that do not change—in other words, constants
 pub struct WsConnectParam {
     pack_topology: PackTopology,
     mtu: usize,
@@ -315,18 +316,19 @@ impl WsConnectParam {
 
 ///interface
 impl WsConnectParam {
+    ///returns the corresponding value
     pub fn pack_topology(&self) -> &PackTopology {
         &self.pack_topology
     }
-
+    ///returns the corresponding value
     pub fn mtu(&self) -> usize {
         self.mtu
     }
-
+    ///returns the corresponding value
     pub fn max_ms_latency(&self) -> f64 {
         self.max_ms_latency
     }
-
+    ///returns the corresponding value
     pub fn intermediate_questionable_packages_queue(&self) -> Option<usize> {
         self.intermediate_questionable_packages_queue
     }
@@ -340,73 +342,78 @@ impl WsConnectParam {
     pub fn ctr_max_capacity_real(&self) -> u64 {
         self.ctr_max_capacity_real
     }
-
+    ///returns the corresponding value
     pub fn need_init_random(&self) -> bool {
         self.need_use_random
     }
+    ///returns the corresponding value
     pub fn min_ms_latency(&self) -> f64 {
         self.min_ms_latency
     }
-
+    ///returns the corresponding value
     pub fn start_ms_latency(&self) -> f64 {
         self.start_ms_latency
     }
-
+    ///returns the corresponding value
     pub fn latency_increase_coefficient(&self) -> f64 {
         self.latency_increase_coefficient
     }
-
+    ///returns the corresponding value
     pub fn max_num_attempts_resend_package(&self) -> usize {
         self.max_num_attempts_resend_package
     }
+    ///returns the corresponding value
 
     pub fn packages_measurement_window_size_determining_latency(&self) -> usize {
         self.packages_measurement_window_size_determining_latency
     }
-
+    ///returns the corresponding value
     pub fn overhead_network_latency_relative_window_coefficient(&self) -> f64 {
         self.overhead_network_latency_relative_window_coefficient
     }
-
+    ///returns the corresponding value
     pub fn maximum_packet_delay_fback_coefficient(&self) -> f64 {
         self.maximum_packet_delay_fback_coefficient
     }
-
+    ///returns the corresponding value
     pub fn maximum_packet_delay_absolute_fback(&self) -> f64 {
         self.maximum_packet_delay_absolute_fback
     }
-
+    ///returns the corresponding value
     pub fn ttl_max_start_cost(&self) -> Option<(u64, u64, i64)> {
         self.ttl_max_start_cost
     }
-
+    ///returns the corresponding value
     pub fn maximum_length_udp_queue_packages(&self) -> usize {
         self.maximum_length_udp_queue_packages
     }
+    ///returns the corresponding value
 
     pub fn maximum_length_fback_queue_packages(&self) -> usize {
         self.maximum_length_fback_queue_packages
     }
-
+    ///returns the corresponding value
     pub fn maximum_length_queue_unconfirmed_packages(&self) -> usize {
         self.maximum_length_queue_unconfirmed_packages
     }
+    ///returns the corresponding value
 
     pub fn percent_fake_data_packets(&self) -> Option<f64> {
         self.percent_fake_data_packets
     }
-
+    ///returns the corresponding value
     pub fn percent_fake_fback_packets(&self) -> Option<f64> {
         self.percent_fake_fback_packets
     }
-
+    ///returns the corresponding value
     pub fn percent_len_random_coefficient(&self) -> Option<f64> {
         self.percent_len_random_coefficient
     }
-
+    ///returns the corresponding value
     pub fn instant_feedback_on_packet_loss(&self) -> bool {
         self.instant_feedback_on_packet_loss
     }
+    ///returns the corresponding value
     pub fn max_len_file(&self) -> Option<usize> {
         self.max_len_file
     }
@@ -747,14 +754,9 @@ impl WsConnectParamBuilder {
         self.intermediate_questionable_packages_queue = intermediate_questionable_packages_queue;
         self
     }
-    // Special handling for max_len_file (default is Some(...))
+    /// Special handling for max_len_file (default is Some(...))
     pub fn max_len_file(mut self, value: Option<usize>) -> Self {
         self.max_len_file = Some(value);
-        self
-    }
-
-    pub fn max_len_file_value(mut self, value: usize) -> Self {
-        self.max_len_file = Some(Some(value));
         self
     }
 
@@ -817,6 +819,7 @@ impl WsConnectParamBuilder {
 //+-+_#_@!_#_!__!__#__$_%___Z^_+__-+_#_@!_#_!_!___#__$_%__Z^_++_-+_#_@!#_!__!__#__$_%___^_++__-_#_@!_#!__!_____$_%__Z^_++__+_#_@!_#___!___#_$_%__Z^
 //=============================================TEST================================TEST=======================TEST==================================
 #[cfg(test)]
+///
 pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
     WsConnectParamBuilder::new(topo)
         .max_ms_latency(100.0)
@@ -1926,6 +1929,8 @@ mod all_test {
                 .build()
                 .unwrap();
             assert_eq!(p.maximum_packet_delay_fback_coefficient(), 0.5);
+            assert_eq!(p.ctr_max_capacity_real(), 126);
+            assert_eq!(p.min_ms_latency(), 10.0);
 
             // minimum positive
             let p = base_builder(&topo)
@@ -2663,7 +2668,7 @@ mod all_test {
             assert_eq!(none_val.max_len_file(), None);
 
             let some_val = base_builder(&topo)
-                .max_len_file_value(1000)
+                .max_len_file(Some(1000))
                 .build()
                 .unwrap();
             assert_eq!(some_val.max_len_file(), Some(1000));
@@ -2679,7 +2684,7 @@ mod all_test {
             let param = base_builder(&topo)
                 .instant_feedback_on_packet_loss(true)
                 .ttl_max_start_cost((255, 128, -1))
-                .max_len_file_value(2048)
+                .max_len_file(Some(2048))
                 .intermediate_questionable_packages_queue(Some(120))
                 .build()
                 .unwrap();
@@ -2697,7 +2702,7 @@ mod all_test {
             let param_normal = base_builder(&topo)
                 .instant_feedback_on_packet_loss(true)
                 .ttl_max_start_cost((255, 128, -1))
-                .max_len_file_value(2048);
+                .max_len_file(Some(2048));
 
             let param = param_normal
                 .clone()
@@ -2784,7 +2789,7 @@ mod all_test {
                         let param_normal = base_builder(&topo)
                             .instant_feedback_on_packet_loss(true)
                             .ttl_max_start_cost((255, 128, -1))
-                            .max_len_file_value(2048)
+                            .max_len_file(Some(2048))
                             .percent_fake_data_packets(x1)
                             .percent_fake_fback_packets(x2)
                             .percent_len_random_coefficient(x3)

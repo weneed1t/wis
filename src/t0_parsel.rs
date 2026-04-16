@@ -23,10 +23,12 @@ pub enum Value {
     Bool(bool),
 }
 
-/// a named field with its value.
 #[derive(Debug, Clone, PartialEq)]
+/// a named field with its value.
 pub struct Field {
+    ///
     pub name: String,
+    ///
     pub value: Value,
 }
 

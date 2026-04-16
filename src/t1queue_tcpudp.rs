@@ -19,6 +19,7 @@ pub mod recv_queue {
         GroupPack(&'a GroupTopology),
     }
     #[derive(Clone)]
+    ///See the description of the `new` method
     pub struct WSTcpLike<'a, TCfcser: Cfcser> {
         elems_in_buf: usize,
         u_buf: RefCell<Box<[u8]>>,
@@ -26,25 +27,26 @@ pub mod recv_queue {
         mtu: usize,
         crc_gener: RefCell<Option<TCfcser>>,
     }
-    ///TCP queue, already directly related to conversion into packets from a TCP data
-    /// stream,  since such data exchange protocols do not divide data into packets at
-    /// the user level  and provide abstraction only as a data stream.
-    ///  When sending packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long)
-    ///  , the recipient will receive a continuous stream of 300 bytes.
-    ///  To split it into packets, the WSTcpLike class is used.
-    ///  A stream of 300 bytes is passed to it,
-    ///  and the output is the packets that were sent: 1 (100 bytes long) 2 (150 bytes
-    /// long) 3 (50 bytes long).
-    ///
-    ///Note that WSTcpLike is resistant to packets being split during transmission,
-    /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150
-    /// bytes long) 3 (50 bytes long), will be partially accepted as a stream of 290
-    /// bytes,  which will be transferred to  split_byte_stream_into_packages(), and
-    /// the remaining 10 bytes,  then WSTcpLike will return two separate packets 1
-    /// (100 bytes long) 2(150 bytes long),  after which it will wait to receive the
-    /// remaining part of packet number 3 (10 bytes),  and then return packet number 3
-    /// (50 bytes long).
+
     impl<'a, TCfcser: Cfcser> WSTcpLike<'a, TCfcser> {
+        ///TCP queue, already directly related to conversion into packets from a TCP data
+        /// stream,  since such data exchange protocols do not divide data into packets at
+        /// the user level  and provide abstraction only as a data stream.
+        ///  When sending packets 1 (100 bytes long) 2 (150 bytes long) 3 (50 bytes long)
+        ///  , the recipient will receive a continuous stream of 300 bytes.
+        ///  To split it into packets, the WSTcpLike class is used.
+        ///  A stream of 300 bytes is passed to it,
+        ///  and the output is the packets that were sent: 1 (100 bytes long) 2 (150 bytes
+        /// long) 3 (50 bytes long).
+        ///
+        ///Note that WSTcpLike is resistant to packets being split during transmission,
+        /// for example, a stream of three concatenated packets 1 (100 bytes long) 2 (150
+        /// bytes long) 3 (50 bytes long), will be partially accepted as a stream of 290
+        /// bytes,  which will be transferred to  split_byte_stream_into_packages(), and
+        /// the remaining 10 bytes,  then WSTcpLike will return two separate packets 1
+        /// (100 bytes long) 2(150 bytes long),  after which it will wait to receive the
+        /// remaining part of packet number 3 (10 bytes),  and then return packet number 3
+        /// (50 bytes long).
         pub fn new(
             mtu: usize,
             sheme_topology: TcpSheme<'a>,
@@ -66,7 +68,9 @@ pub mod recv_queue {
                 }),
             })
         }
-
+        ///receives a continuous stream of data,
+        /// such as that carried by the TCP protocol, and divides the received continuous
+        /// sequence into individual packets
         pub fn split_byte_stream_into_packages(
             &mut self,
             data: &[u8],
@@ -368,16 +372,8 @@ pub mod recv_queue {
         }
     }
 
-    ///The UDP packet queue accepts packets in random order,
-    ///sorts them with O(1) sorting, and returns a continuous sequence of packets.
-    ///For example, if the initial queue counter is 0,
-    ///the queue accepted packets 7, 2, 1, 5, 3, 6.
-    ///The queue will return a vector of elements 1,2,3.
-    //Since there is no packet number 4 in the queue,
-    ///the queue has a continuity gap and will wait for packet number 4.
-    ///Upon receiving packet number 4, the queue will be able to return a vector of
-    /// packets 4,5,6,7.
     #[derive(Clone)]
+    ///See the description of the `new` method
     pub struct WSUdpLike<T> {
         in_queue: usize,
         k_mod: usize,
@@ -387,6 +383,15 @@ pub mod recv_queue {
     }
 
     impl<T: Clone> WSUdpLike<T> {
+        ///The UDP packet queue accepts packets in random order,
+        ///sorts them with O(1) sorting, and returns a continuous sequence of packets.
+        ///For example, if the initial queue counter is 0,
+        ///the queue accepted packets 7, 2, 1, 5, 3, 6.
+        ///The queue will return a vector of elements 1,2,3.
+        //Since there is no packet number 4 in the queue,
+        ///the queue has a continuity gap and will wait for packet number 4.
+        ///Upon receiving packet number 4, the queue will be able to return a vector of
+        /// packets 4,5,6,7.
         pub fn new(sizecap: usize) -> Result<Self, WSQueueErr> {
             if sizecap == 0 {
                 return Err(WSQueueErr::Critical("sizecap must be greater than zero"));
@@ -475,7 +480,9 @@ pub mod recv_queue {
 
             self.last_give_ctr = Some(last_item_ctr);
         }
-
+        ///Retrieve all possible queues from the packets
+        ///The packets are sorted in ascending order, without skipping counters,without
+        /// duplication
         pub fn get_queue(&mut self) -> Box<[(u64, T)]> {
             let copied_slice: Box<[(u64, T)]> = self
                 .data
@@ -484,7 +491,7 @@ pub mod recv_queue {
                 .skip(self.k_mod)
                 .take(self.data.len())
                 .take_while(|opt| opt.is_some())
-                .map(|opt| opt.as_ref().expect("unreal state").clone())
+                .map(|opt| EXPCP!(opt.as_ref(), "unreal state").clone())
                 .collect::<Box<[_]>>();
 
             self.edit_my_state(
@@ -500,7 +507,7 @@ pub mod recv_queue {
 
             copied_slice
         }
-
+        ///How many elements are there in the queue?
         pub fn how_items_in_queue(&self) -> usize {
             self.in_queue
         }
@@ -508,7 +515,7 @@ pub mod recv_queue {
         pub fn last_ctr_get(&self) -> Option<u64> {
             self.last_give_ctr
         }
-        //get_largest_ctr returns the largest counter currently in the queue
+        ///get_largest_ctr returns the largest counter currently in the queue
         pub fn get_largest_ctr(&self) -> Option<u64> {
             self.largest_ctr
         }
@@ -559,7 +566,7 @@ pub mod recv_queue {
         }
 
         fn write(&mut self, bytes: &[u8]) {
-            self.hash = u64::from_ne_bytes(bytes.try_into().expect("unreal state"));
+            self.hash = u64::from_ne_bytes(EXPCP!(bytes.try_into(), "unreal state"));
         }
 
         fn write_u64(&mut self, i: u64) {
@@ -583,10 +590,7 @@ pub mod recv_queue {
         data: T,
         p_order: P,
     }
-    ///Queue of packets, access to get, remove, and push takes O(1),
-    ///uses a hash table internally, the table was chosen because
-    ///a binary tree showed extremely slow read and write operations in performance
-    /// tests.
+    ///See the description of the `new` method
     #[derive(Clone)]
     pub struct WSWaitQueue<T, P> {
         data_map: HashMap<u64, ElemMy<T, P>, IdentityBuildHasher>,
@@ -599,6 +603,10 @@ pub mod recv_queue {
     }
 
     impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
+        ///Queue of packets, access to get, remove, and push takes O(1),
+        ///uses a hash table internally, the table was chosen because
+        ///a binary tree showed extremely slow read and write operations in performance
+        /// tests.
         pub fn new(max_elems: usize) -> Result<Self, WSQueueErr> {
             if max_elems == 0 {
                 return Err(WSQueueErr::Critical("max_elems is 0"));
@@ -791,9 +799,9 @@ pub mod recv_queue {
 
             Some((removed_elem.data, removed_elem.p_order.clone()))
         }
-        //returns all elements whose p_order value is less than or equal to p_order_limit as a
-        // list Vec<(u64, P, T)>, where u64 is its id, P is its p_order, and T is the data
-        // itself
+        ///returns all elements whose p_order value is less than or equal to
+        /// p_order_limit as a list Vec<(u64, P, T)>, where u64 is its id, P is
+        /// its p_order, and T is the data itself
         pub fn get_elements_to(&mut self, p_order_limit: P) -> Vec<(u64, P, T)> {
             if self.elems_in_me == 0 {
                 return Vec::new();
@@ -838,15 +846,15 @@ pub mod recv_queue {
 
             reta_vec
         }
-
+        ///How many meters are in the queue?
         pub fn len(&self) -> usize {
             self.elems_in_me
         }
-
+        ///Get the maximum ID and P (the element itself) in the queue
         pub fn max_elem_id_and_p(&self) -> Option<(u64, P)> {
             self.of_max_p.as_ref().map(|x| (x.0, x.1.clone()))
         }
-
+        ///Get the minimum ID and P (the element itself) in the queue
         pub fn min_elem_id_and_p(&self) -> Option<(u64, P)> {
             self.of_min_p.as_ref().map(|x| (x.0, x.1.clone()))
         }
@@ -865,6 +873,9 @@ pub mod recv_queue {
     }
 
     impl WSRecvQueueCtrs {
+        ///Find out how many counters can fit within the specified payload_mtu size (the
+        /// payload_mtu specifies the size in bytes,  and counters can occupy
+        /// several bytes, ranging from 1 to 8)
         pub fn max_len_from_mtu(
             len_ctr_slise: usize,
             payload_mtu: usize,
@@ -999,7 +1010,7 @@ pub mod recv_queue {
                 "(self.payload_len()* self.ctr_slice_len) + U64_LEN_IN_BYTES overflow"
             )
         }
-
+        ///How many meters are in the queue?
         pub fn len(&self) -> usize {
             self.ptr
         }
@@ -1067,15 +1078,17 @@ pub mod recv_queue {
                 .chunks_exact_mut(self.ctr_slice_len)
                 .zip(self.data[..self.ptr].iter())
             {
-                w1utils::u64_to_1_8bytes(
-                    EXPCP!(
-                        (*sls.1).checked_sub(self.min),
-                        "algorithm error, the minimum value must be less than any value in the \
-                         array"
+                EXPCP!(
+                    w1utils::u64_to_1_8bytes(
+                        EXPCP!(
+                            (*sls.1).checked_sub(self.min),
+                            "algorithm error, the minimum value must be less than any value in \
+                             the array"
+                        ),
+                        sls.0,
                     ),
-                    sls.0,
-                )
-                .expect("unreal state");
+                    "unreal state"
+                );
             }
             //cleansing of the internal state
             self.ptr = 0;
@@ -1211,7 +1224,7 @@ pub mod recv_queue {
 
             Ok((how_was_deleted, min_del, max_del))
         }
-        //get the maximum and minimum counters currently in the queue
+        ///get the maximum and minimum counters currently in the queue
         pub fn get_min_max(&self) -> (u64, u64) {
             (self.min, self.max)
         }

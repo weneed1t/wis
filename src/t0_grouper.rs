@@ -1,6 +1,6 @@
 // specific imports for clarity and to avoid namespace pollution
+use crate::EXPCP;
 use crate::t0pology::{PackFields, PackTopology};
-
 const PRIMES: &[u16] = &[
     1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
     97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191,
@@ -8,6 +8,11 @@ const PRIMES: &[u16] = &[
 ];
 
 #[derive(Debug, Clone)]
+
+///a group of distinct PackTopologies that are united solely by the identical position of
+/// the trick byte and the length of all PackFields. contains a set of PackTopologies,
+/// where each PackTopology either has fields whose lengths match the lengths of all
+/// corresponding fields in all other groups, or has none of them,
 pub struct GroupTopology {
     topologs: Box<[Option<PackTopology>]>,
     max_min_len: usize,
@@ -101,9 +106,10 @@ impl GroupTopology {
                 )
             } else {
                 *temp = Some(PackTopology::new(tag_len, fields, data_save, tcp_mode)?);
-                &temp.as_ref().expect(
+                EXPCP!(
+                    &temp.as_ref(),
                     "this is an impossible state since the assignment of this element was on the \
-                     line above",
+                     line above"
                 )
             };
 
@@ -279,7 +285,7 @@ impl GroupTopology {
             pos_tbyte,
         })
     }
-
+    ///Get the PackTopology diagram by its ID (byte)
     pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
         self.topologs[trikly_byte as usize % self.topologs.len()].as_ref()
     }
@@ -435,15 +441,15 @@ impl GroupTopology {
     pub fn all_have_nonce_field(&self) -> bool {
         self.all_have_nonce
     }
-
+    ///get the position of the trick byte
     pub fn tricky_position(&self) -> Option<usize> {
         self.pos_tbyte
     }
-
+    ///get the largest total_minimal_len() value among all PackTopologies
     pub fn max_min_len(&self) -> usize {
         self.max_min_len
     }
-
+    ///get the minimal total_minimal_len() value among all PackTopologies
     pub fn min_min_len(&self) -> usize {
         self.min_min_len
     }

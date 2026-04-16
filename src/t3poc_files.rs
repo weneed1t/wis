@@ -239,8 +239,12 @@ impl WSFileSplitter {
         }
     }
 
-    ///
-    pub fn slices_to_file(&mut self, slice: &[u8]) -> Result<(usize, Vec<Vec<u8>>), &'static str> {
+    ///slices_to_file contains slices: chunks of files that are concatenated into files
+    ///  (note that in this context,
+    ///  the word "file" refers to a continuous byte array that can be divided
+    ///  into any number of chunks of arbitrary length); the method concatenates
+    ///  the files from a set of slices and returns them in Ok(files)
+    pub fn slices_to_file(&mut self, slice: &[u8]) -> Result<Box<[Box<[u8]>]>, &'static str> {
         let mut slice = slice;
         let mut old_slice_len = slice.len();
 
@@ -249,7 +253,7 @@ impl WSFileSplitter {
             slice = if let Some(slic) = self.start_proc_file(slice)? {
                 slic
             } else {
-                return Ok((0, reta));
+                return Ok(reta.into_boxed_slice());
             };
             // IF(if the file is full and completely filled) IF(is there a head )
             if if let Some(recv_me) = &mut self.recv_data {
@@ -275,7 +279,7 @@ impl WSFileSplitter {
                     false
                 };
                 if head_is_non_full {
-                    return Ok((0, reta));
+                    return Ok(reta.into_boxed_slice());
                 }
                 //if there is no body (payload)
                 if recv_me.1.is_none() {
@@ -340,18 +344,21 @@ impl WSFileSplitter {
                 //if the file is full and completely filled
 
                 //The file's payload is added to the array that needs to be returned.
-                reta.push(EXPCP!(
+                reta.push(
                     EXPCP!(
-                        self.recv_data.take(),
-                        "Panicking is an impossible state because this code is executed only when \
-                         self.recv_data is Some."
+                        EXPCP!(
+                            self.recv_data.take(),
+                            "Panicking is an impossible state because this code is executed only \
+                             when self.recv_data is Some."
+                        )
+                        .1,
+                        "Panic is an impossible state because this code only executes when \
+                         self.recv_data is Some() and it has Some() vector and it's only called \
+                         when the file is completely received, at this point the file should be \
+                         longer than 0"
                     )
-                    .1,
-                    "Panic is an impossible state because this code only executes when \
-                     self.recv_data is Some() and it has Some() vector and it's only called when \
-                     the file is completely received, at this point the file should be longer \
-                     than 0"
-                ));
+                    .into_boxed_slice(),
+                );
 
                 self.recv_data = None
             }
@@ -370,7 +377,7 @@ impl WSFileSplitter {
             }
             old_slice_len = slice.len()
         }
-        Ok((0, reta))
+        Ok(reta.into_boxed_slice())
     }
 
     ///Returns the full length of the received file,
@@ -383,7 +390,8 @@ impl WSFileSplitter {
             None
         }
     }
-    //full len of sending file
+
+    ///full len of sending file
     pub fn len_of_send_file(&self) -> Option<usize> {
         self.send_file.as_ref().map(|rfile| rfile.1.len())
     }
@@ -620,7 +628,7 @@ mod tests_wudp {
 
                 vecca.extend_from_slice(&nw);
 
-                let get_me = tw_s.slices_to_file(&nw).unwrap().1;
+                let get_me = tw_s.slices_to_file(&nw).unwrap();
 
                 over_len += *chunk_size;
                 // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
@@ -658,7 +666,7 @@ mod tests_wudp {
 
                     assert_eq!(
                         ggg,
-                        xo,
+                        xo.into_boxed_slice(),
                         "\n_-_-_-_meco{:?} ||||| {:?}",
                         me_co,
                         me_co.iter().position(|&x| x > 0)
@@ -671,6 +679,6 @@ mod tests_wudp {
             }
         }
 
-        assert_eq!(tw_s.slices_to_file(&vecca).unwrap().1.len(), fs_vec.len());
+        assert_eq!(tw_s.slices_to_file(&vecca).unwrap().len(), fs_vec.len());
     }
 }

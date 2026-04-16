@@ -29,6 +29,7 @@ pub use crate::t1queue_tcpudp::recv_queue::{
     WSWaitQueue as UnconfirmedQueuePackets,
 };
 
+pub mod murmur3;
 pub mod private_core {
     pub use crate::{t0pology as PackageFields, t1fields as PacketsProcessingFields};
 }

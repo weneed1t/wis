@@ -12,4 +12,10 @@ impl<
     Hmaker: HandMaker,
 > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
+    pub fn paste_file() {}
+
+    pub fn send_pack() {}
+    pub fn recv_pack() {}
+
+    pub fn send_fake_pack() {}
 }

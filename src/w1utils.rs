@@ -1,7 +1,5 @@
 use std::usize;
 
-use crate::EXPCP;
-
 /*
 pub enum WNotification {
     CriticalErrorKillConnect(&'static str),
@@ -46,6 +44,7 @@ impl SafeBuffer {
         self.data[..input.len()].copy_from_slice(input);
         self.len = input.len();
     }
+    ///usize
     pub fn capacity(&self) -> usize {
         self.data.len()
     }
@@ -78,7 +77,7 @@ impl SafeBuffer {
         self.len = 0;
     }
 }
-
+///array to be u64
 pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() must be between 1 and 8");
@@ -89,7 +88,7 @@ pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
 
     Ok(u64::from_be_bytes(buffer))
 }
-
+///be u64 to array
 pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() > 8 ||bytes.len() ==0");
@@ -99,7 +98,7 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     bytes.copy_from_slice(&buffer[buffer.len() - bytes.len()..]);
     Ok(())
 }
-
+/// a (+ or -) b  = u64
 pub fn add_u64_i64(
     a: u64,
     b: i64,
@@ -120,7 +119,7 @@ pub fn add_u64_i64(
         //.ok_or("anderflow occurred  subtracting absolute")
     }
 }
-
+///insert_bits
 pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static str> {
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
@@ -145,7 +144,9 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
 
     Ok(result)
 }
-
+///This is a remnant from the old version of the algorithm;
+///it inserts the first len bits into the [u8] array starting at position pos (not in
+/// bytes, but in bits!).
 pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result<(), &'static str> {
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
@@ -173,7 +174,7 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
 
     Ok(())
 }
-
+///converts a byte to a number that fits within the maximum capacity of that word
 pub fn len_byte_maximal_capacity_check(len: usize) -> (u64, usize) {
     if len > 7 {
         return (!0_u64, 64);
@@ -340,14 +341,6 @@ pub fn split_by_positions<'a, T>(
     Ok(result)
 }
 
-pub fn u32_to_u16_lossy(x: u32) -> u16 {
-    (x / 0xFF_FF) as u16
-}
-
-pub fn u16_to_u32_approx(x: u16) -> u32 {
-    x as u32 * 0xFF_FF
-}
-
 /// convert f32 to 4 bytes (big endian)
 pub fn f32_to_bytes_be(value: f32, mass: &mut [u8; 4]) {
     mass.copy_from_slice(&value.to_be_bytes());
@@ -356,60 +349,6 @@ pub fn f32_to_bytes_be(value: f32, mass: &mut [u8; 4]) {
 /// convert 4 bytes (big endian) to f32
 pub fn bytes_to_f32_be(bytes: &[u8; 4]) -> f32 {
     f32::from_be_bytes(*bytes)
-}
-
-pub fn smpp_no_crypt_hash128(input: &[u64]) -> (u64, u64) {
-    //first 120 nums if pi
-    //14159265358979323846264338327950288419716939937510582097494459230781640628620899862803482534211706798214808651328230664
-    //in hex
-    //1675A9A76415868856888B17FDA2E98A87A642C4D875556B7D2BFA90587B274F1836F302CCCE330FCAADB99DCBA6F119508
-    if usize::MAX > u64::MAX as usize {
-        panic!("usize::MAX>u64::MAX");
-    };
-    let mut startparams = [
-        0x1675A9A764158688u64,
-        0x56888B17FDA2E98Au64,
-        0x87A642C4D875556Bu64,
-        0x7D2BFA90587B274Fu64,
-        //0x1836F302CCCE330Fu64,
-        //0xCAADB99DCBA6F119u64, //508
-    ];
-
-    fn proc_ha(temp: &mut [u64; 4], xx: u64, ii: usize, d_temp: &mut u64) {
-        // Some primes between 2^63 and 2^64 for various uses.
-        //Stolen from city.cc by Google
-        let k0 = 0xc3a5c85c97cb3127u64;
-
-        temp[(ii + 2) & 0b11] ^= xx.rotate_left(37);
-        //mix Threefish modif
-        temp[(ii + 2) & 0b11] = temp[(ii + 2) & 0b11].wrapping_add(temp[ii & 0b11]); //add (c+=a)
-        temp[ii & 0b11] = temp[ii & 0b11].rotate_left(59); //ror ( a )
-        temp[(ii + 2) & 0b11] = temp[(ii + 2) & 0b11].wrapping_mul(k0); //mul ( c )
-        temp[ii & 0b11] ^= temp[(ii + 2) & 0b11]; //xor (a^= c)
-        //mix end
-        temp[ii & 0b11] = temp[ii & 0b11].wrapping_add(xx); // ( a+= x)
-
-        temp[(ii + 1) & 0b11] = temp[(ii + 1) & 0b11].rotate_left(25);
-
-        *d_temp ^= temp[(ii + 1) & 0b11];
-        *d_temp = d_temp.rotate_left(4);
-        // ror ( b )
-    }
-    let mut ii: usize = 0;
-    let mut d_temp = 0xFF_FF_FF_FF_FF_FF_FF_FFu64;
-    for x in input {
-        proc_ha(&mut startparams, *x, ii, &mut d_temp);
-        ii += 1;
-    }
-
-    for x in ii..EXPCP!(ii.checked_add(7), "ii + 7 overflow") {
-        proc_ha(&mut startparams, x as u64, ii, &mut d_temp);
-    }
-
-    (
-        (startparams[0] ^ startparams[1]).wrapping_add(d_temp), //+
-        (startparams[2] ^ startparams[3]).wrapping_sub(d_temp), //-
-    )
 }
 
 /// exponential moving average (ema) state
@@ -456,12 +395,6 @@ impl Ema {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_to_num() {
-        assert_eq!(u32_to_u16_lossy(4253465437), 64903);
-        assert!(u16_to_u32_approx(u32_to_u16_lossy(4253465437)).abs_diff(4253465437) < 48000);
-    }
 
     #[test]
     fn test_bytes_to_u64() {

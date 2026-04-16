@@ -1,6 +1,11 @@
+use crate::EXPCP;
+
 //using in other files
+///
 pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
+///
 pub const MAXIMAL_TTL_LEN: usize = 8; //8 bytes is u64 max size
+///
 pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
 const fn maxval(a: usize, b: usize) -> usize {
     if a > b { a } else { b }
@@ -9,10 +14,10 @@ const fn maxval(a: usize, b: usize) -> usize {
 ///  you're probably doing something wrong.
 pub const MAXIMAL_NUMS_USER_FIELDS: usize = 16 & (u8::MAX as usize);
 
+///
 pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, MAXIMAL_NONCE_LEN));
 
 #[derive(Debug, Clone)]
-
 // public packet fields enumeration contains mandatory and optional fields
 // the only mandatory field is the counter, which must always be present and can be 1 to 8
 // bytes in size user id and receiver id, if present, must have the same size — from 0 to
@@ -30,17 +35,27 @@ pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, 
 // communication idconnect field is used to associate packets with a specific connection
 // or session all size constants are defined to support maximum required lengths for
 // secure and flexible packet handling
-
+///PackFields
 pub enum PackFields {
+    ///id of sender
     IdSender(usize),
+    ///id of receiver
     IdReceiver(usize),
+    ///len
     Len(usize),
+    ///Counter
     Counter(usize),
+    ///UserField(trash field)
     UserField(usize),
+    ///Head control sum
     HeadCRC(usize),
+    ///Time To Live
     TTL(usize),
+    ///nonce for encrypt
     Nonce(usize),
+    ///id of connect
     IdConnect(usize),
+    ///Tricky Byte
     TrickyByte,
 }
 
@@ -65,6 +80,7 @@ impl PartialEq for PackFields {
 type Fld = Option<(usize, usize, usize)>;
 
 #[derive(Debug, Clone, PartialEq)]
+///See the description of the `new` method
 pub struct PackTopology {
     // _phantom_time:PhantomData<&'a bool>,
     all_fields: Box<[PackFields]>,
@@ -141,11 +157,10 @@ impl PackTopology {
             shift = shift
                 .checked_add(match *x {
                     PackFields::UserField(le) => {
-                        if trash_content_slices_vec
-                            .len()
-                            .checked_add(1)
-                            .expect("overwlow err")
-                            > MAXIMAL_NUMS_USER_FIELDS
+                        if EXPCP!(
+                            trash_content_slices_vec.len().checked_add(1),
+                            "overwlow err"
+                        ) > MAXIMAL_NUMS_USER_FIELDS
                         {
                             return Err("userfield nums > MAXIMAL_NUMS_USER_FIELDS");
                         }
@@ -341,6 +356,7 @@ impl PackTopology {
 }
 
 impl PackTopology {
+    ///len of tag
     pub fn tag_len(&self) -> usize {
         self.tag_len
     }
@@ -351,14 +367,15 @@ impl PackTopology {
     pub fn encrypt_start_pos(&self) -> usize {
         self.encrypt_start_pos
     }
+    ///content_start_pos (payload)
     pub fn content_start_pos(&self) -> usize {
         self.content_start_pos
     }
-
+    ///tricky_byte position
     pub fn tricky_byte(&self) -> Option<usize> {
         self.tricky_byte
     }
-
+    /// head_byte position
     pub fn head_byte_pos(&self) -> usize {
         self.encrypt_start_pos
     }
@@ -441,7 +458,9 @@ impl PackTopology {
     pub fn __warning_test_only_force_edit_crc(&mut self, crc: Fld) {
         self.crc_slice = crc;
     }
-
+    ///It visually demonstrates what the topology with fields looks like in this
+    /// structure using println!().  The code is pretty shoddy—it's only meant for
+    /// debugging, so I don't recommend using it in production.
     pub fn display_layout_with_separators(&self) {
         let total_len = self.total_minimal_len;
 

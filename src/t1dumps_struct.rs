@@ -1,25 +1,39 @@
 use crate::wt1types::*;
 
 //#############################################################3
+///
 pub struct DumpNonser {
-    pub t: u64,
+    #[cfg(test)]
+    t: u64,
+    /// only in test
     pub v: Vec<u8>,
 }
+///
 pub struct DumpCfcser {
+    ///
     pub t: u64,
+    /// only in test
     pub v: Vec<u8>,
 }
+///
 pub struct DumpThrasher {
-    pub t: u64,
+    #[cfg(test)]
+    t: u64,
+    /// only in test
     pub v: Vec<u8>,
 }
+///
 pub struct DumpRandomer {
-    pub t: u64,
+    #[cfg(test)]
+    t: u64,
+    /// only in test
     pub v: Vec<u8>,
 }
-
+///
 pub struct DumpEnc {
-    pub t: u64,
+    #[cfg(test)]
+    t: u64,
+    /// only in test
     pub v: Vec<u8>,
 }
 //#############################################################3
@@ -280,6 +294,7 @@ fn bpg(t: &mut u64, v: &mut [u8]) {
 }
 
 #[derive(Debug, Clone)]
+///
 pub struct DumpHandMaker {
     _in_state: Box<[AtomHandFile]>,
     _ptr_in_state: usize,

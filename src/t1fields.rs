@@ -1,7 +1,7 @@
 use crate::t0pology::PackTopology;
 use crate::wt1types::*;
 use crate::{t0pology, w1utils};
-
+///get tricky byte
 pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
         if pack.len() <= star {
@@ -15,6 +15,7 @@ pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WType
     ))
 }
 
+///set tricky byte
 pub fn set_tricky_byte(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -710,7 +711,7 @@ mod tests {
         );
 
         for i in 0..15 {
-            set_tricky_byte(&mut tets1[..], &result, i).expect("");
+            set_tricky_byte(&mut tets1[..], &result, i).unwrap();
 
             assert_eq!(get_tricky_byte(&tets1[..], &result), Ok(i));
         }

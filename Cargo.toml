@@ -15,13 +15,16 @@ questionable_algo = ["wisdel"]
 
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(test)'] }
+unexpected_cfgs = "warn"
+unsafe_code = "forbid"
+missing_docs = "warn"
 #rustflags = ["-Z", "unstable-options", "--check-cfg"]
 
 
 [profile.release]
 #rustflags = ["-Z", "unstable-options", "--check-cfg"]
 opt-level = 3
+overflow-checks = true
 
 [dependencies]
 mambo_map = "0.1.23"

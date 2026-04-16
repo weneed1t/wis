@@ -5,21 +5,30 @@ use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
 use crate::w1utils::SafeBuffer;
 use crate::wt1types::{
-    Cfcser, EncWis, HandMaker, MyRole, Noncer, PackErr, Randomer, Thrasher, WSQueueErr, WTypeErr,
+    Cfcser, EncWis, HandMaker, MyRole, Noncer, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
 #[derive(Clone, Debug)]
+///id sender and recv
 pub struct Ids {
+    ///
     pub id_sender: u64,
+    ///
     pub id_receiver: u64,
 }
 
 #[derive(Clone, Debug)]
+///all id
 pub struct Identified {
-    my_metall_id: u64,
-    my_s_r_id: Option<Ids>,
-    id_conn: Option<(u64, MyRole)>,
+    ///The identifier of a specific device—it doesn't really matter what this value is,
+    ///  since it's just for the user's convenience and isn't passed on when the device is
+    /// transferred;  it could be a TCP port number or a physical address.
+    pub my_metall_id: u64,
+    /// reed Ids doc
+    pub my_s_r_id: Option<Ids>,
+    ///identifier  connection role + value id
+    pub id_conn: Option<(u64, MyRole)>,
 }
 
 ///check crc + get idc/ids/idr + get len + get TrickyByte
@@ -93,7 +102,7 @@ where
         &mut pack[..len_of_pack],
     ))
 }
-
+/// see method new
 pub struct WsConnection<
     //TCfcser: Cfcser,
     Tnoncer: Noncer,
@@ -109,8 +118,10 @@ pub struct WsConnection<
     udp_queue: WSUdpLike<Tudp>,          //-
     wait_queue: WSWaitQueue<Twait, f64>, //-
     fback_queue: WSRecvQueueCtrs,        //-
-    ctr_data: u64,
-    ctr_fback: u64,
+    my_ctr_data: u64,
+    my_ctr_fback: u64,
+    frend_ctr_data: u64,
+    frend_ctr_fback: u64,
     network_stability: f64,
     network_latency: f64,
     encrypt: Tencrypt,
@@ -152,6 +163,23 @@ impl<
         Hmaker,
     >
 {
+    ///Create a new connection. `default_enc_key` is the key that will be used at the
+    /// start of the connection before the private key is initialized.
+    ///`my_role` refers to the role of the user who initiated the connection or the user
+    /// who accepted the connection. `handmaker/nonce/crc/random seed` are the initial
+    /// values for the corresponding classes (`random` is used to generate a random
+    /// packet length if this option is enabled). The `identified` field is not
+    /// strictly necessary and should not (at least not yet—perhaps this will change?)
+    /// be used to influence packet identification
+    ///when a packet arrives at the input; however, when a packet is generated within
+    /// this class (structure), the values from `identified` are automatically
+    /// included in the packet if the corresponding fields are specified.
+    ///`use_non_alloc_buf` is also a deprecated setting
+    ///(again, this code is still under development, and I can't say for sure whether
+    /// this will change in the future) use_non_alloc_buf is needed so that when
+    /// generating a packet, a new array isn't allocated in memory, but instead uses
+    /// an already allocated temp array; if use_non_alloc_buf is true, then a temp
+    /// array of length MTU is created (so don't set MTU to a very large value)
     pub fn new(
         connect_param: &WsConnectParam,
         default_enc_key: &[u8],
@@ -161,7 +189,7 @@ impl<
         user_field_seed: Option<&[u8]>,
         crc_seed: Option<&[u8]>,
         handmaker_seed: &[u8],
-        identified: &Identified, //crc_seed: Option<&[u8]>,
+        identified: &Identified,
         use_non_alloc_buf: bool,
     ) -> Result<Self, WSQueueErr> {
         if connect_param.pack_topology().idconn_slice().is_some() && identified.id_conn.is_none() {
@@ -222,8 +250,10 @@ impl<
             } else {
                 None
             },
-            ctr_data: DATA_START_CTR,
-            ctr_fback: FBACK_START_CTR, //
+            my_ctr_data: DATA_START_CTR,
+            my_ctr_fback: FBACK_START_CTR, //
+            frend_ctr_data: DATA_START_CTR,
+            frend_ctr_fback: FBACK_START_CTR, //
             network_stability: 0.0,
             network_latency: 0.0,
             encrypt: Tencrypt::new(default_enc_key).map_err(WSQueueErr::Critical)?,
@@ -283,20 +313,13 @@ impl<
         })
     }
 
-    fn add_two(&self, num: &mut u64) -> Result<(), PackErr> {
-        *num = num.checked_add(2).ok_or(PackErr::UndefinedErr(
+    fn add_two(&self, num: &mut u64) -> Result<(), &'static str> {
+        *num = num.checked_add(2).ok_or(
             "The capacity limit of the main counter u64 has been reached, so it is no longer \
              possible to send new messages over this connection. The connection must be closed!",
-        ))?;
+        )?;
         Ok(())
     }
-
-    pub fn paste_file() {}
-
-    pub fn send_pack() {}
-    pub fn recv_pack() {}
-
-    pub fn send_fake_pack() {}
 }
 
 // getters for wsconnection - separate impl for clarity
@@ -311,37 +334,56 @@ impl<
     Hmaker: HandMaker,
 > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
+    ///Check whether the connection is active or has received a close signal;
+    ///  if it is not active, no more data will be transmitted over this connection.
     pub fn is_active(&self) -> bool {
         self.is_active
     }
-
+    ///the person who initiated the connection or the person who responded to the
+    /// connection
     pub fn my_role(&self) -> MyRole {
         self.my_role.clone()
     }
-
+    ///get the corresponding value
     pub fn network_latency(&self) -> f64 {
         self.network_latency
     }
+    ///get the corresponding value
 
     pub fn network_stability(&self) -> f64 {
         self.network_stability
     }
+    ///get the corresponding value
 
-    pub fn ctr_data(&self) -> u64 {
-        self.ctr_data
+    pub fn my_ctr_data(&self) -> u64 {
+        self.my_ctr_data
     }
+    ///get the corresponding value
 
-    pub fn ctr_fback(&self) -> u64 {
-        self.ctr_fback
+    pub fn my_ctr_fback(&self) -> u64 {
+        self.my_ctr_fback
     }
+    ///get the corresponding value
+
+    pub fn frend_ctr_data(&self) -> u64 {
+        self.frend_ctr_data
+    }
+    ///get the corresponding value
+
+    pub fn frend_ctr_fback(&self) -> u64 {
+        self.frend_ctr_fback
+    }
+    ///get the corresponding value
 
     pub fn connect_param(&self) -> &WsConnectParam {
         &self.connect_param
     }
+    ///get the corresponding value
 
     pub fn identified(&self) -> &Identified {
         &self.identified
     }
+    ///get the corresponding value
 
     pub fn measurement_window_latency(&self) -> &f64 {
         &self.measurement_window_latency
@@ -1267,11 +1309,11 @@ mod test_new {
 
         assert_eq!(
             te1.add_two(&mut h),
-            Err(PackErr::UndefinedErr(
+            Err(
                 "The capacity limit of the main counter u64 has been reached, so it is no longer \
                  possible to send new messages over this connection. The connection must be \
                  closed!"
-            ))
+            )
         );
     }
 }

@@ -1,5 +1,6 @@
 use std::ops::BitXor;
 
+use crate::EXPCP;
 const CHUNK_SIZE: usize = 64;
 const WORDS_PER_CHUNK: usize = CHUNK_SIZE / 4;
 
@@ -123,9 +124,9 @@ pub fn hash_mid_xor<const NU32: usize, const NU32OUT: usize>(
     let (left, right) = state_hash.split_at_mut(NU32OUT);
 
     // convert the mutable left slice to a mutable array reference
-    let left_array: &mut [u32; NU32OUT] = left.try_into().expect("left half length mismatch");
+    let left_array: &mut [u32; NU32OUT] = EXPCP!(left.try_into(), "left half length mismatch");
     // convert the mutable right slice to an immutable array reference via a reborrow
-    let right_array: &[u32; NU32OUT] = (&*right).try_into().expect("right half length mismatch");
+    let right_array: &[u32; NU32OUT] = EXPCP!((&*right).try_into(), "right half length mismatch");
 
     xor_vec::<u32, NU32OUT>(left_array, right_array);
 
@@ -211,7 +212,7 @@ macro_rules! wis_round {
     };
 }
 
-pub fn wis_process_block(state: &mut [u32; WORDS_PER_CHUNK], double_rounds: usize) {
+fn wis_process_block(state: &mut [u32; WORDS_PER_CHUNK], double_rounds: usize) {
     for _ in 0..double_rounds {
         wis_round!(state[0], state[4], state[8], state[12]); // Column 0
         wis_round!(state[1], state[5], state[9], state[13]); // Column 1
@@ -241,9 +242,10 @@ where
     let mut chunks = data.chunks_exact_mut(CHUNK_SIZE);
 
     for chunk in chunks.by_ref() {
-        let chunk_array: &mut [u8; CHUNK_SIZE] = chunk
-            .try_into()
-            .expect("A chunk is always exactly CHUNK_SIZE bytes");
+        let chunk_array: &mut [u8; CHUNK_SIZE] = EXPCP!(
+            chunk.try_into(),
+            "A chunk is always exactly CHUNK_SIZE bytes"
+        );
         let mut words = bytes_to_words(chunk_array);
         process(&mut words, CHUNK_SIZE, None);
         write_words_to_bytes(&words, chunk_array);
@@ -258,9 +260,10 @@ where
         process(
             &mut words,
             remainder.len(),
-            Some(CHUNK_SIZE.checked_sub(remainder.len()).expect(
+            Some(EXPCP!(
+                CHUNK_SIZE.checked_sub(remainder.len()),
                 "This is an impossible condition, since CHUNK_SIZE must always be greater than \
-                 remainder",
+                 remainder"
             )),
         );
         write_words_to_bytes(&words, &mut buf);
@@ -268,7 +271,7 @@ where
         remainder.copy_from_slice(&buf[..remainder.len()]);
     }
 }
-
+///set key
 pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     let mut key_state = [0; WORDS_PER_CHUNK];
 
@@ -293,6 +296,8 @@ pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
 
     key_state[13] = WIS_STR_INIT_4_BYTES2;
 
+    //This is test code; since this is an internal state, it was decided to insert the test
+    // directly into the code.
     #[cfg(test)]
     {
         let op = [
@@ -390,7 +395,7 @@ fn hash_progress(
         vec.push(hash.to_vec());
     }
 }
-
+///encrypt
 pub fn encrypt(
     plaintext: &mut [u8],
     key: &[u8; 32],
@@ -423,10 +428,11 @@ pub fn encrypt(
         hash_progress(block, &state_key, &mut state_hash);
         //
 
-        ctr = ctr.checked_add(adder as u64).expect(
+        ctr = EXPCP!(
+            ctr.checked_add(adder as u64),
             "counter overflow during addition, if you see this, it means the program is not \
              working correctly, since there should have already been an overflow check in the \
-             code before this",
+             code before this"
         );
     });
 
@@ -439,7 +445,7 @@ pub fn encrypt(
     Ok(hash8)
     //Ok(state_hash[])
 }
-
+///decrypt
 pub fn decrypt(
     plaintext: &mut [u8],
     key: &[u8; 32],
@@ -463,10 +469,11 @@ pub fn decrypt(
 
         //
 
-        ctr = ctr.checked_add(adder as u64).expect(
+        ctr = EXPCP!(
+            ctr.checked_add(adder as u64),
             "counter overflow during addition, if you see this, it means the program is not \
              working correctly, since there should have already been an overflow check in the \
-             code before this",
+             code before this"
         );
     });
 
@@ -707,7 +714,7 @@ mod wdel {
     fn t1() {
         let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
         let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
-        let te = wis_key_set(&k[..].try_into().expect(""), &n[..].try_into().unwrap());
+        let te = wis_key_set(&k[..].try_into().unwrap(), &n[..].try_into().unwrap());
 
         for i in 0..16 {
             print!("{:08X} ", te[i]);
