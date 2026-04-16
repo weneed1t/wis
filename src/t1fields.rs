@@ -487,7 +487,7 @@ pub fn set_user_field<F>(
     mut field_gen: F,
 ) -> Result<(), WTypeErr>
 where
-    F: FnMut(&mut [u8], u64, usize, usize) -> Result<(), &'static str>,
+    F: FnMut(&mut [u8], u64, usize, usize, &PackTopology) -> Result<(), &'static str>,
 {
     if let Some(vecta_trash) = topology.trash_content_slice() {
         for (i, (start, end, _)) in vecta_trash.iter().enumerate() {
@@ -495,7 +495,7 @@ where
                 return Err(WTypeErr::LenSizeErr("pack len non correct"));
             }
 
-            field_gen(&mut pack[*start..*end], counter, full_len, i)
+            field_gen(&mut pack[*start..*end], counter, full_len, i, topology)
                 .map_err(WTypeErr::PackageDamaged)?; //
         }
         return Ok(());
@@ -1270,10 +1270,10 @@ mod tests {
         let mut tb3 = vec![0_u8; 334];
         let mut tb4 = vec![0_u8; 334];
 
-        dummy_usf(&mut tb1, 312, 38865, 0).unwrap();
-        dummy_usf(&mut tb2, 675, 7564, 0).unwrap();
-        dummy_usf(&mut tb3, 987, 765, 0).unwrap();
-        dummy_usf(&mut tb4, 12213, 987, 0).unwrap();
+        dummy_usf(&mut tb1, 312, 38865, 0, &result1).unwrap();
+        dummy_usf(&mut tb2, 675, 7564, 0, &result1).unwrap();
+        dummy_usf(&mut tb3, 987, 765, 0, &result1).unwrap();
+        dummy_usf(&mut tb4, 12213, 987, 0, &result1).unwrap();
 
         set_user_field(&mut bb4_usr_test, &result_usr_test, 20, 111, dummy_usf).unwrap();
 
@@ -1931,6 +1931,7 @@ mod tests {
         counter: u64,
         full_len: usize,
         i: usize,
+        _topoligy: &PackTopology,
     ) -> Result<(), &'static str> {
         let teto = [counter as u8, full_len as u8, i as u8];
         for (x, t) in field.iter_mut().zip(teto.iter().cycle()) {
