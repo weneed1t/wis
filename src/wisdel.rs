@@ -189,7 +189,7 @@ pub fn zero_right_bytes_be(data: &mut [u32], n_bytes: usize) {
     // zero partial bytes in the word just before the full ones
     if partial_bytes > 0 {
         let idx = data.len() - full_words - 1; // index of the word to partially zero
-                                               // mask that preserves the high (4 - partial_bytes) bytes and zeros the low partial_bytes
+        // mask that preserves the high (4 - partial_bytes) bytes and zeros the low partial_bytes
         let mask = !((1u32 << (partial_bytes << 3)) - 1);
         data[idx] &= mask;
     }

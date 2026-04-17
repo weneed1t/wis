@@ -4,15 +4,15 @@
 include!("t5_connect_data.rs");
 
 impl<
-        Tnoncer: Noncer,
-        TThrasher: Thrasher,
-        Tudp: Clone,
-        Twait: Clone,
-        Tencrypt: EncWis,
-        TRandomer: Randomer,
-        TCfcser: Cfcser,
-        Hmaker: HandMaker,
-    > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
+    Tnoncer: Noncer,
+    TThrasher: Thrasher,
+    Tudp: Clone,
+    Twait: Clone,
+    Tencrypt: EncWis,
+    TRandomer: Randomer,
+    TCfcser: Cfcser,
+    Hmaker: HandMaker,
+> WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
     pub fn paste_file() {}
 

@@ -721,7 +721,7 @@ mod tests_prealocc {
         );
 
         let mut t = pre_alloc(&result, 100000, 43, 0).unwrap();
-        t.0[t.1 .0..t.1 .1].fill(1);
+        t.0[t.1.0..t.1.1].fill(1);
         let count = t.0.iter().filter(|&&element| element == 1).count();
         let count0 = t.0.iter().take_while(|&&x| x == 0).count();
 

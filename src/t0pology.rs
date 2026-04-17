@@ -10,11 +10,7 @@ pub const MAXIMAL_TTL_LEN: usize = 8; //8 bytes is u64 max size
 ///
 pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
 const fn maxval(a: usize, b: usize) -> usize {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 ///There's no real hard limit, but if you need that many user fields,
 ///  you're probably doing something wrong.
@@ -177,7 +173,7 @@ impl PackTopology {
                         }
                         trash_content_slices_vec.push((shift, shift + le, le));
                         le
-                    }
+                    },
 
                     PackFields::IdConnect(le) => {
                         if idconn_slice.is_some() {
@@ -188,7 +184,7 @@ impl PackTopology {
                         }
                         idconn_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
 
                     PackFields::TrickyByte => {
                         if tricky_byte.is_some() {
@@ -197,7 +193,7 @@ impl PackTopology {
 
                         tricky_byte = Some(shift);
                         1 //tricky_byte = 1 byte
-                    }
+                    },
 
                     PackFields::Len(le) => {
                         if len_slice.is_some() {
@@ -209,7 +205,7 @@ impl PackTopology {
 
                         len_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PackFields::Counter(le) => {
                         if counter_slice.is_some() {
                             return Err("duplicate counter");
@@ -219,7 +215,7 @@ impl PackTopology {
                         }
                         counter_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PackFields::IdSender(le) => {
                         if id_of_sender_slice.is_some() {
                             return Err("duplicate IdSender");
@@ -229,7 +225,7 @@ impl PackTopology {
                         }
                         id_of_sender_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PackFields::IdReceiver(le) => {
                         if id_of_receiver_slice.is_some() {
                             return Err("duplicate idreceiver");
@@ -239,7 +235,7 @@ impl PackTopology {
                         }
                         id_of_receiver_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PackFields::HeadCRC(le) => {
                         if crc_slice.is_some() {
                             return Err("duplicate crc");
@@ -251,7 +247,7 @@ impl PackTopology {
 
                         crc_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                     PackFields::Nonce(le) => {
                         if le == 0 || le > MAXIMAL_NONCE_LEN {
                             return Err("nonce len is 0");
@@ -263,7 +259,7 @@ impl PackTopology {
 
                         nonce_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
 
                     PackFields::TTL(le) => {
                         if ttl_slice.is_some() {
@@ -275,7 +271,7 @@ impl PackTopology {
 
                         ttl_slice = Some((shift, shift + le, le));
                         le
-                    }
+                    },
                 })
                 .ok_or("header size exceeds addressable memory")?;
         }
@@ -311,7 +307,7 @@ impl PackTopology {
         match (id_of_sender_slice, id_of_receiver_slice) {
             (Some(_), None) | (None, Some(_)) => {
                 return Err("sender and receiver IDs must both exist or both be absent");
-            }
+            },
             _ => (),
         }
 

@@ -13,7 +13,7 @@ pub mod recv_queue {
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
     use crate::wt1types::{Cfcser, WSQueueErr};
-    use crate::{t1fields, w1utils, EXPCP};
+    use crate::{EXPCP, t1fields, w1utils};
     #[derive(Clone)]
     pub enum TcpSheme<'a> {
         OnePack(&'a PackTopology),
@@ -163,7 +163,7 @@ pub mod recv_queue {
                         // point for this single-topology case
                         x_group.get_from_u8(0)
                     }
-                }
+                },
 
                 TcpSheme::OnePack(x) => Some(x),
             };
@@ -479,7 +479,7 @@ pub mod recv_queue {
             return more elements than it has,
             can't be handled via Result<>, Sorry~~"#
                     );
-                }
+                },
             };
 
             self.k_add(size_of_ret);
@@ -506,7 +506,7 @@ pub mod recv_queue {
 
                     _ => {
                         return vec![].into_boxed_slice();
-                    }
+                    },
                 },
             );
 
@@ -660,7 +660,7 @@ pub mod recv_queue {
             match self.data_map.entry(id) {
                 std::collections::hash_map::Entry::Occupied(_) => {
                     return Err("this id elem is already in");
-                }
+                },
                 std::collections::hash_map::Entry::Vacant(entry) => {
                     entry.insert(ElemMy {
                         cl: None,
@@ -670,7 +670,7 @@ pub mod recv_queue {
                     });
                     self.elems_in_me =
                         EXPCP!(self.elems_in_me.checked_add(1), "err 1+ self.elems_in_me");
-                }
+                },
             };
 
             if let Some(lei) = self.of_max_p.as_ref().map(|x| x.0) {
@@ -1782,7 +1782,7 @@ pub mod recv_queue {
                     assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //1
                     assert!(xx.gap_in_queue());
                     assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //2
-                                                                                         //
+                    //
                     assert_eq!(xx.last_ctr_get(), None);
                     assert_eq!(xx.how_items_in_queue(), 2);
                     assert_eq!(xx.get_largest_ctr(), Some(4));
@@ -1791,7 +1791,7 @@ pub mod recv_queue {
                     assert!(xx.gap_in_queue());
                     assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
                     assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //5
-                                                                                         //
+                    //
                     assert_eq!(xx.last_ctr_get(), None);
                     assert_eq!(xx.how_items_in_queue(), 5);
                     assert_eq!(xx.get_largest_ctr(), Some(5));
@@ -2029,8 +2029,8 @@ pub mod recv_queue {
         use ::std::collections::HashMap;
 
         use crate::t0pology::{PackFields, PackTopology};
-        use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
         use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
+        use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSWaitQueue};
         #[test]
         fn test_base() {
             let fields = vec![PackFields::Counter(2)];

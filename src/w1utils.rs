@@ -141,7 +141,7 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
     for i in pos..end_pos {
         let byte_index: usize = i / 8; // Byte index
         let bit_offset: usize = 7 - (i % 8); // Bit offset (big-endian)
-                                             // extract the bit from the byte
+        // extract the bit from the byte
         let bit: u8 = (data[byte_index] >> bit_offset) & 1;
         // add the bit to the result
         result = (result << 1) | (bit as u32);
@@ -168,7 +168,7 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     for i in pos..end_pos {
         let byte_indx: usize = i / 8; // Byte index
         let bit_offst: usize = 7 - (i % 8); // Bit offset (big-endian)
-                                            // extract the current bit from the input bits
+        // extract the current bit from the input bits
         let bit: u32 = (bits_to_insert >> (end_pos - i - 1)) & 1;
         if bit == 1 {
             output[byte_indx] |= 1 << bit_offst; // set the bit

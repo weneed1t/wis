@@ -1,8 +1,8 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 // specific imports for clarity and to avoid namespace pollution
-use crate::t0pology::{PackFields, PackTopology};
 use crate::EXPCP;
+use crate::t0pology::{PackFields, PackTopology};
 
 const PRIMES: &[u16] = &[
     1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
@@ -706,12 +706,12 @@ mod tests_new {
     // use exact types from the t0pology module to avoid type mismatch errors
     use super::*;
     use crate::t0pology::{
-        PackFields,
         // PackTopology,
         MAXIMAL_CRC_LEN,
         MAXIMAL_NONCE_LEN,
         MAXIMAL_NUMS_USER_FIELDS,
         MAXIMAL_TTL_LEN,
+        PackFields,
     };
 
     // ========================================================================
@@ -1423,7 +1423,7 @@ mod tests_new {
             );
 
             match (&c.expected, result) {
-                (Ok(_), Ok(_)) => {}
+                (Ok(_), Ok(_)) => {},
                 (Err(exp), Err(act)) => assert_eq!(act, *exp, "case {}: error mismatch", i),
                 (Ok(_), Err(e)) => panic!("case {}: expected ok, got err({})", i, e),
                 (Err(exp), Ok(_)) => panic!("case {}: expected err({}), got ok", i, exp),

@@ -3,7 +3,7 @@
 #![deny(clippy::unwrap_used)]
 
 use crate::t0pology::PackTopology;
-use crate::{w1utils, EXPCP};
+use crate::{EXPCP, w1utils};
 
 #[derive(Debug, PartialEq, Clone)]
 ///static algorithm settings that do not change—in other words, constants
@@ -1643,25 +1643,29 @@ mod all_test {
         #[test]
         fn queue_accepts_values_within_capacity() {
             let topo = get_topol(Some(1), 50, None); // capacity = 126
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(100)
-                .maximum_length_fback_queue_packages(30)
-                .maximum_length_queue_unconfirmed_packages(60)
-                .max_num_attempts_resend_package(10)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(100)
+                    .maximum_length_fback_queue_packages(30)
+                    .maximum_length_queue_unconfirmed_packages(60)
+                    .max_num_attempts_resend_package(10)
+                    .build()
+                    .is_ok()
+            );
         }
 
         #[test]
         fn queue_accepts_values_at_capacity_boundary() {
             let topo = get_topol(Some(1), 50, None); // capacity = 126
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(126)
-                .maximum_length_fback_queue_packages(126)
-                .maximum_length_queue_unconfirmed_packages(126)
-                .max_num_attempts_resend_package(126)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(126)
+                    .maximum_length_fback_queue_packages(126)
+                    .maximum_length_queue_unconfirmed_packages(126)
+                    .max_num_attempts_resend_package(126)
+                    .build()
+                    .is_ok()
+            );
         }
 
         #[test]
@@ -1776,13 +1780,15 @@ mod all_test {
             );
 
             // udp == unconfirmed is allowed
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(100)
-                .maximum_length_fback_queue_packages(50)
-                .maximum_length_queue_unconfirmed_packages(100)
-                .max_num_attempts_resend_package(10)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(100)
+                    .maximum_length_fback_queue_packages(50)
+                    .maximum_length_queue_unconfirmed_packages(100)
+                    .max_num_attempts_resend_package(10)
+                    .build()
+                    .is_ok()
+            );
         }
 
         #[test]
@@ -1804,13 +1810,15 @@ mod all_test {
             );
 
             // fback == unconfirmed is allowed
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(200)
-                .maximum_length_fback_queue_packages(100)
-                .maximum_length_queue_unconfirmed_packages(100)
-                .max_num_attempts_resend_package(10)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(200)
+                    .maximum_length_fback_queue_packages(100)
+                    .maximum_length_queue_unconfirmed_packages(100)
+                    .max_num_attempts_resend_package(10)
+                    .build()
+                    .is_ok()
+            );
         }
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -1838,13 +1846,15 @@ mod all_test {
         #[test]
         fn works_with_larger_counter_capacity() {
             let topo = get_topol(Some(2), 50, None); // capacity = 32767
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(20000)
-                .maximum_length_fback_queue_packages(5000)
-                .maximum_length_queue_unconfirmed_packages(15000)
-                .max_num_attempts_resend_package(100)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(20000)
+                    .maximum_length_fback_queue_packages(5000)
+                    .maximum_length_queue_unconfirmed_packages(15000)
+                    .max_num_attempts_resend_package(100)
+                    .build()
+                    .is_ok()
+            );
         }
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -1853,14 +1863,16 @@ mod all_test {
         #[test]
         fn queue_works_with_ttl() {
             let topo = get_topol(Some(1), 50, Some(1));
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(100)
-                .maximum_length_fback_queue_packages(30)
-                .maximum_length_queue_unconfirmed_packages(60)
-                .max_num_attempts_resend_package(10)
-                .ttl_max_start_cost((255, 128, -1))
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(100)
+                    .maximum_length_fback_queue_packages(30)
+                    .maximum_length_queue_unconfirmed_packages(60)
+                    .max_num_attempts_resend_package(10)
+                    .ttl_max_start_cost((255, 128, -1))
+                    .build()
+                    .is_ok()
+            );
         }
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -1869,13 +1881,15 @@ mod all_test {
         #[test]
         fn recommended_ratio_not_enforced() {
             let topo = get_topol(Some(2), 50, None);
-            assert!(base_builder(&topo)
-                .maximum_length_udp_queue_packages(200)
-                .maximum_length_fback_queue_packages(50)
-                .maximum_length_queue_unconfirmed_packages(100) // 2x fback (not 3x)
-                .max_num_attempts_resend_package(10)
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .maximum_length_udp_queue_packages(200)
+                    .maximum_length_fback_queue_packages(50)
+                    .maximum_length_queue_unconfirmed_packages(100) // 2x fback (not 3x)
+                    .max_num_attempts_resend_package(10)
+                    .build()
+                    .is_ok()
+            );
         }
     }
 
@@ -2502,10 +2516,12 @@ mod all_test {
             let topo_without_ttl = get_topol(Some(1), 50, None);
 
             // ttl specified → must have ttl in topology
-            assert!(base_builder(&topo_with_ttl)
-                .ttl_max_start_cost((255, 128, -1))
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo_with_ttl)
+                    .ttl_max_start_cost((255, 128, -1))
+                    .build()
+                    .is_ok()
+            );
 
             let err = base_builder(&topo_without_ttl)
                 .ttl_max_start_cost((255, 128, -1))
@@ -2535,10 +2551,12 @@ mod all_test {
             );
 
             // start == max → allowed (code uses <, not <=)
-            assert!(base_builder(&topo)
-                .ttl_max_start_cost((255, 255, -1))
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .ttl_max_start_cost((255, 255, -1))
+                    .build()
+                    .is_ok()
+            );
         }
 
         #[test]
@@ -2588,28 +2606,36 @@ mod all_test {
             let topo = get_topol(Some(1), 50, Some(1));
 
             // positive, zero, negative – all allowed
-            assert!(base_builder(&topo)
-                .ttl_max_start_cost((255, 128, 1))
-                .build()
-                .is_ok());
-            assert!(base_builder(&topo)
-                .ttl_max_start_cost((255, 128, 0))
-                .build()
-                .is_ok());
-            assert!(base_builder(&topo)
-                .ttl_max_start_cost((255, 128, -1))
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .ttl_max_start_cost((255, 128, 1))
+                    .build()
+                    .is_ok()
+            );
+            assert!(
+                base_builder(&topo)
+                    .ttl_max_start_cost((255, 128, 0))
+                    .build()
+                    .is_ok()
+            );
+            assert!(
+                base_builder(&topo)
+                    .ttl_max_start_cost((255, 128, -1))
+                    .build()
+                    .is_ok()
+            );
         }
 
         #[test]
         fn ttl_with_larger_byte_capacity() {
             // 2‑byte ttl field → capacity up to 65535
             let topo = get_topol(Some(1), 50, Some(2));
-            assert!(base_builder(&topo)
-                .ttl_max_start_cost((65535, 32768, -1))
-                .build()
-                .is_ok());
+            assert!(
+                base_builder(&topo)
+                    .ttl_max_start_cost((65535, 32768, -1))
+                    .build()
+                    .is_ok()
+            );
         }
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
