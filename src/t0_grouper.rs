@@ -106,8 +106,8 @@ impl GroupTopology {
             let topology = if temp.is_some() {
                 panic!(
                     "This is an impossible situation. Create a ticket for the developers so they \
-                     can fix it, as there should be a check beforehand to ensure there won't be 2\
-                     any issues."
+                     can fix it, as there should be a check beforehand to ensure there won't be \
+                     2any issues."
                 )
             } else {
                 *temp = Some(PackTopology::new(tag_len, fields, data_save, tcp_mode)?);

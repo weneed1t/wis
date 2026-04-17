@@ -180,7 +180,7 @@ impl WSFileSplitter {
             how_much_left = EXPCP!(
                 self.remaining_len_of_send_file(),
                 "impossible state, if &mut self.send_file == Some() then \
-             self.remaining_len_of_rc_file() must also return Some(usize)"
+                 self.remaining_len_of_rc_file() must also return Some(usize)"
             );
         } else {
             slice.fill(0);
@@ -215,7 +215,7 @@ impl WSFileSplitter {
                 if first_nonzero > 8 {
                     return Err(
                         "error, the first non-zero byte of the file is greater than 8, the length \
-                     of u64 must be greater than 0 and less than 9 bytes  ",
+                         of u64 must be greater than 0 and less than 9 bytes  ",
                     );
                 }
                 slice
@@ -319,8 +319,10 @@ impl WSFileSplitter {
                         .head
                         .get(head_start..head_end)
                         .ok_or("invalid head range for length decode")?;
-                    let len_vec = w1utils::bytes_to_u64(head_len_slice)
-                        .map_err(|_| "impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.")?;
+                    let len_vec = w1utils::bytes_to_u64(head_len_slice).map_err(|_| {
+                        "impossible state Slice lengths and boundaries are static, verified at \
+                         compile time, and do not change dynamically."
+                    })?;
 
                     if len_vec > usize::MAX as u64 {
                         panic!(
@@ -386,10 +388,16 @@ impl WSFileSplitter {
                 //if the file is full and completely filled
 
                 //The file's payload is added to the array that needs to be returned.
-                let recv_data_opt = self.recv_data.take()
-                    .ok_or("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")?;
-                let completed_file = recv_data_opt.1
-                    .ok_or("Panic is an impossible state because this code only executes when self.recv_data is Some() and it has Some() vector and it's only called when the file is completely received, at this point the file should be longer than 0")?;
+                let recv_data_opt = self.recv_data.take().ok_or(
+                    "Panicking is an impossible state because this code is executed only when \
+                     self.recv_data is Some.",
+                )?;
+                let completed_file = recv_data_opt.1.ok_or(
+                    "Panic is an impossible state because this code only executes when \
+                     self.recv_data is Some() and it has Some() vector and it's only called when \
+                     the file is completely received, at this point the file should be longer \
+                     than 0",
+                )?;
 
                 reta.push(completed_file.into_boxed_slice());
 

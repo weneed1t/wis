@@ -2335,7 +2335,7 @@ pub mod recv_queue {
                 if time_soon % 500 == 0 {
                     println!(
                         "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent \
-                     confirmation:{:<5} |",
+                         confirmation:{:<5} |",
                         udp_que.how_items_in_queue(),
                         un_blear_ctr,
                         wait_que.len(),

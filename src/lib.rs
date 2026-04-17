@@ -16,16 +16,16 @@
 //! ## What it does
 //! * **Packet framing & fragmentation** – split arbitrary byte streams into packets and
 //!   reassemble them, even across unreliable channels.
-//! * **Pluggable cryptography** – any stream cipher + authentication tag (AEAD‑like)
-//!   can be integrated via simple traits (`EncWis`, `Noncer`, `Cfcser`, …).
+//! * **Pluggable cryptography** – any stream cipher + authentication tag (AEAD‑like) can
+//!   be integrated via simple traits (`EncWis`, `Noncer`, `Cfcser`, …).
 //! * **Flexible key exchange** – support for arbitrary handshake protocols (`HandMaker`).
 //! * **Intelligent queues** – handle out‑of‑order, duplicate, lost, or concatenated
 //!   packets (UDP / TCP‑like behaviours) with minimal overhead.
 //! * **Traffic obfuscation** – insert randomised “trash” fields, fake packets, and
 //!   variable lengths to resist DPI and traffic analysis.
 //! * **Time‑To‑Live (TTL)** – multi‑hop packet lifetime control.
-//! * **Minimal wire overhead** – as low as 18 bytes (16‑byte authentication tag,
-//!   1‑byte counter, 1‑byte control flags).
+//! * **Minimal wire overhead** – as low as 18 bytes (16‑byte authentication tag, 1‑byte
+//!   counter, 1‑byte control flags).
 //!
 //! ## What it does **not** do
 //! - Physical transmission (send/receive over sockets, Bluetooth, etc.).

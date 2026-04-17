@@ -818,6 +818,7 @@ impl WsConnectParamBuilder {
 //+-+_#_@!_#_!__!__#__$_%___Z^_+__-+_#_@!_#_!_!___#__$_%__Z^_++_-+_#_@!#_!__!__#__$_%___^_++__-_#_@!_#!__!_____$_%__Z^_++__+_#_@!_#___!___#_$_%__Z^
 //=============================================TEST================================TEST=======================TEST==================================
 #[cfg(test)]
+///for test
 pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
     WsConnectParamBuilder::new(topo)
         .max_ms_latency(100.0)

@@ -1,5 +1,7 @@
 use crate::t0pology::*;
-use crate::t1fields::*;
+use crate::t1fields::{
+    get_id_conn, get_id_sender_and_recv, get_len, get_tricky_byte, get_ttl, set_get_head_crc,
+};
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
@@ -100,7 +102,10 @@ where
         } else {
             None
         },
-        pack.get_mut(..len_of_pack).expect("impossible state since here len_of_pack should indicate the length of the packet and should be checked before being used"),
+        pack.get_mut(..len_of_pack).expect(
+            "impossible state since here len_of_pack should indicate the length of the packet and \
+             should be checked before being used",
+        ),
     ))
 }
 /// see method new
@@ -1328,6 +1333,7 @@ mod test_get_all_pub_info_of_package {
 
     use super::*;
     use crate::t1dumps_struct::DumpCfcser;
+    use crate::t1fields::{set_id_conn, set_id_sender_and_recv, set_len, set_tricky_byte, set_ttl};
     #[test]
     #[allow(clippy::len_zero)]
     fn t1() {

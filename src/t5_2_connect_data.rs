@@ -1,9 +1,6 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 
-use crate::t1fields::*;
-
-use crate::wt1types;
 include!("t5_connect_data.rs");
 
 impl<
@@ -20,7 +17,7 @@ impl<
     pub fn paste_file() {}
 
     pub fn send_pack() {}
-    pub fn recv_pack(&mut self, pack: &[u8], full_id_of_pack: &Identified) {
+    pub fn recv_pack(&mut self, _pack: &[u8], _full_id_of_pack: &Identified) {
         //
         //id cherck old
         //
