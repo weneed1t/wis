@@ -116,4 +116,11 @@ cargo fmt
 
 if a have crush
 rustup component add rust-analyzer
+
+?
+
+[![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
+[![License](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)](LICENSE)
+
+
 */
