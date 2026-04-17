@@ -1,4 +1,5 @@
-use std::usize;
+//#![deny(clippy::indexing_slicing)]
+//#![deny(clippy::unwrap_used)]
 
 /*
 pub enum WNotification {
@@ -70,6 +71,10 @@ impl SafeBuffer {
     /// returns the current length of written data.
     pub fn len(&self) -> usize {
         self.len
+    }
+    /// if len == 0 0 -> true
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     /// logically clears the buffer (physical bytes remain but are inaccessible).
@@ -394,6 +399,8 @@ impl Ema {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -495,6 +502,8 @@ mod tests {
 
 #[cfg(test)]
 mod length_tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -551,6 +560,8 @@ mod length_tests {
 
 #[cfg(test)]
 mod position_tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -652,8 +663,8 @@ mod tests_f32 {
             -0.0,
             1.0,
             -1.0,
-            3.14159,
-            -3.14159,
+            3.14119,
+            -3.14259,
             f32::MAX,
             f32::MIN,
             f32::INFINITY,
@@ -985,6 +996,8 @@ mod tests_ema {
 
 #[cfg(test)]
 mod tests_safe_buffer {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]

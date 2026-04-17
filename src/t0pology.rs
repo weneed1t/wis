@@ -1,3 +1,5 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 use crate::EXPCP;
 
 //using in other files
@@ -470,7 +472,8 @@ impl PackTopology {
         for i in (self.content_start_pos()..self.content_start_pos() + st_data.len())
             .zip(st_data.chars())
         {
-            layout[i.0] = i.1.to_string();
+            let t = layout.get_mut(i.0).expect("unreal state");
+            *t = i.1.to_string();
         }
 
         // Helper function to fill the layout with field representation
@@ -479,14 +482,18 @@ impl PackTopology {
         let mut vector_legend = vec![];
 
         fn fill_field(
-            layout: &mut Vec<String>,
+            layout: &mut [String],
             start: usize,
             end: usize,
             label: char,
             sf: &mut usize,
         ) {
-            layout[*sf + start..*sf + end].fill(label.to_string());
-            layout[*sf + end - 1] += "_";
+            let t = layout
+                .get_mut(*sf + start..*sf + end)
+                .expect("unreal state");
+            t.fill(label.to_string());
+            let t2 = layout.get_mut(*sf + end - 1).expect("unreal_state");
+            *t2 += "_";
         }
         {
             // Fill Counter
@@ -548,7 +555,8 @@ impl PackTopology {
                 vector_legend.push(format!(" [T - {} bytes] - TTL", lenme));
             }
 
-            layout[self.head_byte_pos()] = "@_".to_string();
+            let t2 = layout.get_mut(self.head_byte_pos()).expect("unreal state");
+            *t2 = "@_".to_string();
 
             // Convert the layout to a string and print it
             println!("|.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-.-|");
@@ -645,6 +653,9 @@ impl PackTopology {
 
 #[cfg(test)]
 mod tests {
+
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[cfg(test)]
@@ -1343,6 +1354,8 @@ mod tests {
 
 #[cfg(test)]
 mod tests_coverage_gaps {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
 
     use super::*;
 
@@ -1854,6 +1867,8 @@ mod tests_coverage_gaps {
 
 #[cfg(test)]
 mod packfields_tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // ========================================================================
@@ -1987,6 +2002,8 @@ mod packfields_tests {
 
 #[cfg(test)]
 mod test_equal {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // ========== validation: equal cases ==========

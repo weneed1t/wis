@@ -1,5 +1,10 @@
-use crate::t5_connect_data::*;
-use crate::wt1types::*;
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+
+use crate::t1fields::*;
+
+use crate::wt1types;
+include!("t5_connect_data.rs");
 
 impl<
     Tnoncer: Noncer,
@@ -15,7 +20,25 @@ impl<
     pub fn paste_file() {}
 
     pub fn send_pack() {}
-    pub fn recv_pack() {}
+    pub fn recv_pack(&mut self, pack: &[u8], full_id_of_pack: &Identified) {
+        //
+        //id cherck old
+        //
+        /*
+                let (ctr_frend, type_pack) = get_counter(
+                    pack,
+                    self.connect_param().pack_topology(),
+                    self.frend_ctr_fback,
+                    self.frend_ctr_data,
+                )
+                .unwrap();
+
+        match type_pack {
+            wt1types::PackType::Data => {},
+            wt1types::PackType::FBack => {},
+        }
+         */
+    }
 
     pub fn send_fake_pack() {}
 }

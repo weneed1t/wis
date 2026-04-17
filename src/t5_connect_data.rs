@@ -7,6 +7,7 @@ use crate::w1utils::SafeBuffer;
 use crate::wt1types::{
     Cfcser, EncWis, HandMaker, MyRole, Noncer, Randomer, Thrasher, WSQueueErr, WTypeErr,
 };
+
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
 #[derive(Clone, Debug)]
@@ -99,7 +100,7 @@ where
         } else {
             None
         },
-        &mut pack[..len_of_pack],
+        pack.get_mut(..len_of_pack).expect("impossible state since here len_of_pack should indicate the length of the packet and should be checked before being used"),
     ))
 }
 /// see method new
@@ -392,6 +393,8 @@ impl<
 
 #[cfg(test)]
 mod test_new {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use crate::t1dumps_struct::*;
     use crate::{t0pology, t4algo_param};
@@ -776,7 +779,7 @@ mod test_new {
         let ty2 = &te1.unwrap();
         assert_eq!(ty2.non_alloc_buf.as_ref().unwrap().capacity(), result.mtu());
 
-        assert_eq!(ty2.was_killed, false);
+        assert!(!ty2.was_killed);
 
         assert_eq!(ty2.nonce_gener.as_ref().unwrap().v, vec![1, 1, 1, 1])
     }
@@ -892,7 +895,7 @@ mod test_new {
         let ty2 = &te1.unwrap();
         assert_eq!(ty2.non_alloc_buf.as_ref(), None);
 
-        assert_eq!(ty2.was_killed, false);
+        assert!(!ty2.was_killed);
 
         assert_eq!(ty2.user_field_gener.as_ref().unwrap().v, vec![4, 4, 4, 4]);
     }
@@ -1320,21 +1323,25 @@ mod test_new {
 
 #[cfg(test)]
 mod test_get_all_pub_info_of_package {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
     use crate::t1dumps_struct::DumpCfcser;
     #[test]
+    #[allow(clippy::len_zero)]
     fn t1() {
         let fields = vec![PackFields::Counter(3)];
 
-        for a_len in vec![vec![PackFields::Len(4)], vec![]] {
-            for a_sr in vec![
+        for a_len in [vec![PackFields::Len(4)], vec![]] {
+            for a_sr in [
                 vec![PackFields::IdSender(6), PackFields::IdReceiver(6)],
                 vec![],
             ] {
-                for a_crc in vec![vec![PackFields::HeadCRC(4)], vec![]] {
-                    for a_tb in vec![vec![PackFields::TrickyByte], vec![]] {
-                        for a_ttl in vec![vec![PackFields::TTL(3)], vec![]] {
-                            for a_idc in vec![vec![PackFields::IdConnect(7)], vec![]] {
+                for a_crc in [vec![PackFields::HeadCRC(4)], vec![]] {
+                    for a_tb in [vec![PackFields::TrickyByte], vec![]] {
+                        for a_ttl in [vec![PackFields::TTL(3)], vec![]] {
+                            for a_idc in [vec![PackFields::IdConnect(7)], vec![]] {
                                 //
                                 let fields: Vec<PackFields> = fields
                                     .clone()

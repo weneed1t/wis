@@ -3,6 +3,8 @@
 //! supports f64, u64, string, bytes, single byte, and bool.
 //! all numeric types use big-endian hex representation.
 //! all errors are returned as static string slices.
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 
 use std::collections::HashSet;
 
@@ -124,10 +126,11 @@ impl Codec {
             return Err("u64 value too large (more than 8 bytes)");
         }
         let mut padded = [0u8; 8];
-        padded[8 - bytes.len()..].copy_from_slice(&bytes);
+        let start_idx = 8 - bytes.len();
+        let dest_slice = padded.get_mut(start_idx..).ok_or("invalid padding range")?;
+        dest_slice.copy_from_slice(&bytes);
         Ok(Value::Unsigned(u64::from_be_bytes(padded)))
     }
-
     fn parse_string(hex_val: &str) -> Result<Value, &'static str> {
         if hex_val.is_empty() || !hex_val.len().is_multiple_of(2) {
             return Err("string hex must be non‑empty and have even length");
@@ -156,9 +159,9 @@ impl Codec {
             return Err("single byte must be exactly 2 hex chars");
         }
         let bytes = Self::hex_decode(hex_val)?;
-        Ok(Value::Byte(bytes[0]))
+        let byte_val = *bytes.first().ok_or("empty bytes after decode")?;
+        Ok(Value::Byte(byte_val))
     }
-
     fn parse_bool(hex_val: &str) -> Result<Value, &'static str> {
         match hex_val.to_ascii_lowercase().as_str() {
             "true" => Ok(Value::Bool(true)),
@@ -252,16 +255,18 @@ impl Codec {
             return vec![0];
         }
         let leading = n.leading_zeros() as usize / 8;
-        n.to_be_bytes()[leading..].to_vec()
+        let be_bytes = n.to_be_bytes();
+        be_bytes.get(leading..).unwrap_or(&[]).to_vec()
     }
 
-    /// encodes bytes as lowercase hex.
     fn hex_encode(bytes: &[u8]) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(bytes.len() * 2);
         for &b in bytes {
-            out.push(HEX[(b >> 4) as usize] as char);
-            out.push(HEX[(b & 0x0f) as usize] as char);
+            let high = HEX.get((b >> 4) as usize).copied().unwrap_or(b'0');
+            let low = HEX.get((b & 0x0f) as usize).copied().unwrap_or(b'0');
+            out.push(high as char);
+            out.push(low as char);
         }
         out
     }
@@ -269,6 +274,8 @@ impl Codec {
 //=======================================================================================================================================================================
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -299,7 +306,7 @@ mod tests {
         let original = vec![
             Field {
                 name: "f".to_string(),
-                value: Value::Float(3.1415),
+                value: Value::Float(3.14115),
             },
             Field {
                 name: "u".to_string(),

@@ -1,18 +1,20 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+
 use crate::t0pology::PackTopology;
 use crate::wt1types::*;
 use crate::{t0pology, w1utils};
 ///get tricky byte
 pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
-        if pack.len() <= star {
-            return Err(WTypeErr::LenSizeErr("pack len non correct"));
-        }
-        return Ok(pack[star]);
+        Ok(*pack
+            .get(star)
+            .ok_or(WTypeErr::LenSizeErr("tricky_byte pack len so small"))?)
+    } else {
+        Err(WTypeErr::CompileFieldsErr(
+            "tricky_byte not in PackTopology",
+        ))
     }
-
-    Err(WTypeErr::CompileFieldsErr(
-        "tricky_byte not in PackTopology",
-    ))
 }
 
 ///set tricky byte
@@ -22,10 +24,10 @@ pub fn set_tricky_byte(
     tricky_byte: u8,
 ) -> Result<(), WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
-        if pack.len() <= star {
-            return Err(WTypeErr::LenSizeErr("pack len non correct"));
-        }
-        pack[star] = tricky_byte;
+        let temp = pack
+            .get_mut(star)
+            .ok_or(WTypeErr::LenSizeErr("pack len non correct"))?;
+        *temp = tricky_byte;
         return Ok(());
     }
 
@@ -71,35 +73,64 @@ where
             return Err(WTypeErr::LenSizeErr("len >  t2page::MAXIMAL_CRC_LEN"));
         }
 
-        if pack.len() <= topology.encrypt_start_pos() || pack.len() <= end {
+        let encrypt_start_pos = topology.encrypt_start_pos();
+        if pack.len() <= encrypt_start_pos || pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let head: &mut [u8] = &mut pack[..topology.encrypt_start_pos()];
+
+        let head_end = encrypt_start_pos;
+        let head = pack
+            .get_mut(..head_end)
+            .ok_or(WTypeErr::LenSizeErr("pack len non correct"))?;
 
         let mut temp_old = [0_u8; t0pology::MAXIMAL_CRC_LEN];
         let mut temp_new = [0_u8; t0pology::MAXIMAL_CRC_LEN];
 
         {
-            let head_sl: &mut [u8] = &mut head[start..end];
-            temp_old[..len].copy_from_slice(head_sl); //temp = crc head
-            head_sl.fill(0); // crc in head = 0
+            let head_sl = head
+                .get_mut(start..end)
+                .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
+            let temp_old_slice = temp_old
+                .get_mut(..len)
+                .ok_or(WTypeErr::LenSizeErr("temp_old slice error"))?;
+            temp_old_slice.copy_from_slice(head_sl);
+            head_sl.fill(0);
         }
 
-        crcfn(head, &mut temp_new[..len]).map_err(WTypeErr::PackageDamaged)?; //
+        let temp_new_slice = temp_new
+            .get_mut(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp_new slice error"))?;
+        crcfn(head, temp_new_slice).map_err(WTypeErr::PackageDamaged)?;
 
-        head[start..end].copy_from_slice(if create_new_crc_summ {
-            &temp_new[..len] //crc
+        let target_slice = head
+            .get_mut(start..end)
+            .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
+        let source_slice = if create_new_crc_summ {
+            temp_new
+                .get(..len)
+                .ok_or(WTypeErr::LenSizeErr("temp_new get error"))?
         } else {
-            &temp_old[..len] //crc
-        });
-        return Ok(temp_new[..len] == temp_old[..len]);
+            temp_old
+                .get(..len)
+                .ok_or(WTypeErr::LenSizeErr("temp_old get error"))?
+        };
+
+        target_slice.copy_from_slice(source_slice);
+
+        let new_slice = temp_new
+            .get(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp_new compare error"))?;
+        let old_slice = temp_old
+            .get(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp_old compare error"))?;
+
+        return Ok(new_slice == old_slice);
     }
 
     Err(WTypeErr::CompileFieldsErr(
         "head_crc_slice not in PackTopology",
     ))
 }
-
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
 /// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed
 /// ttl, and is_start_ttl flag<br> returns Ok(()) on success, Err(&'static str) on
@@ -126,6 +157,10 @@ pub fn set_ttl(
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
 
+        let ttl_slice = pack
+            .get_mut(start..end)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+
         let temp = w1utils::add_u64_i64(
             if is_start_ttl {
                 if ttl_i_edit < 0 {
@@ -136,8 +171,7 @@ pub fn set_ttl(
                 }
                 0
             } else {
-                let ttl_before =
-                    w1utils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
+                let ttl_before = w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
                 if ttl_before > ttl_max {
                     return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
                 }
@@ -147,21 +181,23 @@ pub fn set_ttl(
             true,
         )
         .map_err(WTypeErr::PackageDamaged)?;
+
         if ttl_max <= temp {
             return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
         }
+
         if temp > w1utils::len_byte_maximal_capacity_check(len).0 {
             return Err(WTypeErr::PackageDamaged(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
         }
-        w1utils::u64_to_1_8bytes(temp, &mut pack[start..end]).map_err(WTypeErr::WorkTimeErr)?;
+
+        w1utils::u64_to_1_8bytes(temp, ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok(temp);
     }
     Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
-
 ///
 /// get_ttl reads the current ttl value from the packet header
 /// returns Ok(u64) if ttl field exists and is valid, Err otherwise
@@ -174,7 +210,10 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        return w1utils::bytes_to_u64(&pack[start..end]).map_err(WTypeErr::WorkTimeErr);
+        let ttl_slice = pack
+            .get(start..end)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+        return w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr);
     }
     Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
@@ -209,12 +248,13 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
         ));
     }
 
-    w1utils::u64_to_1_8bytes(pack.len() as u64, &mut pack[sls.0..sls.1])
-        .map_err(WTypeErr::WorkTimeErr)?;
+    let len_slice = pack
+        .get_mut(sls.0..sls.1)
+        .ok_or(WTypeErr::LenSizeErr("invalid len slice range"))?;
+    w1utils::u64_to_1_8bytes(plen as u64, len_slice).map_err(WTypeErr::WorkTimeErr)?;
 
     Ok(())
 }
-
 /// get_len reads the declared packet length from the header
 /// takes immutable packet data and topology, returns Result<usize, &'static str>
 /// extracts the length value from the slice defined by len_slice in topology
@@ -228,7 +268,10 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
     if pack.len() <= sls.1 {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
-    Ok(w1utils::bytes_to_u64(&pack[sls.0..sls.1]).map_err(WTypeErr::WorkTimeErr)? as usize)
+    let len_slice = pack
+        .get(sls.0..sls.1)
+        .ok_or(WTypeErr::LenSizeErr("invalid len slice range"))?;
+    Ok(w1utils::bytes_to_u64(len_slice).map_err(WTypeErr::WorkTimeErr)? as usize)
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
@@ -256,11 +299,11 @@ pub fn set_id_conn(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1",
             ));
         }
-        w1utils::u64_to_1_8bytes(
-            (id_conn << 1) | role.sate_to_bit() as u64,
-            &mut pack[x.0..x.1],
-        )
-        .map_err(WTypeErr::WorkTimeErr)?;
+        let id_slice = pack
+            .get_mut(x.0..x.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid id_conn slice range"))?;
+        w1utils::u64_to_1_8bytes((id_conn << 1) | role.sate_to_bit() as u64, id_slice)
+            .map_err(WTypeErr::WorkTimeErr)?;
         return Ok(());
     }
 
@@ -279,7 +322,10 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let reta = w1utils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+        let id_slice = pack
+            .get(x.0..x.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid id_conn slice range"))?;
+        let reta = w1utils::bytes_to_u64(id_slice).map_err(WTypeErr::WorkTimeErr)?;
         return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
     }
     Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
@@ -313,10 +359,16 @@ pub fn set_id_sender_and_recv(
             ));
         }
 
-        w1utils::u64_to_1_8bytes(id_recv, &mut pack[x_r.0..x_r.1])
-            .map_err(WTypeErr::WorkTimeErr)?;
-        w1utils::u64_to_1_8bytes(id_sender, &mut pack[x_s.0..x_s.1])
-            .map_err(WTypeErr::WorkTimeErr)?;
+        let recv_slice = pack
+            .get_mut(x_r.0..x_r.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid receiver id slice range"))?;
+        w1utils::u64_to_1_8bytes(id_recv, recv_slice).map_err(WTypeErr::WorkTimeErr)?;
+
+        let sender_slice = pack
+            .get_mut(x_s.0..x_s.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid sender id slice range"))?;
+        w1utils::u64_to_1_8bytes(id_sender, sender_slice).map_err(WTypeErr::WorkTimeErr)?;
+
         return Ok(());
     }
 
@@ -343,9 +395,17 @@ pub fn get_id_sender_and_recv(
         if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
+
+        let sender_slice = pack
+            .get(x_s.0..x_s.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid sender id slice range"))?;
+        let receiver_slice = pack
+            .get(x_r.0..x_r.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid receiver id slice range"))?;
+
         return Ok((
-            w1utils::bytes_to_u64(&pack[x_s.0..x_s.1]).map_err(WTypeErr::WorkTimeErr)?,
-            w1utils::bytes_to_u64(&pack[x_r.0..x_r.1]).map_err(WTypeErr::WorkTimeErr)?,
+            w1utils::bytes_to_u64(sender_slice).map_err(WTypeErr::WorkTimeErr)?,
+            w1utils::bytes_to_u64(receiver_slice).map_err(WTypeErr::WorkTimeErr)?,
         ));
     }
     Err(WTypeErr::CompileFieldsErr(
@@ -377,7 +437,10 @@ pub fn set_counter(
 
         let pack_ctr = ((max_cap & countr) << 1) | my_type.sate_to_bit() as u64;
 
-        w1utils::u64_to_1_8bytes(pack_ctr, &mut pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+        let counter_slice = pack
+            .get_mut(x.0..x.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid counter slice range"))?;
+        w1utils::u64_to_1_8bytes(pack_ctr, counter_slice).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok((pack_ctr, max_cap));
     }
@@ -419,7 +482,12 @@ pub fn get_counter(
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        let ctr_in_pack = w1utils::bytes_to_u64(&pack[x.0..x.1]).map_err(WTypeErr::WorkTimeErr)?;
+
+        let counter_slice = pack
+            .get(x.0..x.1)
+            .ok_or(WTypeErr::LenSizeErr("invalid counter slice range"))?;
+        let ctr_in_pack = w1utils::bytes_to_u64(counter_slice).map_err(WTypeErr::WorkTimeErr)?;
+
         let (max_cap, _) = w1utils::len_byte_maximal_capacity_check(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
@@ -495,8 +563,11 @@ where
                 return Err(WTypeErr::LenSizeErr("pack len non correct"));
             }
 
-            field_gen(&mut pack[*start..*end], counter, full_len, i, topology)
-                .map_err(WTypeErr::PackageDamaged)?; //
+            let field_slice = pack
+                .get_mut(*start..*end)
+                .ok_or(WTypeErr::LenSizeErr("invalid user field slice range"))?;
+            field_gen(field_slice, counter, full_len, i, topology)
+                .map_err(WTypeErr::PackageDamaged)?;
         }
         return Ok(());
     }
@@ -577,24 +648,57 @@ where
     // TTL and HEADCRC do not affect data integrity and can be changed.
     let mut ttl_vec_temp_mem = [0_u8; t0pology::MAXIMAL_TTL_LEN];
     let mut crc_vec_temp_mem = [0_u8; t0pology::MAXIMAL_CRC_LEN];
+
     if let Some((s, e, len)) = topology.ttl_slice() {
-        ttl_vec_temp_mem[..len].copy_from_slice(&pack[s..e]);
-        pack[s..e].fill(0);
+        let ttl_slice = pack
+            .get(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+        let temp_ttl_slice = ttl_vec_temp_mem
+            .get_mut(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp ttl slice error"))?;
+        temp_ttl_slice.copy_from_slice(ttl_slice);
+
+        let ttl_mut_slice = pack
+            .get_mut(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+        ttl_mut_slice.fill(0);
     }
 
     if let Some((s, e, len)) = topology.head_crc_slice() {
-        crc_vec_temp_mem[..len].copy_from_slice(&pack[s..e]);
-        pack[s..e].fill(0);
+        let crc_slice = pack
+            .get(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
+        let temp_crc_slice = crc_vec_temp_mem
+            .get_mut(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp crc slice error"))?;
+        temp_crc_slice.copy_from_slice(crc_slice);
+
+        let crc_mut_slice = pack
+            .get_mut(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
+        crc_mut_slice.fill(0);
     }
 
     crypt_procress(is_encrypt, topology, p_len, enc_struct, pack, countr)?;
 
     if let Some((s, e, len)) = topology.ttl_slice() {
-        pack[s..e].copy_from_slice(&ttl_vec_temp_mem[..len]);
+        let ttl_mut_slice = pack
+            .get_mut(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+        let temp_ttl_slice = ttl_vec_temp_mem
+            .get(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp ttl slice error"))?;
+        ttl_mut_slice.copy_from_slice(temp_ttl_slice);
     }
 
     if let Some((s, e, len)) = topology.head_crc_slice() {
-        pack[s..e].copy_from_slice(&crc_vec_temp_mem[..len]);
+        let crc_mut_slice = pack
+            .get_mut(s..e)
+            .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
+        let temp_crc_slice = crc_vec_temp_mem
+            .get(..len)
+            .ok_or(WTypeErr::LenSizeErr("temp crc slice error"))?;
+        crc_mut_slice.copy_from_slice(temp_crc_slice);
     }
 
     Ok(())
@@ -610,20 +714,30 @@ fn crypt_procress<Tenc: EncWis>(
 ) -> Result<(), WTypeErr> {
     let enc_start = topology.encrypt_start_pos();
     let enc_end = p_len - topology.tag_len();
-    //Previously, a check was performed to ensure that p_len < topology.total_minimal_len(),
-    //which means that the packet length is large enough so that the operation of splitting
+
+    // Previously, a check was performed to ensure that p_len < topology.total_minimal_len(),
+    // which means that the packet length is large enough so that the operation of splitting
     // into slays does not cause panic.
     let (free_data, mac_only) = pack.split_at_mut(enc_end);
     let (head, to_enc_only) = free_data.split_at_mut(enc_start);
 
-    let nonce = topology.nonce_slice().map(|x| &head[x.0..x.1]);
+    let nonce = if let Some(x) = topology.nonce_slice() {
+        Some(
+            head.get(x.0..x.1)
+                .ok_or(WTypeErr::LenSizeErr("invalid nonce slice range"))?,
+        )
+    } else {
+        None
+    };
+
+    let counter_val = countr.unwrap_or(0);
 
     if is_encrypt {
         enc_struct
-            .encrypt(head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+            .encrypt(head, to_enc_only, mac_only, counter_val, nonce)
             .map_err(WTypeErr::WorkTimeErr)?;
     } else if enc_struct
-        .decrypt(head, to_enc_only, mac_only, countr.unwrap_or(0), nonce)
+        .decrypt(head, to_enc_only, mac_only, counter_val, nonce)
         .map_err(WTypeErr::WorkTimeErr)?
         .is_damaged()
     {
@@ -647,9 +761,12 @@ fn if_encrypt<Tnoncer: Noncer>(
 ) -> Result<(), WTypeErr> {
     let (n, c) = (
         if let Some(x) = topology.nonce_slice() {
+            let nonce_slice = pack
+                .get_mut(x.0..x.1)
+                .ok_or(WTypeErr::LenSizeErr("invalid nonce slice range"))?;
             nonce_gener
                 .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
-                .set_nonce(&mut pack[x.0..x.1])
+                .set_nonce(nonce_slice)
                 .map_err(WTypeErr::WorkTimeErr)?;
             1
         } else {
@@ -679,6 +796,8 @@ fn if_encrypt<Tnoncer: Noncer>(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use crate::t1dumps_struct::*;
 
@@ -694,7 +813,7 @@ mod tests {
 
         let result = PackTopology::new(59, &fields, true, false).unwrap();
 
-        let mut tets1 = vec![0; 100];
+        let mut tets1 = [0; 100];
 
         assert_eq!(set_tricky_byte(&mut tets1[..], &result, 7), Ok(()));
 
@@ -707,7 +826,7 @@ mod tests {
 
         assert_eq!(
             get_tricky_byte(&tets1[..100 - 60], &result),
-            Err(WTypeErr::LenSizeErr("pack len non correct"))
+            Err(WTypeErr::LenSizeErr("tricky_byte pack len so small"))
         );
 
         for i in 0..15 {
@@ -1477,7 +1596,7 @@ mod tests {
         let result1 = PackTopology::new(5, &fields1, true, false).unwrap();
         let result2 = PackTopology::new(5, &fields2, true, false).unwrap();
 
-        let mut bb = vec![0; 100];
+        let mut bb = [0; 100];
 
         assert_eq!(
             get_id_sender_and_recv(&bb[..result1.id_of_receiver_slice().unwrap().1], &result1),

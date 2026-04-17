@@ -1,6 +1,9 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 // specific imports for clarity and to avoid namespace pollution
 use crate::EXPCP;
 use crate::t0pology::{PackFields, PackTopology};
+
 const PRIMES: &[u16] = &[
     1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
     97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191,
@@ -96,12 +99,14 @@ impl GroupTopology {
             vec![None; Self::find_minimal_table_size(input_topoler)?].into_boxed_slice();
 
         for (fields, key) in input_topoler.iter() {
-            let temp = &mut topologs[*key as usize % topologs.len()];
+            let temp = topologs
+                .get_mut(*key as usize % topologs.len())
+                .expect("An impossible condition due to modulo division");
 
             let topology = if temp.is_some() {
                 panic!(
                     "This is an impossible situation. Create a ticket for the developers so they \
-                     can fix it, as there should be a check beforehand to ensure there won't be \
+                     can fix it, as there should be a check beforehand to ensure there won't be 2\
                      any issues."
                 )
             } else {
@@ -287,7 +292,10 @@ impl GroupTopology {
     }
     ///Get the PackTopology diagram by its ID (byte)
     pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
-        self.topologs[trikly_byte as usize % self.topologs.len()].as_ref()
+        self.topologs
+            .get(trikly_byte as usize % self.topologs.len())
+            .expect("impossible state since here the index is taken in the length model")
+            .as_ref()
     }
 
     /// finds the smallest prime table size (from a predefined list) that can accommodate
@@ -324,22 +332,26 @@ impl GroupTopology {
             return Err("input length exceeds maximum supported prime (255)");
         }
 
-        //let mut for_debug = 99999;
-
         let start_idx = PRIMES.partition_point(|&p| (p as usize) < target_len);
-        for &size in &PRIMES[start_idx..] {
+
+        for &size in PRIMES
+            .get(start_idx..)
+            .ok_or("no collision‑free prime size found (all have conflicts)")?
+        {
             let mut seen = vec![false; size as usize];
             let mut ok = true;
             for (_, val) in input_topoler {
                 let h = *val as usize % size as usize;
-                if seen[h] {
+                if let Some(seen_val) = seen.get_mut(h) {
+                    if *seen_val {
+                        ok = false;
+                        break;
+                    }
+                    *seen_val = true;
+                } else {
                     ok = false;
-
-                    //for_debug = h;
-
                     break;
                 }
-                seen[h] = true;
             }
             if ok {
                 return Ok(size as usize);
@@ -457,6 +469,8 @@ impl GroupTopology {
 
 #[cfg(test)]
 mod tests_find_minimal_table_size {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // ---------- deterministic pseudo‑random generator (xorshift) ----------
@@ -686,6 +700,9 @@ mod tests_find_minimal_table_size {
 //
 #[cfg(test)]
 mod tests_new {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+
     // use exact types from the t0pology module to avoid type mismatch errors
     use super::*;
     use crate::t0pology::{
@@ -1562,6 +1579,9 @@ mod tests_new {
 
 #[cfg(test)]
 mod test_get {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     #[test]
@@ -1608,14 +1628,12 @@ mod test_get {
 
         println!("lens {:?}", print_len);
     }
-
     #[test]
     fn test_get_no_one() {
-        let mut vecta = vec![];
-        vecta.push((
+        let vecta = [(
             vec![PackFields::Counter(1), PackFields::TrickyByte].into_boxed_slice(),
             113,
-        ));
+        )];
 
         let tester = GroupTopology::new(&vecta[..], 30, true, false).unwrap();
 
@@ -1810,6 +1828,9 @@ mod test_get {
 
 #[cfg(test)]
 mod flag_verification_tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+
     use super::*;
 
     /// Helper to create a valid field list for a single topology.

@@ -1,3 +1,5 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 use crate::w1utils;
 use crate::wt1types::InFile;
 
@@ -94,16 +96,19 @@ impl WSFileSplitter {
         // |-----------------------|---------------------------------------|------------------|
         // | 1 byte length counter |length of user data (from 1 to 8 bytes)|bytes of user data|
         // |-----------------------|---------------------------------------|------------------|
-        new_file.head[0] = cap_head_of_rc as u8;
-        w1utils::u64_to_1_8bytes(
-            rc_file.len() as u64,
-            &mut new_file.head[1..1 + cap_head_of_rc],
-        )?;
+
+        *new_file.head.get_mut(0).ok_or("invalid head index 0")? = cap_head_of_rc as u8;
+
+        let head_slice = new_file
+            .head
+            .get_mut(1..1 + cap_head_of_rc)
+            .ok_or("invalid head range for length encoding")?;
+
+        w1utils::u64_to_1_8bytes(rc_file.len() as u64, head_slice)?;
 
         self.send_file = Some((new_file, rc_file));
         Ok(())
     }
-
     ///file_to_slices accepts multiple slices of varying lengths and copies file data
     /// into them.  IMPORTANT: file_to_slices DOES NOT MARK THE SEQUENCE OF SLICES IN
     /// ANY WAY!  THE ORDER IN WHICH THE SLICES WERE TRANSFERRED
@@ -123,51 +128,64 @@ impl WSFileSplitter {
     /// file_to_slices() == None, it means the file is finished.
     pub fn file_to_slices(&mut self, slice: &mut [u8]) -> Option<usize> {
         let mut how_much_left = 0;
-        //if the file exists
-        if let Some(rfile) = &mut self.send_file {
-            //slice with truncated header bytes
 
-            let slice_after_head =/*copy head*/ if rfile.0.ptr_in_head < rfile.0.len_of_head/*if not all of the head is copied*/ {
-                //checking which is smaller, the slice length or the remaining bytes in the header
-                let min_len = min(slice.len(), rfile.0.len_of_head - rfile.0.ptr_in_head);
-                //copying bytes from the header to the slice
-                slice[..min_len].copy_from_slice(&rfile.0.head[rfile.0.ptr_in_head..rfile.0.ptr_in_head + min_len] );
-                //adding the number of bytes copied from the header to the copied bytes pointer
+        if let Some(rfile) = &mut self.send_file {
+            let slice_after_head = if rfile.0.ptr_in_head < rfile.0.len_of_head {
+                let remaining_head = rfile.0.len_of_head - rfile.0.ptr_in_head;
+                let min_len = min(slice.len(), remaining_head);
+
+                match (
+                    slice.get_mut(..min_len),
+                    rfile
+                        .0
+                        .head
+                        .get(rfile.0.ptr_in_head..rfile.0.ptr_in_head + min_len),
+                ) {
+                    (Some(dest), Some(src)) => dest.copy_from_slice(src),
+                    _ => panic!("invalid slice or head range for header copy"),
+                }
+
                 rfile.0.ptr_in_head += min_len;
-                //return the slice with the already filled part truncated to slice_after_head
-                &mut slice[min_len..]
+                match slice.get_mut(min_len..) {
+                    Some(s) => s,
+                    None => panic!("invalid slice range after header copy"),
+                }
             } else {
-                //if the head has already been copied, return the untouched slice to slice_after_head
                 slice
             };
-            //body
+
             if rfile.0.ptr_in_body < rfile.1.len() {
-                //checking which is smaller, the slice length or the remaining bytes in the body
-                let min_len = min(slice_after_head.len(), rfile.1.len() - rfile.0.ptr_in_body);
-                //If there are any untouched bytes left at the end of the slice,
-                // they must be filled with zeros to clear them of user garbage.
+                let remaining_body = rfile.1.len() - rfile.0.ptr_in_body;
+                let min_len = min(slice_after_head.len(), remaining_body);
+
                 if min_len < slice_after_head.len() {
-                    slice_after_head[min_len..].fill(0);
+                    match slice_after_head.get_mut(min_len..) {
+                        Some(rest) => rest.fill(0),
+                        None => panic!("invalid slice range for zero fill"),
+                    }
                 }
-                //copying bytes from the body to the slice
-                slice_after_head[..min_len]
-                    .copy_from_slice(&rfile.1[rfile.0.ptr_in_body..rfile.0.ptr_in_body + min_len]);
+
+                match (
+                    slice_after_head.get_mut(..min_len),
+                    rfile
+                        .1
+                        .get(rfile.0.ptr_in_body..rfile.0.ptr_in_body + min_len),
+                ) {
+                    (Some(dest), Some(src)) => dest.copy_from_slice(src),
+                    _ => panic!("invalid slice or body range for body copy"),
+                }
                 rfile.0.ptr_in_body += min_len;
             }
-            //rfile.0.len_of_head - rfile.0.ptr_in_head + (file.1.len() -rfile.0.ptr_in_body )
+
             how_much_left = EXPCP!(
                 self.remaining_len_of_send_file(),
                 "impossible state, if &mut self.send_file == Some() then \
-                 self.remaining_len_of_rc_file() must also return Some(usize)"
+             self.remaining_len_of_rc_file() must also return Some(usize)"
             );
         } else {
-            //If the file does not exist,
-            // fill the entire slice with zeros so that there
-            // is no garbage in it that could have been left by the user.
-            slice.fill(0)
+            slice.fill(0);
         }
-        //if there are no more bytes left in the file, then the file will be deleted from the
-        // structure
+
         if 0 == how_much_left {
             self.send_file = None;
             return None;
@@ -191,51 +209,49 @@ impl WSFileSplitter {
         1 byte of header length + (1-8 bytes of file body length).
         and returns a slice with the truncated initial part
         that it has already copied so as not to truncate it in the future.*/
-        //
-        //
-
         let slice = if self.recv_data.is_none() {
-            //if it is a new file, we look for the first non-zero byte; if the file is open, we
-            // return the slice unchanged
             if let Some(index) = slice.iter().position(|&x| x > 0) {
-                if slice[index] > 8 {
+                let first_nonzero = *slice.get(index).ok_or("invalid index after position")?;
+                if first_nonzero > 8 {
                     return Err(
                         "error, the first non-zero byte of the file is greater than 8, the length \
-                         of u64 must be greater than 0 and less than 9 bytes  ",
+                     of u64 must be greater than 0 and less than 9 bytes  ",
                     );
                 }
-                //trimming the slice so that it starts with useful data (head)
-                &slice[index..]
+                slice
+                    .get(index..)
+                    .ok_or("invalid slice range after index")?
             } else {
                 return Ok(None);
             }
         } else {
             slice
         };
-        //just in case
+
         if slice.is_empty() {
             return Ok(None);
         }
-        //
+
         if self.recv_data.is_none() {
+            let len_of_head = *slice.first().ok_or("empty slice for header length")? as usize;
+
             self.recv_data = Some((
                 DataDrain {
-                    len_of_head: slice[0] as usize, //use first byte
+                    len_of_head,
                     ptr_in_body: 0,
-                    ptr_in_head: 1, //len_of_head is first byte
+                    ptr_in_head: 1,
                     head: [0; FILE_HEAD_LEN],
                 },
                 None,
             ));
-            //If the slice length is 1 and this is the beginning of the file,
-            // then 1 byte was used as the first byte in the header.
+
             if 1 == slice.len() {
                 Ok(None)
             } else {
-                Ok(Some(&slice[1..])) //index 0 is a len of head slice[1..len_of_head+1] is a u64
+                Ok(slice.get(1..))
             }
         } else {
-            Ok(Some(slice)) //index 0 is a len of head slice[1..len_of_head+1] is a u64
+            Ok(Some(slice))
         }
     }
 
@@ -266,13 +282,25 @@ impl WSFileSplitter {
                         slice.len(),
                         recv_me.0.len_of_head + 1 - recv_me.0.ptr_in_head,
                     );
+
+                    let head_start = recv_me.0.ptr_in_head;
+                    let head_end = head_start + min_len;
+                    let head_slice = recv_me
+                        .0
+                        .head
+                        .get_mut(head_start..head_end)
+                        .ok_or("invalid head range for copy")?;
+                    let src_slice = slice
+                        .get(..min_len)
+                        .ok_or("invalid source slice range for head copy")?;
                     //copy a safe number of bytes to a file in the structure
-                    recv_me.0.head[recv_me.0.ptr_in_head..recv_me.0.ptr_in_head + min_len]
-                        .copy_from_slice(&slice[..min_len]);
+                    head_slice.copy_from_slice(src_slice);
                     //move the pointer to the number of bytes copied
                     recv_me.0.ptr_in_head += min_len;
                     //slice trimming
-                    slice = &slice[min_len..]; //new slice
+                    slice = slice
+                        .get(min_len..)
+                        .ok_or("invalid slice range after head copy")?; //new slice
                     //
                     recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head //bool
                 } else {
@@ -284,11 +312,15 @@ impl WSFileSplitter {
                 //if there is no body (payload)
                 if recv_me.1.is_none() {
                     //calculation of payload length
-                    let len_vec = EXPCP!(
-                        w1utils::bytes_to_u64(&recv_me.0.head[1..1 + recv_me.0.len_of_head]),
-                        "impossible state Slice lengths and boundaries are static, verified at \
-                         compile time, and do not change dynamically."
-                    );
+                    let head_start = 1;
+                    let head_end = head_start + recv_me.0.len_of_head;
+                    let head_len_slice = recv_me
+                        .0
+                        .head
+                        .get(head_start..head_end)
+                        .ok_or("invalid head range for length decode")?;
+                    let len_vec = w1utils::bytes_to_u64(head_len_slice)
+                        .map_err(|_| "impossible state Slice lengths and boundaries are static, verified at compile time, and do not change dynamically.")?;
 
                     if len_vec > usize::MAX as u64 {
                         panic!(
@@ -319,13 +351,23 @@ impl WSFileSplitter {
                     //find the minimum that is shorter than the length
                     //of the slice or the length of the unfilled space in the body
                     let min_len = min(slice.len(), file_recv.len() - recv_me.0.ptr_in_body);
+
+                    let dest_start = recv_me.0.ptr_in_body;
+                    let dest_end = dest_start + min_len;
+                    let dest_slice = file_recv
+                        .get_mut(dest_start..dest_end)
+                        .ok_or("invalid destination range for body copy")?;
+                    let src_slice = slice
+                        .get(..min_len)
+                        .ok_or("invalid source slice range for body copy")?;
                     //copy a safe number of bytes to a file in the structure
-                    file_recv[recv_me.0.ptr_in_body..recv_me.0.ptr_in_body + min_len]
-                        .copy_from_slice(&slice[..min_len]);
+                    dest_slice.copy_from_slice(src_slice);
                     //move the pointer to the number of bytes copied
                     recv_me.0.ptr_in_body += min_len;
                     //slice trimming
-                    slice = &slice[min_len..]; //new slice
+                    slice = slice
+                        .get(min_len..)
+                        .ok_or("invalid slice range after body copy")?; //new slice
                     //
                     if recv_me.0.ptr_in_body > file_recv.len() {
                         panic!(
@@ -344,21 +386,12 @@ impl WSFileSplitter {
                 //if the file is full and completely filled
 
                 //The file's payload is added to the array that needs to be returned.
-                reta.push(
-                    EXPCP!(
-                        EXPCP!(
-                            self.recv_data.take(),
-                            "Panicking is an impossible state because this code is executed only \
-                             when self.recv_data is Some."
-                        )
-                        .1,
-                        "Panic is an impossible state because this code only executes when \
-                         self.recv_data is Some() and it has Some() vector and it's only called \
-                         when the file is completely received, at this point the file should be \
-                         longer than 0"
-                    )
-                    .into_boxed_slice(),
-                );
+                let recv_data_opt = self.recv_data.take()
+                    .ok_or("Panicking is an impossible state because this code is executed only when self.recv_data is Some.")?;
+                let completed_file = recv_data_opt.1
+                    .ok_or("Panic is an impossible state because this code only executes when self.recv_data is Some() and it has Some() vector and it's only called when the file is completely received, at this point the file should be longer than 0")?;
+
+                reta.push(completed_file.into_boxed_slice());
 
                 self.recv_data = None
             }
@@ -379,7 +412,6 @@ impl WSFileSplitter {
         }
         Ok(reta.into_boxed_slice())
     }
-
     ///Returns the full length of the received file,
     /// returns ONLY the length of the payload
     /// if the file header is not fully transmitted, returns None
@@ -443,7 +475,9 @@ impl WSFileSplitter {
 }
 
 #[cfg(test)]
-mod tests_wudp {
+mod tests_file {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
 
     use super::*;
     #[test]

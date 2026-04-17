@@ -1,7 +1,9 @@
 //! MurmurHash3 implementation in pure Rust.
 
 #![allow(clippy::unreadable_literal)]
-#![allow(clippy::identity_op)]
+//#![allow(clippy::identity_op)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 
 /// 128‑bit x64 version (output as two `u64`).
 pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
@@ -16,12 +18,27 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     const C2: u64 = 0x4cf5ad432745937f;
 
     // Body: process 16‑byte blocks in little‑endian order
-    for chunk in data[..nblocks * 16].chunks_exact(16) {
+    let blocks = data.get(..nblocks * 16).expect("'this is not a real state");
+    for chunk in blocks.chunks_exact(16) {
         let k1 = u64::from_le_bytes([
-            chunk[0], chunk[1], chunk[2], chunk[3], chunk[4], chunk[5], chunk[6], chunk[7],
+            *chunk.first().expect("'this is not a real state"),
+            *chunk.get(1).expect("'this is not a real state"),
+            *chunk.get(2).expect("'this is not a real state"),
+            *chunk.get(3).expect("'this is not a real state"),
+            *chunk.get(4).expect("'this is not a real state"),
+            *chunk.get(5).expect("'this is not a real state"),
+            *chunk.get(6).expect("'this is not a real state"),
+            *chunk.get(7).expect("'this is not a real state"),
         ]);
         let k2 = u64::from_le_bytes([
-            chunk[8], chunk[9], chunk[10], chunk[11], chunk[12], chunk[13], chunk[14], chunk[15],
+            *chunk.get(8).expect("'this is not a real state"),
+            *chunk.get(9).expect("'this is not a real state"),
+            *chunk.get(10).expect("'this is not a real state"),
+            *chunk.get(11).expect("'this is not a real state"),
+            *chunk.get(12).expect("'this is not a real state"),
+            *chunk.get(13).expect("'this is not a real state"),
+            *chunk.get(14).expect("'this is not a real state"),
+            *chunk.get(15).expect("'this is not a real state"),
         ]);
 
         let k1 = k1.wrapping_mul(C1);
@@ -44,7 +61,7 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     }
 
     // Tail: handle remaining 1‑15 bytes with fallthrough behaviour
-    let tail = &data[nblocks * 16..];
+    let tail = data.get(nblocks * 16..).expect("'this is not a real state");
     let rem = len & 15;
 
     let mut k1 = 0u64;
@@ -52,25 +69,25 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
 
     // k2 (bytes 8‑15)
     if rem >= 15 {
-        k2 ^= (tail[14] as u64) << 48;
+        k2 ^= (*tail.get(14).expect("'this is not a real state") as u64) << 48;
     }
     if rem >= 14 {
-        k2 ^= (tail[13] as u64) << 40;
+        k2 ^= (*tail.get(13).expect("'this is not a real state") as u64) << 40;
     }
     if rem >= 13 {
-        k2 ^= (tail[12] as u64) << 32;
+        k2 ^= (*tail.get(12).expect("'this is not a real state") as u64) << 32;
     }
     if rem >= 12 {
-        k2 ^= (tail[11] as u64) << 24;
+        k2 ^= (*tail.get(11).expect("'this is not a real state") as u64) << 24;
     }
     if rem >= 11 {
-        k2 ^= (tail[10] as u64) << 16;
+        k2 ^= (*tail.get(10).expect("'this is not a real state") as u64) << 16;
     }
     if rem >= 10 {
-        k2 ^= (tail[9] as u64) << 8;
+        k2 ^= (*tail.get(9).expect("'this is not a real state") as u64) << 8;
     }
     if rem >= 9 {
-        k2 ^= tail[8] as u64;
+        k2 ^= *tail.get(8).expect("'this is not a real state") as u64;
         k2 = k2.wrapping_mul(C2);
         k2 = k2.rotate_left(33);
         k2 = k2.wrapping_mul(C1);
@@ -78,28 +95,28 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     }
     // k1 (bytes 0‑7)
     if rem >= 8 {
-        k1 ^= (tail[7] as u64) << 56;
+        k1 ^= (*tail.get(7).expect("'this is not a real state") as u64) << 56;
     }
     if rem >= 7 {
-        k1 ^= (tail[6] as u64) << 48;
+        k1 ^= (*tail.get(6).expect("'this is not a real state") as u64) << 48;
     }
     if rem >= 6 {
-        k1 ^= (tail[5] as u64) << 40;
+        k1 ^= (*tail.get(5).expect("'this is not a real state") as u64) << 40;
     }
     if rem >= 5 {
-        k1 ^= (tail[4] as u64) << 32;
+        k1 ^= (*tail.get(4).expect("'this is not a real state") as u64) << 32;
     }
     if rem >= 4 {
-        k1 ^= (tail[3] as u64) << 24;
+        k1 ^= (*tail.get(3).expect("'this is not a real state") as u64) << 24;
     }
     if rem >= 3 {
-        k1 ^= (tail[2] as u64) << 16;
+        k1 ^= (*tail.get(2).expect("'this is not a real state") as u64) << 16;
     }
     if rem >= 2 {
-        k1 ^= (tail[1] as u64) << 8;
+        k1 ^= (*tail.get(1).expect("'this is not a real state") as u64) << 8;
     }
     if rem >= 1 {
-        k1 ^= tail[0] as u64;
+        k1 ^= *tail.first().expect("'this is not a real state") as u64;
         k1 = k1.wrapping_mul(C1);
         k1 = k1.rotate_left(31);
         k1 = k1.wrapping_mul(C2);
@@ -121,11 +138,9 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
 
     [h1.swap_bytes(), h2.swap_bytes()]
 }
-
 // -----------------------------------------------------------------------------
 // Helper functions (inline for performance)
 // -----------------------------------------------------------------------------
-
 #[inline(always)]
 fn fmix64(mut k: u64) -> u64 {
     k ^= k >> 33;
@@ -152,8 +167,6 @@ mod tests {
 
         let data = b"The quick brown fox jumps over";
         let h = murmurhash3_x64_128(data, 0);
-
-        //println!("{:#x} {:#x}", h[0], h[1]);
 
         assert_eq!(h, [0x5d_6a_1c_6f_e0_74_ac_89, 0x03_bf_8e_0c_89_71_d2_4d]);
 

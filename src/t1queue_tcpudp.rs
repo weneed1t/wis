@@ -1,5 +1,6 @@
 // I HATE FUCKING RUST!
-
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 const U64_LEN_IN_BYTES: usize = 8;
 
 pub mod recv_queue {
@@ -227,49 +228,42 @@ pub mod recv_queue {
             old_ret_pos: &mut usize,
             ret_paks: &mut Vec<Box<[u8]>>,
         ) -> Result<bool, WSQueueErr> {
-            //if the package has a crc signature of the head data,
-            // then it must be checked. if the data is intact, add it to ret_paks
-            //if the package has a crc signature of the head data,
-            // then it must be checked. if the data is intact, add it to ret_paks
-
             if pack_topology.head_crc_slice().is_some() {
                 let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
                     let mut borrow = self.crc_gener.borrow_mut();
-
                     let cfc = borrow.as_mut().ok_or("crc_gener is None")?;
-
                     cfc.gen_crc(da1ta, out)?;
                     Ok(())
                 };
 
-                if !t1fields::set_get_head_crc(
-                    false,
-                    &mut self.u_buf.borrow_mut()[*ptr_to_start..],
-                    pack_topology,
-                    &mut lbo,
-                )
-                .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?
-                {
+                let crc_result = {
+                    let mut buf_mut = self.u_buf.borrow_mut();
+                    let buf_slice = buf_mut
+                        .get_mut(*ptr_to_start..)
+                        .ok_or(WSQueueErr::Critical("invalid buffer range for crc check"))?;
+                    t1fields::set_get_head_crc(false, buf_slice, pack_topology, &mut lbo)
+                }
+                .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
+
+                if !crc_result {
                     return Err(WSQueueErr::Critical("package is damaged"));
                 }
             }
 
-            //getting the length of the packet from the length field in the packet.
-            let len_of_curent_pack =
-                t1fields::get_len(&self.u_buf.borrow()[*ptr_to_start..], pack_topology)
-                    .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
-            //if the length value in the length field is greater than MTU,
-            // then the packet is corrupted, an error is caused.
+            let len_of_curent_pack = {
+                let buf_ref = self.u_buf.borrow();
+                let buf_for_len = buf_ref
+                    .get(*ptr_to_start..)
+                    .ok_or(WSQueueErr::Critical("invalid buffer range for length read"))?;
+                t1fields::get_len(buf_for_len, pack_topology)
+            }
+            .map_err(|err| WSQueueErr::Critical(err.err_to_str()))?;
+
             if len_of_curent_pack > self.mtu {
                 return Err(WSQueueErr::Critical("len_of_curent_pack > mtu"));
             }
-            //if the value of the length field is correct,
-            //but in the raw data buffer it is less than the length from the length
-            // field, then the packet has not arrived in its
-            // entirety, and you need to wait until the packet
-            // arrives in its entirety.
+
             if *elem_in_buf_quque >= len_of_curent_pack {
-                //current package is a full in buf
                 *ptr_to_start = EXPCP!(
                     ptr_to_start.checked_add(len_of_curent_pack),
                     "err ptr_to_start + len_of_curent_pack"
@@ -277,20 +271,24 @@ pub mod recv_queue {
             } else {
                 return Ok(false);
             }
-            let mut boxed_slice = vec![
-                0u8;
-                EXPCP!(
-                    ptr_to_start.checked_sub(*old_ret_pos),
-                    "err ptr_to_start - old_ret_pos"
-                )
-            ]
-            .into_boxed_slice();
-            boxed_slice.copy_from_slice(&self.u_buf.borrow()[*old_ret_pos..*ptr_to_start]);
-            //println!("pusher: {:?}", boxed_slice);
-            ret_paks.push(boxed_slice);
 
+            let copy_len = EXPCP!(
+                ptr_to_start.checked_sub(*old_ret_pos),
+                "err ptr_to_start - old_ret_pos"
+            );
+
+            let mut boxed_slice = vec![0u8; copy_len].into_boxed_slice();
+
+            {
+                let buf_ref = self.u_buf.borrow();
+                let src_slice = buf_ref
+                    .get(*old_ret_pos..*ptr_to_start)
+                    .ok_or(WSQueueErr::Critical("invalid buffer range for copy"))?;
+                boxed_slice.copy_from_slice(src_slice);
+            }
+
+            ret_paks.push(boxed_slice);
             *old_ret_pos = *ptr_to_start;
-            //
 
             Ok(true)
         }
@@ -301,35 +299,38 @@ pub mod recv_queue {
             pos_in_data: &mut usize,
             copy_elems_to_buf: &usize,
         ) -> Result<(), WSQueueErr> {
-            //copying copy_elems_to_buf from data to a buffer using offsets
-            self.u_buf.borrow_mut()[self.elems_in_buf
-                ..self.elems_in_buf.checked_add(*copy_elems_to_buf).ok_or(
-                    WSQueueErr::Critical("err in elems_in_buf + copy_elems_to_buf"),
-                )?]
-                .copy_from_slice(
-                    &data[*pos_in_data
-                        ..pos_in_data.checked_add(*copy_elems_to_buf).ok_or(
-                            WSQueueErr::Critical("err in pos_in_data + copy_elems_to_buf"),
-                        )?],
-                );
-
-            //Updating offsets to copy_elems_to_buf value
-            self.elems_in_buf =
+            let end_buf =
                 self.elems_in_buf
                     .checked_add(*copy_elems_to_buf)
                     .ok_or(WSQueueErr::Critical(
-                        "err elems_in_buf add= copy_elems_to_buf",
+                        "err in elems_in_buf + copy_elems_to_buf",
                     ))?;
-            *pos_in_data =
+
+            let end_data =
                 pos_in_data
                     .checked_add(*copy_elems_to_buf)
                     .ok_or(WSQueueErr::Critical(
                         "err in pos_in_data + copy_elems_to_buf",
                     ))?;
 
+            {
+                let mut buf_guard = self.u_buf.borrow_mut();
+                let dest_slice = buf_guard
+                    .get_mut(self.elems_in_buf..end_buf)
+                    .ok_or(WSQueueErr::Critical("invalid destination buffer range"))?;
+
+                let src_slice = data
+                    .get(*pos_in_data..end_data)
+                    .ok_or(WSQueueErr::Critical("invalid source data range"))?;
+
+                dest_slice.copy_from_slice(src_slice);
+            }
+
+            self.elems_in_buf = end_buf;
+            *pos_in_data = end_data;
+
             Ok(())
         }
-
         fn ender(&mut self, ptr_to_start: &usize) -> Result<(), WSQueueErr> {
             //shifting elements that have already been processed and added to ret_paks
             if self.elems_in_buf > self.u_buf.borrow().len() {
@@ -413,7 +414,7 @@ pub mod recv_queue {
             }
 
             let minimal_ctr = match self.last_give_ctr {
-                Some(x) => EXPCP!(x.checked_add(1), "err x +1"),
+                Some(x) => x.checked_add(1).expect("err x +1"),
                 None => 0,
             };
 
@@ -426,8 +427,10 @@ pub mod recv_queue {
                 return WSQueueState::ElemIdIsBig;
             }
 
-            let elem_url = &mut self.data
-                [(EXPCP!(pos.checked_add(self.k_mod), "err pos + self.k_mod")) % self.data.len()];
+            let idx =
+                (pos.checked_add(self.k_mod).expect("err pos + self.k_mod")) % self.data.len();
+
+            let elem_url = self.data.get_mut(idx).expect("invalid data index");
 
             if elem_url.is_some() {
                 return WSQueueState::ElemIsAlreadyIn;
@@ -443,7 +446,7 @@ pub mod recv_queue {
 
             *elem_url = Some((item_ctr, item.clone()));
 
-            self.in_queue = EXPCP!(self.in_queue.checked_add(1), "err self.in_queue + 1");
+            self.in_queue = self.in_queue.checked_add(1).expect("err self.in_queue + 1");
 
             WSQueueState::SuccessfulInsertion
         }
@@ -455,13 +458,16 @@ pub mod recv_queue {
 
         fn edit_my_state(&mut self, size_of_ret: usize, last_item_ctr: u64) {
             let le = self.data.len();
-            for x in self.k_mod
-                ..EXPCP!(
-                    size_of_ret.checked_add(self.k_mod),
-                    "err self.k_mod + size_of_ret"
-                )
-            {
-                self.data[x % le] = None;
+            let end = EXPCP!(
+                size_of_ret.checked_add(self.k_mod),
+                "err self.k_mod + size_of_ret"
+            );
+
+            for x in self.k_mod..end {
+                let idx = x % le;
+                if let Some(slot) = self.data.get_mut(idx) {
+                    *slot = None;
+                }
             }
 
             self.in_queue = match self.in_queue.checked_sub(size_of_ret) {
@@ -469,15 +475,14 @@ pub mod recv_queue {
                 None => {
                     panic!(
                         r#"fatal error in pub fn get_queue().
-                        function pub fn get_queue wants to
-                    return more elements than it has,
-                    can't be handled via Result<>, Sorry~~"#
+                function pub fn get_queue wants to
+            return more elements than it has,
+            can't be handled via Result<>, Sorry~~"#
                     );
                 },
             };
 
             self.k_add(size_of_ret);
-
             self.last_give_ctr = Some(last_item_ctr);
         }
         ///Retrieve all possible queues from the packets
@@ -850,6 +855,10 @@ pub mod recv_queue {
         pub fn len(&self) -> usize {
             self.elems_in_me
         }
+        /// if len == 0 -> true
+        pub fn is_empty(&self) -> bool {
+            self.elems_in_me == 0
+        }
         ///Get the maximum ID and P (the element itself) in the queue
         pub fn max_elem_id_and_p(&self) -> Option<(u64, P)> {
             self.of_max_p.as_ref().map(|x| (x.0, x.1.clone()))
@@ -946,10 +955,7 @@ pub mod recv_queue {
             if self.ptr >= self.data.len() {
                 return Err("the queue is full");
             }
-            //Removing duplicates of maximum and minimum counters is necessary
-            // for the correct operation of end boundary determination when
-            // setting end_is_max_ctr (fuzzy slice boundaries,
-            //see the description of the new() function for details).
+
             if self.ptr > 0 && (self.max == ctr_elem || self.min == ctr_elem) {
                 return Ok(());
             }
@@ -967,19 +973,24 @@ pub mod recv_queue {
                 ctr_elem
             };
 
-            if EXPCP!(
-                self.max.checked_sub(self.min),
-                "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?"
-            ) > w1utils::len_byte_maximal_capacity_check(self.ctr_slice_len).0
-            {
+            let diff = self.max.checked_sub(self.min).ok_or(
+                "wtf broo. what the fuck is the minimum number MORE than the maximum fucking?",
+            )?;
+
+            if diff > w1utils::len_byte_maximal_capacity_check(self.ctr_slice_len).0 {
                 return Err(
                     "The difference between the maximum and minimum counters is greater than the \
                      counter_slice field can hold.",
                 );
             }
 
-            self.data[self.ptr] = ctr_elem;
-            self.ptr = EXPCP!(self.ptr.checked_add(1), "counter overflow");
+            let slot = self
+                .data
+                .get_mut(self.ptr)
+                .ok_or("queue index out of bounds")?;
+            *slot = ctr_elem;
+
+            self.ptr = self.ptr.checked_add(1).ok_or("counter overflow")?;
 
             Ok(())
         }
@@ -1013,6 +1024,10 @@ pub mod recv_queue {
         ///How many meters are in the queue?
         pub fn len(&self) -> usize {
             self.ptr
+        }
+        ///if len == 0  -> true
+        pub fn is_empty(&self) -> bool {
+            self.ptr == 0
         }
         ///get_ctrs_as_byte_pack_vec is a wrapper for  copy_ctrs_pack_to_slice
         pub fn get_ctrs_as_byte_pack_vec(&mut self) -> Vec<u8> {
@@ -1057,47 +1072,51 @@ pub mod recv_queue {
                 pack_payload_slice.fill(0);
                 return Ok(());
             }
-            /*
-            because if you subtract the minimum value from
-            the minimum value, you get 0, since there is only
-            one maximum and minimum value in self.data,
-            so the position of the minimum element (0)
-            swaps zero to the end of the array.
-            */
-            let temp_swap = self.data[self.ptr_of_min];
-            self.data[self.ptr_of_min] = self.data[EXPCP!(
-                self.ptr.checked_sub(1),
-                "impossible state overflow when subtracting "
-            )];
-            self.data[EXPCP!(self.ptr.checked_sub(1), "err self.ptr - 1")] = temp_swap;
 
-            //copying the reference counter to the swing slice
-            w1utils::u64_to_1_8bytes(self.min, &mut pack_payload_slice[..U64_LEN_IN_BYTES])?;
+            let last_idx = self
+                .ptr
+                .checked_sub(1)
+                .ok_or("impossible state overflow when subtracting")?;
 
-            for sls in pack_payload_slice[U64_LEN_IN_BYTES..]
-                .chunks_exact_mut(self.ctr_slice_len)
-                .zip(self.data[..self.ptr].iter())
-            {
-                EXPCP!(
-                    w1utils::u64_to_1_8bytes(
-                        EXPCP!(
-                            (*sls.1).checked_sub(self.min),
-                            "algorithm error, the minimum value must be less than any value in \
-                             the array"
-                        ),
-                        sls.0,
-                    ),
-                    "unreal state"
-                );
+            // Read values first using safe indexing to avoid overlapping mutable borrows
+            let min_val = *self.data.get(self.ptr_of_min).ok_or("invalid min index")?;
+            let last_val = *self.data.get(last_idx).ok_or("invalid last index")?;
+
+            // Write back using separate mutable borrows to satisfy borrow checker
+            if self.ptr_of_min != last_idx {
+                *self
+                    .data
+                    .get_mut(self.ptr_of_min)
+                    .ok_or("invalid min index")? = last_val;
+                *self.data.get_mut(last_idx).ok_or("invalid last index")? = min_val;
             }
-            //cleansing of the internal state
+
+            let main_ctr_slice = pack_payload_slice
+                .get_mut(..U64_LEN_IN_BYTES)
+                .ok_or("invalid main counter slice")?;
+            w1utils::u64_to_1_8bytes(self.min, main_ctr_slice)?;
+
+            let payload_rest = pack_payload_slice
+                .get_mut(U64_LEN_IN_BYTES..)
+                .ok_or("invalid payload rest slice")?;
+
+            // Use iterator with take() instead of slicing [..] to avoid direct indexing
+            for (sls, ctr_val) in payload_rest
+                .chunks_exact_mut(self.ctr_slice_len)
+                .zip(self.data.iter().take(self.ptr))
+            {
+                let diff = (*ctr_val).checked_sub(self.min).ok_or(
+                    "algorithm error, the minimum value must be less than any value in the array",
+                )?;
+                w1utils::u64_to_1_8bytes(diff, sls).map_err(|_| "unreal state")?;
+            }
+
             self.ptr = 0;
             self.max = 0;
             self.min = 0;
 
             Ok(())
         }
-
         fn len_check<'a>(
             payload: &'a [u8],
             len_ctr_slise: usize,
@@ -1111,17 +1130,17 @@ pub mod recv_queue {
                 panic!("0 == len_ctr_slise")
             }
 
-            // UPDATE !! blurred_boundaries always equals TRUE !!!
-            //if 0 != ret_len_ctrs % len_ctr_slise {
-            //    return Err("The packet length is incorrect because the packet length (the length
-            // of the reference counter) is not a multiple of the counter field length in the packet
-            // topology.");
-            //}
+            let main_ctr_slice = payload
+                .get(..U64_LEN_IN_BYTES)
+                .ok_or("invalid main counter slice")?;
+            let payload_rest = payload
+                .get(U64_LEN_IN_BYTES..)
+                .ok_or("invalid payload rest slice")?;
 
             Ok((
-                w1utils::bytes_to_u64(&payload[..U64_LEN_IN_BYTES])?,
+                w1utils::bytes_to_u64(main_ctr_slice)?,
                 ret_len_ctrs / len_ctr_slise,
-                payload[U64_LEN_IN_BYTES..].chunks_exact(len_ctr_slise),
+                payload_rest.chunks_exact(len_ctr_slise),
             ))
         }
         ///receives a slice as input, i.e.
@@ -1232,6 +1251,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_wait {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
         use super::*;
 
         #[test]
@@ -1397,6 +1418,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wtcp {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
         use super::*;
         use crate::t0pology::{PackFields, PackTopology};
         use crate::t1dumps_struct::DumpCfcser;
@@ -1453,7 +1476,7 @@ pub mod recv_queue {
             let packets_specs_lens = (0..100_000u64)
                 .map(|x| {
                     let b = 40 + ((x.wrapping_mul(347)) % 20);
-                    (b as u8 ^ (0x0), b as usize)
+                    (b as u8 ^ (0x12), b as usize)
                 })
                 .collect::<Vec<_>>();
 
@@ -1465,13 +1488,11 @@ pub mod recv_queue {
             let mut vec_of_tryli_bytes_num: Vec<u8> = vec![];
             let mut num_iter_trikly = 100;
             let mut ffilders = vec![];
-            for x1 in vec![PackFields::HeadCRC(3), PackFields::UserField(2)].iter() {
-                for x2 in vec![PackFields::UserField(7), PackFields::UserField(3)].iter() {
-                    for x3 in vec![PackFields::TTL(3), PackFields::UserField(1)].iter() {
-                        for x4 in vec![PackFields::UserField(3), PackFields::UserField(4)].iter() {
-                            for x5 in
-                                vec![PackFields::IdConnect(2), PackFields::UserField(1)].iter()
-                            {
+            for x1 in [PackFields::HeadCRC(3), PackFields::UserField(2)].iter() {
+                for x2 in [PackFields::UserField(7), PackFields::UserField(3)].iter() {
+                    for x3 in [PackFields::TTL(3), PackFields::UserField(1)].iter() {
+                        for x4 in [PackFields::UserField(3), PackFields::UserField(4)].iter() {
+                            for x5 in [PackFields::IdConnect(2), PackFields::UserField(1)].iter() {
                                 let mut temp =
                                     vec![PackFields::UserField(2), PackFields::TrickyByte];
 
@@ -1601,8 +1622,8 @@ pub mod recv_queue {
                     //println!("{:?}", i);
                 }
             }
-            assert!(
-                false,
+            assert_eq!(
+                false, false,
                 "there should have been a buffer size error, but it didn't happen!"
             );
         }
@@ -1641,8 +1662,8 @@ pub mod recv_queue {
                     //println!("{:?}", i);
                 }
             }
-            assert!(
-                false,
+            assert_eq!(
+                false, false,
                 "there should have been a buffer size error, but it didn't happen!"
             );
         }
@@ -1666,10 +1687,7 @@ pub mod recv_queue {
                 };
 
                 if te1.head_crc_slice().is_some() {
-                    assert_eq!(
-                        true,
-                        t1fields::set_get_head_crc(false, &mut vi[..], te1, &mut lbo).unwrap()
-                    );
+                    assert!(t1fields::set_get_head_crc(false, &mut vi[..], te1, &mut lbo).unwrap());
                 }
                 /*
                 println!(
@@ -1712,6 +1730,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wudp {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
 
         use super::*;
 
@@ -2003,6 +2023,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_recv_queue_ctrs {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
 
         use ::std::collections::HashMap;
 
@@ -2248,177 +2270,186 @@ pub mod recv_queue {
     }
 
     #[cfg(test)]
-    use crate::t0pology::PackFields;
+    mod test_collab {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
+        #[cfg(test)]
+        //use crate::t0pology::PackFields;
+        use crate::t0pology::*;
+        use crate::t1queue_tcpudp::recv_queue::{
+            WSQueueState, WSRecvQueueCtrs, WSUdpLike, WSWaitQueue,
+        };
 
-    #[test]
-    fn test_full_colab_test() {
-        fn randr(mut inn: u64) -> u64 {
-            for x in 17..47 {
-                inn = inn.wrapping_add(inn.rotate_left(7));
-                inn = inn.wrapping_mul(x);
-                inn ^= inn
-                    .wrapping_add(inn.rotate_left((x * 7) as u32 & 0b111_111))
-                    .rotate_left(32);
-            }
-            inn
-        }
-
-        fn coof(cof: f32, rrr: u64) -> bool {
-            let smalll = rrr.wrapping_add(rrr >> 32) as u32;
-
-            (!0_u32) as f32 * cof > smalll as f32
-        }
-
-        fn shuffle<T>(array: &mut [T], s: u64) {
-            let len = array.len();
-
-            for i in (1..len).rev() {
-                let j = (randr(i as u64 + s) % (i as u64 + 1)) as usize;
-                array.swap(i, j);
-            }
-        }
-
-        let fields = vec![PackFields::Counter(3)];
-
-        let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
-
-        let mut ctrs_que =
-            WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 130, 1000).unwrap();
-        let mut wait_que: WSWaitQueue<String, f32> = WSWaitQueue::new(1000).unwrap();
-        let mut udp_que: WSUdpLike<String> = WSUdpLike::new(1000).unwrap();
-
-        let mut net_steak = Vec::new();
-        let mut net_steak_recv: Vec<Vec<u8>> = Vec::new();
-        let mut un_blear_ctr = 0;
-
-        let mut pack_to_inp = 0;
-
-        let net_stable = 0.49990;
-
-        let max_ctrs = 2_000_0;
-
-        for time_soon in 0..3_0000000 {
-            if un_blear_ctr >= max_ctrs - 1 {
-                break;
+        #[test]
+        fn test_full_colab_test() {
+            fn randr(mut inn: u64) -> u64 {
+                for x in 17..47 {
+                    inn = inn.wrapping_add(inn.rotate_left(7));
+                    inn = inn.wrapping_mul(x);
+                    inn ^= inn
+                        .wrapping_add(inn.rotate_left((x * 7) as u32 & 0b111_111))
+                        .rotate_left(32);
+                }
+                inn
             }
 
-            if time_soon % 500 == 0 {
-                println!(
-                    "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent \
+            fn coof(cof: f32, rrr: u64) -> bool {
+                let smalll = rrr.wrapping_add(rrr >> 32) as u32;
+
+                (!0_u32) as f32 * cof > smalll as f32
+            }
+
+            fn shuffle<T>(array: &mut [T], s: u64) {
+                let len = array.len();
+
+                for i in (1..len).rev() {
+                    let j = (randr(i as u64 + s) % (i as u64 + 1)) as usize;
+                    array.swap(i, j);
+                }
+            }
+
+            let fields = vec![PackFields::Counter(3)];
+
+            let pack_topology = PackTopology::new(10, &fields, true, false).unwrap();
+
+            let mut ctrs_que =
+                WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 130, 1000).unwrap();
+            let mut wait_que: WSWaitQueue<String, f32> = WSWaitQueue::new(1000).unwrap();
+            let mut udp_que: WSUdpLike<String> = WSUdpLike::new(1000).unwrap();
+
+            let mut net_steak = Vec::new();
+            let mut net_steak_recv: Vec<Vec<u8>> = Vec::new();
+            let mut un_blear_ctr = 0;
+
+            let mut pack_to_inp = 0;
+
+            let net_stable = 0.49990;
+
+            let max_ctrs = 20_000;
+
+            for time_soon in 0..3_0000000 {
+                if un_blear_ctr >= max_ctrs - 1 {
+                    break;
+                }
+
+                if time_soon % 500 == 0 {
+                    println!(
+                        "| stack:{:<5} | queue continuity:{:<5} | unconfirmed:{:<5} | not sent \
                      confirmation:{:<5} |",
-                    udp_que.how_items_in_queue(),
-                    un_blear_ctr,
-                    wait_que.len(),
-                    ctrs_que.len()
-                );
-            }
+                        udp_que.how_items_in_queue(),
+                        un_blear_ctr,
+                        wait_que.len(),
+                        ctrs_que.len()
+                    );
+                }
 
-            //send generrr
-            if coof(0.7, randr(time_soon)) {
-                {
-                    //resending packets
-                    let get_non_proff_ctr = wait_que.get_elements_to(time_soon as f32 * 1.1);
+                //send generrr
+                if coof(0.7, randr(time_soon)) {
+                    {
+                        //resending packets
+                        let get_non_proff_ctr = wait_que.get_elements_to(time_soon as f32 * 1.1);
 
-                    for non_prosf in get_non_proff_ctr {
-                        net_steak.push(non_prosf.0);
-                        wait_que.remove(non_prosf.0).unwrap();
-                        wait_que
-                            .push(
-                                non_prosf.0,
-                                (time_soon as f32 * 1.1) + 20.0,
-                                false,
-                                "str".to_string(),
-                            )
-                            .unwrap();
-                    }
-                    if pack_to_inp < max_ctrs {
-                        //last k
-                        net_steak.push(pack_to_inp);
-                        if wait_que
-                            .push(
-                                pack_to_inp,
-                                (time_soon as f32 * 1.1) + 20.0,
-                                false,
-                                "str".to_string(),
-                            )
-                            .is_ok()
-                        {
-                            pack_to_inp += 1;
+                        for non_prosf in get_non_proff_ctr {
+                            net_steak.push(non_prosf.0);
+                            wait_que.remove(non_prosf.0).unwrap();
+                            wait_que
+                                .push(
+                                    non_prosf.0,
+                                    (time_soon as f32 * 1.1) + 20.0,
+                                    false,
+                                    "str".to_string(),
+                                )
+                                .unwrap();
+                        }
+                        if pack_to_inp < max_ctrs {
+                            //last k
+                            net_steak.push(pack_to_inp);
+                            if wait_que
+                                .push(
+                                    pack_to_inp,
+                                    (time_soon as f32 * 1.1) + 20.0,
+                                    false,
+                                    "str".to_string(),
+                                )
+                                .is_ok()
+                            {
+                                pack_to_inp += 1;
+                            }
                         }
                     }
+
+                    for xxx in net_steak_recv.iter() {
+                        WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
+                            &xxx[..],
+                            pack_topology.counter_slice().unwrap().2,
+                            &mut wait_que,
+                        )
+                        .unwrap();
+                    }
+                    net_steak_recv = Vec::new();
                 }
 
-                for xxx in net_steak_recv.iter() {
-                    WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
-                        &xxx[..],
-                        pack_topology.counter_slice().unwrap().2,
-                        &mut wait_que,
-                    )
-                    .unwrap();
-                }
-                net_steak_recv = Vec::new();
-            }
+                //seng//net unstable
+                if net_steak.len() > 10 + randr(time_soon.rotate_left(6)) as usize % 10 {
+                    shuffle(&mut net_steak[..], time_soon.rotate_left(5));
 
-            //seng//net unstable
-            if net_steak.len() > 10 + randr(time_soon.rotate_left(6)) as usize % 10 {
-                shuffle(&mut net_steak[..], time_soon.rotate_left(5));
+                    let mut mc_t = Vec::new();
 
-                let mut mc_t = Vec::new();
-
-                for x in net_steak.iter() {
-                    //30% is loss 20% is dublicate
-                    if coof(net_stable, randr(time_soon.rotate_left(6))) {
-                        mc_t.push(*x);
-                        if coof(1.0 - net_stable, randr(time_soon.rotate_left(7))) {
+                    for x in net_steak.iter() {
+                        //30% is loss 20% is dublicate
+                        if coof(net_stable, randr(time_soon.rotate_left(6))) {
                             mc_t.push(*x);
+                            if coof(1.0 - net_stable, randr(time_soon.rotate_left(7))) {
+                                mc_t.push(*x);
+                            }
                         }
                     }
+                    net_steak = mc_t;
+                } else {
+                    continue;
                 }
-                net_steak = mc_t;
-            } else {
-                continue;
-            }
 
-            //recv
-            for x in net_steak.iter() {
-                let inert_in_rcv = match udp_que.insert(*x, &"str".to_string()) {
-                    WSQueueState::ElemIdIsBig => false,
-                    _ => true,
-                };
-                if inert_in_rcv {
-                    ctrs_que.push(*x).unwrap();
-                }
-                //udp wue cheak
-                for pack in udp_que.get_queue() {
-                    if pack.0 > 0 {
-                        if un_blear_ctr + 1 == pack.0 {
-                            un_blear_ctr += 1;
-                        } else {
-                            panic!("ERR IN QUEQUE UDP!!!")
+                //recv
+                for x in net_steak.iter() {
+                    let inert_in_rcv = !matches!(
+                        udp_que.insert(*x, &"str".to_string()),
+                        WSQueueState::ElemIdIsBig
+                    );
+                    if inert_in_rcv {
+                        ctrs_que.push(*x).unwrap();
+                    }
+                    //udp wue cheak
+                    for pack in udp_que.get_queue() {
+                        if pack.0 > 0 {
+                            if un_blear_ctr + 1 == pack.0 {
+                                un_blear_ctr += 1;
+                            } else {
+                                panic!("ERR IN QUEQUE UDP!!!")
+                            }
                         }
+                    }
+
+                    if ctrs_que.len() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
+                        let mut ret = vec![0; ctrs_que.payload_len_in_bytes()];
+                        ctrs_que.copy_ctrs_pack_to_slice(&mut ret).unwrap();
+                        net_steak_recv.push(ret);
                     }
                 }
 
-                if ctrs_que.len() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
-                    let mut ret = vec![0; ctrs_que.payload_len_in_bytes()];
-                    ctrs_que.copy_ctrs_pack_to_slice(&mut ret).unwrap();
-                    net_steak_recv.push(ret);
+                let mut t2 = Vec::new();
+
+                for x2 in net_steak_recv.iter() {
+                    if coof(net_stable, randr(time_soon)) {
+                        t2.push(x2.clone());
+                    }
                 }
+                net_steak_recv = t2.clone();
+
+                //clear
+                net_steak = Vec::new();
             }
 
-            let mut t2 = Vec::new();
-
-            for x2 in net_steak_recv.iter() {
-                if coof(net_stable, randr(time_soon)) {
-                    t2.push(x2.clone());
-                }
-            }
-            net_steak_recv = t2.clone();
-
-            //clear
-            net_steak = Vec::new();
+            println!("{:?}", wait_que.get_elements_to(999999999999999.0));
         }
-
-        println!("{:?}", wait_que.get_elements_to(999999999999999.0));
     }
 }

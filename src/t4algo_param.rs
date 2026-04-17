@@ -1,4 +1,6 @@
 //Gaoo~~~ :3
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 
 use crate::t0pology::PackTopology;
 use crate::{EXPCP, w1utils};
@@ -363,7 +365,6 @@ impl WsConnectParam {
         self.max_num_attempts_resend_package
     }
     ///returns the corresponding value
-
     pub fn packages_measurement_window_size_determining_latency(&self) -> usize {
         self.packages_measurement_window_size_determining_latency
     }
@@ -388,7 +389,6 @@ impl WsConnectParam {
         self.maximum_length_udp_queue_packages
     }
     ///returns the corresponding value
-
     pub fn maximum_length_fback_queue_packages(&self) -> usize {
         self.maximum_length_fback_queue_packages
     }
@@ -397,7 +397,6 @@ impl WsConnectParam {
         self.maximum_length_queue_unconfirmed_packages
     }
     ///returns the corresponding value
-
     pub fn percent_fake_data_packets(&self) -> Option<f64> {
         self.percent_fake_data_packets
     }
@@ -819,7 +818,6 @@ impl WsConnectParamBuilder {
 //+-+_#_@!_#_!__!__#__$_%___Z^_+__-+_#_@!_#_!_!___#__$_%__Z^_++_-+_#_@!#_!__!__#__$_%___^_++__-_#_@!_#!__!_____$_%__Z^_++__+_#_@!_#___!___#_$_%__Z^
 //=============================================TEST================================TEST=======================TEST==================================
 #[cfg(test)]
-///
 pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
     WsConnectParamBuilder::new(topo)
         .max_ms_latency(100.0)
@@ -840,6 +838,8 @@ pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
 
 #[cfg(test)]
 mod all_test {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
     #[cfg(test)]
     fn get_topol(

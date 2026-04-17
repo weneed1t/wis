@@ -1,3 +1,6 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+
 //use std::rc::Rc;
 use std::sync::Arc;
 
@@ -142,10 +145,7 @@ impl WTypeErr {
     }
     ///
     pub fn is_none_field(&self) -> bool {
-        match self {
-            Self::CompileFieldsErr(_) => true,
-            _ => false,
-        }
+        matches!(self, Self::CompileFieldsErr(_))
     }
     ///
     // pub fn is_pascage_damaget(&self) -> bool {
@@ -418,7 +418,12 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
 
             let mut passve = Thm::new(MyRole::Passive, &vec![gamma; k_len])?;
 
-            if !intua.file_sheme()[0].is_initiator() {
+            if !intua
+                .file_sheme()
+                .first()
+                .ok_or("ERROR! The file_scheme() array is EMPTY")?
+                .is_initiator()
+            {
                 #[cfg(test)]
                 {
                     println!("Initiator:   {:?}", intua.file_sheme());
@@ -427,7 +432,12 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                     "error in initiator in file_sheme()[0], initiator must always send data first!",
                 );
             }
-            if !passve.file_sheme()[0].is_initiator() {
+            if !passve
+                .file_sheme()
+                .first()
+                .ok_or("ERROR! The file_scheme() array is EMPTY")?
+                .is_initiator()
+            {
                 #[cfg(test)]
                 {
                     println!("Passive:   {:?}", passve.file_sheme());
@@ -651,6 +661,8 @@ mod tests_my_type {
 
 #[cfg(test)]
 mod tests_prealocc {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
     use crate::t0pology::PackFields;
     #[test]
@@ -986,6 +998,8 @@ impl RsaTest {
 
 #[cfg(test)]
 mod tests_rsa {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]

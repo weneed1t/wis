@@ -1,3 +1,5 @@
+//#![deny(clippy::indexing_slicing)]
+//#![deny(clippy::unwrap_used)]
 use std::ops::BitXor;
 
 use crate::EXPCP;
@@ -61,17 +63,17 @@ fn split_u64_to_u32_be_shift(value: u64) -> (u32, u32) {
 ///
 /// Panics if `NBYTES != NU32 * 4`. The panic message is:
 /// `"NBYTES must equal NU32 * 4"`.
-#[inline]
 fn bytes_to_words<const NU32: usize, const NBYTES: usize>(bytes: &[u8; NBYTES]) -> [u32; NU32] {
     assert_eq!(NBYTES, NU32 * 4, "NBYTES must equal NU32 * 4");
     std::array::from_fn(|i| {
         let offset = i * 4;
         // SAFETY: `offset..offset+4` is always within bounds because of the assertion above.
-        let chunk: [u8; 4] = bytes[offset..offset + 4].try_into().unwrap();
+        let chunk: [u8; 4] = bytes[offset..offset + 4]
+            .try_into()
+            .expect("let chunk: [u8; 4] = bytes[offset..offset + 4] if out of range");
         u32::from_be_bytes(chunk)
     })
 }
-#[inline]
 
 /// Writes an array of `u32` values into a byte array as big‑endian bytes.
 ///
@@ -272,7 +274,7 @@ where
     }
 }
 ///set key
-pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
+pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     let mut key_state = [0; WORDS_PER_CHUNK];
 
     /*
@@ -312,12 +314,11 @@ pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
             let ctr2 = split_u64_to_u32_be_shift(0x11_22_33_44_55_66_77_88);
             key_state[14] ^= ctr2.0;
             key_state[15] ^= ctr2.1;
-            println!("");
+            println!("-------------------");
             println!("WADE KEY STATE:");
             for i in 0..16 {
                 if 0 == i % 4 {
-                    println!("");
-                    println!("");
+                    println!("\n");
                     print!("{:?} | ", op[i / 4]);
                 }
                 print!("{:08X} | ", key_state[i]);
@@ -341,7 +342,7 @@ pub fn wis_key_set<'a>(key8: &'a [u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
                 0x55667788u32,
             ];
             assert_eq!(test_var, key_state);
-            println!("");
+            println!("-------------------");
         }
     }
     //
@@ -359,19 +360,21 @@ fn enc_progress(
 ) {
     let ctr2 = split_u64_to_u32_be_shift(counter);
 
-    let mut temp = key.clone();
+    let mut temp = *key;
     temp[14] ^= ctr2.0;
     temp[15] ^= ctr2.1;
 
     #[cfg(test)]
     {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
         let mut vec = test_vec_enc().lock().unwrap();
         vec.push(plaintext.to_vec());
     }
 
     wis_process_block(&mut temp, DOUBLE_WIS_CHIP_ROUNDS); //get state
     add_vec::<WORDS_PER_CHUNK>(&mut temp, key); //key + mix
-    xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &mut temp); // = plaintext ^ (key + mix)
+    xor_vec::<u32, WORDS_PER_CHUNK>(plaintext, &temp); // = plaintext ^ (key + mix)
 }
 
 fn hash_progress(
@@ -381,6 +384,8 @@ fn hash_progress(
 ) {
     #[cfg(test)]
     {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
         let mut vec = test_vec_hash().lock().unwrap();
         vec.push(plaintext.to_vec());
     }
@@ -391,6 +396,8 @@ fn hash_progress(
 
     #[cfg(test)]
     {
+        #![allow(clippy::indexing_slicing)]
+        #![allow(clippy::unwrap_used)]
         let mut vec = test_vec_hash_aft().lock().unwrap();
         vec.push(hash.to_vec());
     }
@@ -414,6 +421,8 @@ pub fn encrypt(
     process_in_place(plaintext, |block, adder, trim| {
         #[cfg(test)]
         {
+            #![allow(clippy::indexing_slicing)]
+            #![allow(clippy::unwrap_used)]
             test_vec_hash().lock().unwrap().clear();
             test_vec_hash_aft().lock().unwrap().clear();
             test_vec_enc().lock().unwrap().clear();
@@ -489,7 +498,8 @@ pub fn decrypt(
 
 #[cfg(test)]
 mod tests_proc {
-
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // Helper to convert a slice of u32 to little‑endian bytes.
@@ -555,7 +565,7 @@ mod tests_proc {
         // 3 full chunks (192 bytes)
         let input: Vec<u8> = (0..192).map(|i| i as u8).collect();
 
-        let input_test: Vec<u8> = (0..192).map(|i| ((i / 4) + 1) * 4 as u8).collect();
+        let input_test: Vec<u8> = (0..192).map(|i| ((i / 4) + 1) * 4).collect();
 
         let mut data = input.clone();
 
@@ -707,7 +717,8 @@ mod tests_proc {
 
 #[cfg(test)]
 mod wdel {
-
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -716,8 +727,8 @@ mod wdel {
         let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
         let te = wis_key_set(&k[..].try_into().unwrap(), &n[..].try_into().unwrap());
 
-        for i in 0..16 {
-            print!("{:08X} ", te[i]);
+        for x in te.iter() {
+            print!("{:08X} ", *x);
         }
 
         let te_test = [
@@ -744,7 +755,7 @@ mod wdel {
 
     #[test]
     fn t2() {
-        let mut data: Vec<u8> = (0..211).map(|i| i).collect::<Vec<_>>();
+        let mut data: Vec<u8> = (0..211).collect::<Vec<_>>();
 
         let key: Vec<u8> = (0..32).map(|_| 0).collect::<Vec<_>>();
 
@@ -793,7 +804,7 @@ mod wdel {
             .unwrap();
 
             for ii in 0..data.len() {
-                ctrma += ii as usize;
+                ctrma += ii;
                 let mut data2 = data.clone();
 
                 data2[ii] = !data2[ii];
@@ -836,6 +847,8 @@ mod wdel {
 
 #[cfg(test)]
 mod tests_split {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -851,8 +864,8 @@ mod tests_split {
     #[test]
     fn test_hash_mid_xor_16_8() {
         let mut data = [0u32; 16];
-        for i in 0..16 {
-            data[i] = i as u32;
+        for x in data.iter_mut().enumerate() {
+            *x.1 = x.0 as u32;
         }
         let expected: [u32; 8] = (0..8)
             .map(|i| i ^ (i + 8))
@@ -874,8 +887,8 @@ mod tests_split {
     #[test]
     fn test_hash_mid_xor_64_32() {
         let mut data = [0u32; 64];
-        for i in 0..64 {
-            data[i] = i as u32;
+        for x in data.iter_mut().enumerate() {
+            *x.1 = x.0 as u32;
         }
         let expected: [u32; 32] = (0..32)
             .map(|i| i ^ (i + 32))
@@ -912,6 +925,8 @@ mod tests_split {
 
 #[cfg(test)]
 mod tests_b_to_w {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]
@@ -940,8 +955,8 @@ mod tests_b_to_w {
     fn multiple_elements() {
         // 4 u32 → 16 bytes, fill with a pattern.
         let mut bytes = [0u8; 16];
-        for i in 0..16 {
-            bytes[i] = i as u8;
+        for x in bytes.iter_mut().enumerate() {
+            *x.1 = x.0 as u8;
         }
         let words = bytes_to_words::<4, 16>(&bytes);
         // big‑endian: first u32 from bytes[0..4] = 0x00010203
@@ -1016,6 +1031,8 @@ mod tests_split_u64 {
 
 #[cfg(test)]
 mod tests_write {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     #[test]

@@ -1,3 +1,6 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+
 use crate::wt1types::*;
 
 //#############################################################3
@@ -412,11 +415,15 @@ impl HandMaker for DumpHandMaker {
             );
 
             if self._role.is_initiator() == curent_step.is_passive() {
-                self._private_key = self._private_key.rotate_left(_file[0] as u32);
-                self._private_key = self._private_key.wrapping_mul(_file[1] as u64);
+                let byte0 = *_file.first().ok_or("missing byte 0")?;
+                let byte1 = *_file.get(1).ok_or("missing byte 1")?;
+
+                self._private_key = self._private_key.rotate_left(byte0 as u32);
+                self._private_key = self._private_key.wrapping_mul(byte1 as u64);
 
                 if _file.len() == 3 {
-                    self._private_key = self._private_key.wrapping_add(_file[2] as u64);
+                    let byte2 = *_file.get(2).ok_or("missing byte 2")?;
+                    self._private_key = self._private_key.wrapping_add(byte2 as u64);
                 }
 
                 self._ptr_in_state += 1;
@@ -434,7 +441,6 @@ impl HandMaker for DumpHandMaker {
             )
         }
     }
-
     fn file_sheme(&self) -> &[AtomHandFile] {
         #[cfg(not(test))]
         {
@@ -471,6 +477,8 @@ impl HandMaker for DumpHandMaker {
 
 #[cfg(test)]
 mod tests_enca {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -566,6 +574,8 @@ mod tests_enca {
 
 #[cfg(test)]
 mod tests_dumps_nonser_cfcser {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
     use super::*;
 
     // ┌────────────────────────────────────────────────────────────────────────────┐
