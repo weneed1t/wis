@@ -67,56 +67,28 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     let mut k1 = 0u64;
     let mut k2 = 0u64;
 
-    // k2 (bytes 8‑15)
-    if rem >= 15 {
-        k2 ^= (*tail.get(14).expect("'this is not a real state") as u64) << 48;
-    }
-    if rem >= 14 {
-        k2 ^= (*tail.get(13).expect("'this is not a real state") as u64) << 40;
-    }
-    if rem >= 13 {
-        k2 ^= (*tail.get(12).expect("'this is not a real state") as u64) << 32;
-    }
-    if rem >= 12 {
-        k2 ^= (*tail.get(11).expect("'this is not a real state") as u64) << 24;
-    }
-    if rem >= 11 {
-        k2 ^= (*tail.get(10).expect("'this is not a real state") as u64) << 16;
-    }
-    if rem >= 10 {
-        k2 ^= (*tail.get(9).expect("'this is not a real state") as u64) << 8;
+    // k2 (bytes 8‑14): accumulate with shifts, then mix if rem >= 9
+    for i in (8..15).rev() {
+        if rem > i {
+            let shift = (i - 8) * 8;
+            k2 ^= (*tail.get(i).expect("'this is not a real state") as u64) << shift;
+        }
     }
     if rem >= 9 {
-        k2 ^= *tail.get(8).expect("'this is not a real state") as u64;
         k2 = k2.wrapping_mul(C2);
         k2 = k2.rotate_left(33);
         k2 = k2.wrapping_mul(C1);
         h2 ^= k2;
     }
-    // k1 (bytes 0‑7)
-    if rem >= 8 {
-        k1 ^= (*tail.get(7).expect("'this is not a real state") as u64) << 56;
-    }
-    if rem >= 7 {
-        k1 ^= (*tail.get(6).expect("'this is not a real state") as u64) << 48;
-    }
-    if rem >= 6 {
-        k1 ^= (*tail.get(5).expect("'this is not a real state") as u64) << 40;
-    }
-    if rem >= 5 {
-        k1 ^= (*tail.get(4).expect("'this is not a real state") as u64) << 32;
-    }
-    if rem >= 4 {
-        k1 ^= (*tail.get(3).expect("'this is not a real state") as u64) << 24;
-    }
-    if rem >= 3 {
-        k1 ^= (*tail.get(2).expect("'this is not a real state") as u64) << 16;
-    }
-    if rem >= 2 {
-        k1 ^= (*tail.get(1).expect("'this is not a real state") as u64) << 8;
+
+    // k1 (bytes 0‑7): accumulate with shifts, then mix if rem >= 1
+    for i in (0..8).rev() {
+        if rem > i {
+            let shift = i * 8;
+            k1 ^= (*tail.get(i).expect("'this is not a real state") as u64) << shift;
+        }
     }
     if rem >= 1 {
-        k1 ^= *tail.first().expect("'this is not a real state") as u64;
         k1 = k1.wrapping_mul(C1);
         k1 = k1.rotate_left(31);
         k1 = k1.wrapping_mul(C2);
