@@ -148,16 +148,16 @@ pub struct WsConnection<
 }
 
 impl<
-    /* TCfcser: Cfcser, */
-    Tnoncer: Noncer,
-    TThrasher: Thrasher,
-    Tudp: Clone,
-    Twait: Clone,
-    Tencrypt: EncWis,
-    TRandomer: Randomer,
-    TCfcser: Cfcser,
-    Hmaker: HandMaker,
->
+        /* TCfcser: Cfcser, */
+        Tnoncer: Noncer,
+        TThrasher: Thrasher,
+        Tudp: Clone,
+        Twait: Clone,
+        Tencrypt: EncWis,
+        TRandomer: Randomer,
+        TCfcser: Cfcser,
+        Hmaker: HandMaker,
+    >
     WsConnection<
         /* TCfcser, */ Tnoncer,
         TThrasher,
@@ -330,15 +330,15 @@ impl<
 
 // getters for wsconnection - separate impl for clarity
 impl<
-    Tnoncer: Noncer,
-    TThrasher: Thrasher,
-    Tudp: Clone,
-    Twait: Clone,
-    Tencrypt: EncWis,
-    TRandomer: Randomer,
-    TCfcser: Cfcser,
-    Hmaker: HandMaker,
-> WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
+        Tnoncer: Noncer,
+        TThrasher: Thrasher,
+        Tudp: Clone,
+        Twait: Clone,
+        Tencrypt: EncWis,
+        TRandomer: Randomer,
+        TCfcser: Cfcser,
+        Hmaker: HandMaker,
+    > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
     ///Check whether the connection is active or has received a close signal;
     ///  if it is not active, no more data will be transmitted over this connection.

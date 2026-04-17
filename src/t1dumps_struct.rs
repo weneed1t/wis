@@ -377,10 +377,10 @@ impl HandMaker for DumpHandMaker {
                     3 => {
                         self._private_key = self._private_key.wrapping_add(t3 as u64);
                         Ok(InFile::new([t1, t2, t3].to_vec().into_boxed_slice()))
-                    },
+                    }
                     _ => {
                         panic!("its unreal state")
-                    },
+                    }
                 };
             }
 

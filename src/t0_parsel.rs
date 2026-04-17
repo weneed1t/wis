@@ -221,31 +221,31 @@ impl Codec {
             Value::Float(f) => {
                 let bytes = f.to_be_bytes();
                 Ok(format!("ff_{}", Self::hex_encode(&bytes)))
-            },
+            }
             Value::Unsigned(u) => {
                 let bytes = Self::u64_to_min_bytes(*u);
                 if bytes.is_empty() {
                     return Err("empty unsigned value");
                 }
                 Ok(format!("uu_{}", Self::hex_encode(&bytes)))
-            },
+            }
             Value::String(s) => {
                 if s.is_empty() {
                     return Err("empty string value");
                 }
                 Ok(format!("ss_{}", Self::hex_encode(s.as_bytes())))
-            },
+            }
             Value::Bytes(b) => {
                 if b.is_empty() {
                     return Err("empty byte array");
                 }
                 Ok(format!("bb_{}", Self::hex_encode(b)))
-            },
+            }
             Value::Byte(b) => Ok(format!("b_{}", Self::hex_encode(&[*b]))),
             Value::Bool(b) => {
                 let s = if *b { "true" } else { "false" };
                 Ok(format!("t_{}", s))
-            },
+            }
         }
     }
 

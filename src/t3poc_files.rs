@@ -301,7 +301,7 @@ impl WSFileSplitter {
                     slice = slice
                         .get(min_len..)
                         .ok_or("invalid slice range after head copy")?; //new slice
-                    //
+                                                                        //
                     recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head //bool
                 } else {
                     false
@@ -370,7 +370,7 @@ impl WSFileSplitter {
                     slice = slice
                         .get(min_len..)
                         .ok_or("invalid slice range after body copy")?; //new slice
-                    //
+                                                                        //
                     if recv_me.0.ptr_in_body > file_recv.len() {
                         panic!(
                             "impossible condition, according to the logic of the program, the \
@@ -597,18 +597,14 @@ mod tests_file {
 
         assert_eq!(
             reta1,
-            [
-                1, 50, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17
-            ]
+            [1, 50, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17]
         );
         assert_eq!(reta2, []);
         assert_eq!(reta3, [18, 19, 20, 21, 22, 23, 24]);
         assert_eq!(reta4, [25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35]);
         assert_eq!(
             reta5,
-            [
-                36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 0, 0, 0, 0, 0
-            ]
+            [36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 0, 0, 0, 0, 0]
         );
     }
 
