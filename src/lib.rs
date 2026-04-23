@@ -87,6 +87,8 @@ pub mod private_core {
 /*
 delete this in prod dapgp
 
+cargo test &&
+
 rustup component add clippy
 cargo clippy --fix
 cargo fix --allow-dirty

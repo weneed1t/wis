@@ -260,7 +260,7 @@ impl WSFileSplitter {
     ///  the word "file" refers to a continuous byte array that can be divided
     ///  into any number of chunks of arbitrary length); the method concatenates
     ///  the files from a set of slices and returns them in Ok(files)
-    pub fn slices_to_file(&mut self, slice: &[u8]) -> Result<Box<[Box<[u8]>]>, &'static str> {
+    pub fn slices_to_files(&mut self, slice: &[u8]) -> Result<Box<[Box<[u8]>]>, &'static str> {
         let mut slice = slice;
         let mut old_slice_len = slice.len();
 
@@ -439,21 +439,25 @@ impl WSFileSplitter {
     pub fn i_have_some_recv(&self) -> bool {
         self.recv_data.is_some()
     }
+    ///returns True if there is a started file in the structure
+    pub fn i_have_some_send(&self) -> bool {
+        self.send_file.is_some()
+    }
     ///Returns the remaining length of the file send by the structure.
     ///
     ///the remaining length in bytes will be returned.
     pub fn remaining_len_of_send_file(&self) -> Option<usize> {
-        self.send_file.as_ref().map(|rfile| {
+        self.send_file.as_ref().map(|sfile| {
             let head_remaining = EXPCP!(
-                rfile.0.len_of_head.checked_sub(rfile.0.ptr_in_head),
+                sfile.0.len_of_head.checked_sub(sfile.0.ptr_in_head),
                 "panic an impossible state The pointer len_of_head must always be less than or \
                  equal to ptr_in_head."
             );
 
             let body_remaining = EXPCP!(
-                rfile.1.len().checked_sub(rfile.0.ptr_in_body),
-                "panic an impossible state The pointer rfile.1.len() must always be less than or \
-                 equal to rfile.0.ptr_in_body."
+                sfile.1.len().checked_sub(sfile.0.ptr_in_body),
+                "panic an impossible state The pointer sfile.1.len() must always be less than or \
+                 equal to sfile.0.ptr_in_body."
             );
 
             EXPCP!(
@@ -503,7 +507,7 @@ mod tests_file {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
         assert_eq!(
-            tw_s.slices_to_file(&[9, 1, 1, 1, 1]),
+            tw_s.slices_to_files(&[9, 1, 1, 1, 1]),
             Err(
                 "error, the first non-zero byte of the file is greater than 8, the length of u64 \
                  must be greater than 0 and less than 9 bytes  "
@@ -511,7 +515,7 @@ mod tests_file {
         );
 
         assert_eq!(
-            tw_s.slices_to_file(&[1, 0, 1, 1, 1, 1, 1]),
+            tw_s.slices_to_files(&[1, 0, 1, 1, 1, 1, 1]),
             Err(
                 "An error occurred, the file size == 0 which is impossible, it's likely the file \
                  has been corrupted"
@@ -520,6 +524,149 @@ mod tests_file {
     }
     #[test]
     fn test_file_splitt() {
+        let mut etw_s = WSFileSplitter::new(Some(50)).unwrap();
+        let rc_err = InFile::new((0..51).collect());
+        assert_eq!(
+            etw_s.write_new_rc_file(rc_err),
+            Err("rc_file length greater than max_len_of_recv")
+        );
+
+        let lens_file = [
+            0, 10, 20, 999, 17_000, 3, 7, 8, 7_584, 20_000, 500, 100, 1500usize,
+        ];
+        let mut was_zero = false;
+        let mut ctr_check = 0;
+        let mut ctr_check_reming = 0;
+
+        let mut all_vecs_slices = vec![];
+        let mut all_vecs_slices_sourse_files = vec![];
+
+        for curent_file_len in lens_file {
+            let mut tw_s = WSFileSplitter::new(Some(*lens_file.iter().max().unwrap())).unwrap();
+
+            let rc = InFile::new((0..curent_file_len).map(|x| x as u8).collect());
+            all_vecs_slices_sourse_files.push(rc.clone());
+
+            if curent_file_len == 0 {
+                assert_eq!(
+                    tw_s.write_new_rc_file(rc.clone()),
+                    Err("rc_file must be greater than zero")
+                );
+                was_zero = true;
+                continue;
+            } else {
+                assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
+            }
+
+            assert_eq!(
+                tw_s.write_new_rc_file(rc),
+                Err("WSFileSplitter already has an unprocessed file ")
+            );
+
+            let mut temp_remianing = None;
+
+            let mut ctr_of_get_len_sls_len = 0;
+            for (break_me, sls_len) in [
+                1, 2, 0, 33, 543, 3, 4, 88, 32, 9, 65, 999, 21, 3, 4, 9, 2, 7, 4, 1, 5, 1000, 1500,
+            ]
+            .iter()
+            .cycle()
+            .enumerate()
+            {
+                assert!(
+                    break_me < 200,
+                    "If this error appears, it means that `cycle()` is running indefinitely."
+                );
+                let mut tempo_ve = vec![(sls_len ^ 0xae) as u8; *sls_len];
+
+                if !tw_s.i_have_some_send() {
+                    assert_eq!(tw_s.len_of_send_file(), None);
+                    assert_eq!(tw_s.remaining_len_of_send_file(), None);
+
+                    break;
+                }
+
+                let is_remaing = Some(
+                    1 + w1utils::len_u64_as_bytes(curent_file_len as u64)
+                        + (curent_file_len - ctr_of_get_len_sls_len),
+                );
+
+                if temp_remianing.is_some() {
+                    assert_eq!(is_remaing, temp_remianing);
+                    ctr_check_reming += 1;
+                }
+
+                assert_eq!(tw_s.len_of_send_file(), Some(curent_file_len));
+                assert_eq!(tw_s.remaining_len_of_send_file(), is_remaing);
+
+                ctr_check += 1;
+
+                temp_remianing = tw_s.file_to_slices(&mut tempo_ve);
+
+                all_vecs_slices.append(&mut tempo_ve);
+
+                /*
+                                assert_eq!(
+                    tw_s.clone().send_file.unwrap().0,
+                    DataDrain {
+                        ptr_in_head: 2,
+                        ptr_in_body: 18,
+                        len_of_head: 2,
+                        head: [1, 50, 0, 0, 0, 0, 0, 0, 0]
+                    }
+                );
+                    */
+
+                ctr_of_get_len_sls_len += sls_len;
+            }
+        }
+
+        let mut tw_eend = WSFileSplitter::new(Some(*lens_file.iter().max().unwrap())).unwrap();
+
+        let tets_lens_of_nums_files = tw_eend.slices_to_files(&all_vecs_slices);
+
+        if tets_lens_of_nums_files.is_err() {
+            assert_eq!(
+                tets_lens_of_nums_files,
+                Err(
+                    "This line appears only if `tets_lens_of_nums_files.is_err()` 
+            == TRUE, to indicate a specific issue there. DO NOT EDIT THIS LINE—IT IS A \
+                     PLACEHOLDER!!ы"
+                )
+            );
+        }
+
+        let tets_lens_of_nums_files = tets_lens_of_nums_files.unwrap();
+
+        //The first element is a file with a length of 0; this file is not added to the loop, so
+        // the first element is skipped here!
+        assert_eq!(tets_lens_of_nums_files.len(), lens_file.len() - 1);
+        //
+        //
+        assert_eq!(
+            lens_file.len(),
+            all_vecs_slices_sourse_files.len(),
+            "This line only checks the status of the test; if an error appears here, it means the \
+             test has failed—this line is testing the test itself!"
+        );
+        for x in tets_lens_of_nums_files
+            .iter()
+            .zip(all_vecs_slices_sourse_files[1..].iter())
+        {
+            assert_eq!(x.0[..], x.1[..]);
+        }
+
+        assert!(was_zero);
+        //
+        assert!(ctr_check > 200);
+        assert!(ctr_check_reming > 200); //I'm too lazy to calculate exactly what this number should be, 
+        //but it should indicate that the `if`
+        //condition branch has been executed enough times (assuming the dimensions of the
+        // array remain unchanged in the two `for` loops).
+    }
+
+    #[test]
+    fn test_file_splitt_old() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
         let rc = InFile::new((0..50).collect());
@@ -610,6 +757,7 @@ mod tests_file {
                 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 0, 0, 0, 0, 0
             ]
         );
+        println!("hfhfhf {:?}", tw_s.len_of_send_file());
     }
 
     #[test]
@@ -631,20 +779,22 @@ mod tests_file {
 
         tw_s.file_to_slices(&mut reta1[71..]);
 
-        tw_s.slices_to_file(&reta1).unwrap();
+        tw_s.slices_to_files(&reta1).unwrap();
     }
 
     #[test]
     fn test_spkit_to_file_flow() {
-        let mut tw_s = WSFileSplitter::new(Some(9500)).unwrap();
+        let mut tw_s = WSFileSplitter::new(Some(19500)).unwrap();
 
         let mut vecca: Vec<u8> = Vec::new();
 
         let fs_vec = [
-            40, 10, 15, 7, 1, 12, 1148, 3876, 5, 4, 43, 99, 29, 134, 17, 14, 95, 1523, 50, 9, 5, 6,
-            8214, 65, 3217, 45, 43, 99, 299, 134, 117, 90, 5, 72, 4, 6, 3865, 1, 626, 3, 1, 78, 54,
-            6, 94, 2, 1, 564, 7, 60, 1, 3, 1, 29, 6, 729, 4, 23,
+            40, 10, 15, 7, 1, 12, 1148, 3876, 5, 4, 43, 99, 29, 134, 14447, 14, 95, 1523, 5043, 9,
+            5, 6, 8214, 65, 3217, 45, 43, 99, 299, 134, 117, 90, 5765, 72, 4, 6, 3865, 1, 626, 3,
+            1, 78, 54, 6, 94, 2, 1, 564, 7, 60, 1, 3, 1333, 29, 6, 729, 4, 23,
         ];
+
+        let mut ctr_temp_len_have = 0;
 
         for file_size_in_iter in fs_vec {
             let rc = InFile::new((0..file_size_in_iter).map(|x| x as u8).collect());
@@ -655,7 +805,7 @@ mod tests_file {
             let mut max_me = 0;
             for chunk_size in [
                 4, 6, 7, 5, 6, 0, 3, 1, 45, 90, 5, 72, 4, 6, 35, 0, 62, 3, 1, 78, 5, 6, 94, 2, 1,
-                64, 7, 60, 1, 3, 1, 2, 6, 79, 4, 23,
+                64, 7, 60, 1, 3, 1000, 2, 6, 79, 4, 23,
             ]
             .iter()
             .cycle()
@@ -668,9 +818,20 @@ mod tests_file {
                     tw_s.remaining_len_of_send_file()
                 );
 
+                if let Some(xxx) = tw_s.len_of_recv_file() {
+                    // println!("{:?} {:?} ", xxx, *chunk_size);
+                    assert_eq!(xxx, file_size_in_iter as usize);
+
+                    assert!(tw_s.i_have_some_recv());
+
+                    ctr_temp_len_have += 1;
+                } else {
+                    assert!(!tw_s.i_have_some_recv());
+                }
+
                 vecca.extend_from_slice(&nw);
 
-                let get_me = tw_s.slices_to_file(&nw).unwrap();
+                let get_me = tw_s.slices_to_files(&nw).unwrap();
 
                 over_len += *chunk_size;
                 // println!("          real {} | {:?}  |  {:?}", nw.len(), nw, get_me);
@@ -721,6 +882,8 @@ mod tests_file {
             }
         }
 
-        assert_eq!(tw_s.slices_to_file(&vecca).unwrap().len(), fs_vec.len());
+        assert!(ctr_temp_len_have > 0, "len_of_recv_file() always none!");
+
+        assert_eq!(tw_s.slices_to_files(&vecca).unwrap().len(), fs_vec.len());
     }
 }
