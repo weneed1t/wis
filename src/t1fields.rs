@@ -131,6 +131,7 @@ where
         "head_crc_slice not in PackTopology",
     ))
 }
+
 /// set_ttl updates the time-to-live (ttl) value in the packet header based on topology
 /// takes mutable packet data, packet topology, a signed delta (ttl_i_edit), max allowed
 /// ttl, and is_start_ttl flag<br> returns Ok(()) on success, Err(&'static str) on
@@ -145,12 +146,17 @@ where
 /// packet using u64_to_1_8bytes<br> used in multi-hop networks to limit packet lifetime;
 /// often paired with crc checks for integrity<br><br> Result<u64, WTypeErr> , Ok(u64)
 /// return value ttl after subtracting ttl_i_edit
+/// ---
+/// forced_pruning is needed when ttl_i_edit is not a negative number and it is added to
+/// the current ttl value from the packet,  the result number becomes greater than
+/// ttl_max, due to the error, ttl is truncated to ttl_max
 pub fn set_ttl(
     pack: &mut [u8],
     topology: &PackTopology,
-    ttl_i_edit: i64,
-    ttl_max: u64,
+    ttl_i_edit: &i64,
+    ttl_max: &u64,
     is_start_ttl: bool,
+    forced_pruning: bool,
 ) -> Result<u64, WTypeErr> {
     if let Some((start, end, len)) = topology.ttl_slice() {
         if pack.len() <= end {
@@ -162,32 +168,42 @@ pub fn set_ttl(
             .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
 
         let temp = w1utils::add_u64_i64(
+            //ttl start = (0 + ttl_i_edit)
+            //ttl no start = (from pack ttl + ttl_i_edit)
             if is_start_ttl {
-                if ttl_i_edit < 0 {
+                if *ttl_i_edit < 0 {
                     return Err(WTypeErr::WorkTimeErr(
                         "is_start_ttl is true, but ttl_i_edit is a negative number, which is an \
                          error, since the initial TTL must be positive.",
                     ));
                 }
-                0
+                0 // is start ttl 
             } else {
                 let ttl_before = w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
-                if ttl_before > ttl_max {
+                if ttl_before > *ttl_max {
                     return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
                 }
                 ttl_before
             },
-            ttl_i_edit,
+            *ttl_i_edit,
             true,
         )
         .map_err(WTypeErr::PackageDamaged)?;
 
-        if ttl_max <= temp {
-            return Err(WTypeErr::PackageDamaged("ttl_max <=ttl "));
-        }
+        let temp = if *ttl_max <= temp {
+            if forced_pruning {
+                *ttl_max
+            } else {
+                return Err(WTypeErr::PackageDamaged(
+                    "ttl_max < ttl in pack + ttl_i_edit",
+                ));
+            }
+        } else {
+            temp
+        };
 
         if temp > w1utils::len_byte_maximal_capacity_check(len).0 {
-            return Err(WTypeErr::PackageDamaged(
+            return Err(WTypeErr::WorkTimeErr(
                 "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
             ));
         }
@@ -205,7 +221,7 @@ pub fn set_ttl(
 /// should be called on unmodified packet data before any ttl updates for accurate
 /// inspection both functions require ttl_slice to be properly defined in PackTopology
 /// during construction
-pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
+pub fn get_ttl(pack: &[u8], topology: &PackTopology, ttl_max: &u64) -> Result<u64, WTypeErr> {
     if let Some((start, end, _)) = topology.ttl_slice() {
         if pack.len() <= end {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
@@ -213,7 +229,14 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
         let ttl_slice = pack
             .get(start..end)
             .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
-        return w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr);
+
+        let ttl_u64 = w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
+
+        return if ttl_u64 > *ttl_max {
+            Err(WTypeErr::PackageDamaged("num in pack ttl > max_ttl"))
+        } else {
+            Ok(ttl_u64)
+        };
     }
     Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
@@ -227,7 +250,7 @@ pub fn get_ttl(pack: &[u8], topology: &PackTopology) -> Result<u64, WTypeErr> {
 /// large, returns error encodes the length using u64_to_1_8bytes to match the field’s
 /// byte size and writes it into place used in stream-based protocols (e.g., TCP-like)
 /// where length is needed for framing and parsing
-pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(), WTypeErr> {
+pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: &usize) -> Result<(), WTypeErr> {
     let sls = topology
         .len_slice()
         .ok_or(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))?;
@@ -238,7 +261,7 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: usize) -> Result<(
 
     let plen = pack.len();
 
-    if plen > mtu {
+    if plen > *mtu {
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
@@ -287,14 +310,14 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
 pub fn set_id_conn(
     pack: &mut [u8],
     topology: &PackTopology,
-    id_conn: u64,
-    role: MyRole,
+    id_conn: &u64,
+    role: &MyRole,
 ) -> Result<(), WTypeErr> {
     if let Some(x) = topology.idconn_slice() {
         if pack.len() <= x.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        if id_conn > w1utils::len_byte_maximal_capacity_check(x.2).0 >> 1 {
+        if *id_conn > w1utils::len_byte_maximal_capacity_check(x.2).0 >> 1 {
             return Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1",
             ));
@@ -342,8 +365,8 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
 pub fn set_id_sender_and_recv(
     pack: &mut [u8],
     topology: &PackTopology,
-    id_sender: u64,
-    id_recv: u64,
+    id_sender: &u64,
+    id_recv: &u64,
 ) -> Result<(), WTypeErr> {
     if let (Some(x_s), Some(x_r)) = (
         topology.id_of_sender_slice(),
@@ -353,7 +376,7 @@ pub fn set_id_sender_and_recv(
         if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        if maxim < id_recv || maxim < id_sender {
+        if maxim < *id_recv || maxim < *id_sender {
             return Err(WTypeErr::PackageDamaged(
                 "maxim < id_recv OR maxim < id_sender",
             ));
@@ -362,12 +385,12 @@ pub fn set_id_sender_and_recv(
         let recv_slice = pack
             .get_mut(x_r.0..x_r.1)
             .ok_or(WTypeErr::LenSizeErr("invalid receiver id slice range"))?;
-        w1utils::u64_to_1_8bytes(id_recv, recv_slice).map_err(WTypeErr::WorkTimeErr)?;
+        w1utils::u64_to_1_8bytes(*id_recv, recv_slice).map_err(WTypeErr::WorkTimeErr)?;
 
         let sender_slice = pack
             .get_mut(x_s.0..x_s.1)
             .ok_or(WTypeErr::LenSizeErr("invalid sender id slice range"))?;
-        w1utils::u64_to_1_8bytes(id_sender, sender_slice).map_err(WTypeErr::WorkTimeErr)?;
+        w1utils::u64_to_1_8bytes(*id_sender, sender_slice).map_err(WTypeErr::WorkTimeErr)?;
 
         return Ok(());
     }
@@ -426,8 +449,8 @@ pub fn get_id_sender_and_recv(
 pub fn set_counter(
     pack: &mut [u8],
     topology: &PackTopology,
-    countr: u64,
-    my_type: PackType,
+    countr: &u64,
+    my_type: &PackType,
 ) -> Result<(u64, u64), WTypeErr> {
     if let Some(x) = topology.counter_slice() {
         if pack.len() <= x.1 {
@@ -1038,69 +1061,105 @@ mod tests {
 
         //println!("{:?}",&bb[result.head_crc_slice().unwrap().0..result.head_crc_slice().
         // unwrap().1]);
-        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, true), Ok(435));
 
-        assert!(set_ttl(&mut bb, &result, 6546, 1000, false).is_err());
+        assert_eq!(set_ttl(&mut bb, &result, &435, &1000, true, false), Ok(435));
 
-        assert_eq!(get_ttl(&bb, &result), Ok(435));
+        assert!(set_ttl(&mut bb, &result, &6546, &1000, false, false).is_err());
 
-        assert_eq!(set_ttl(&mut bb, &result, 435, 1000, false), Ok(435 * 2));
-
-        assert_eq!(get_ttl(&bb, &result).unwrap(), 435 * 2);
+        assert_eq!(get_ttl(&bb, &result, &999999999999), Ok(435));
 
         assert_eq!(
-            set_ttl(&mut bb, &result, -300, 1000, false),
+            set_ttl(&mut bb, &result, &435, &1000, false, false),
+            Ok(435 * 2)
+        );
+
+        assert_eq!(get_ttl(&bb, &result, &999999999999).unwrap(), 435 * 2);
+
+        assert_eq!(
+            set_ttl(&mut bb, &result, &-300, &1000, false, false),
             Ok((435 * 2) - 300)
         );
 
-        assert_eq!(get_ttl(&bb, &result).unwrap(), (435 * 2) - 300);
+        assert_eq!(
+            get_ttl(&bb, &result, &999999999999).unwrap(),
+            (435 * 2) - 300
+        );
 
-        assert_eq!(set_ttl(&mut bb, &result, -900, 1000, false), Ok(0));
+        assert_eq!(set_ttl(&mut bb, &result, &-900, &1000, false, false), Ok(0));
 
-        assert_eq!(set_ttl(&mut bb, &result, 9, 1000, true), Ok(9));
+        assert_eq!(set_ttl(&mut bb, &result, &9, &1000, true, false), Ok(9));
 
-        assert_eq!(get_ttl(&bb, &result), Ok(9));
+        assert_eq!(get_ttl(&bb, &result, &999999999999), Ok(9));
 
         assert_eq!(
-            set_ttl(&mut bb, &result, 1000, 9, false),
-            Err(WTypeErr::PackageDamaged("ttl_max <=ttl "))
+            set_ttl(&mut bb, &result, &1000, &9, false, false),
+            Err(WTypeErr::PackageDamaged(
+                "ttl_max < ttl in pack + ttl_i_edit"
+            ))
         );
         assert_eq!(
-            set_ttl(&mut bb, &result_no_ttl, 1000, 90000, false),
+            set_ttl(&mut bb, &result_no_ttl, &1000, &90000, false, false),
             Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
         );
         assert_eq!(
             set_ttl(
                 &mut bb[..result.ttl_slice().unwrap().1],
                 &result,
-                1000,
-                90000,
+                &1000,
+                &90000,
+                false,
                 false
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
 
         assert_eq!(
-            get_ttl(&bb[..result.ttl_slice().unwrap().1], &result),
+            get_ttl(&bb[..result.ttl_slice().unwrap().1], &result, &999999999999),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            get_ttl(&bb, &result_no_ttl),
+            get_ttl(&bb, &result_no_ttl, &999999999999),
             Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
         );
 
         assert_eq!(
-            set_ttl(&mut bb, &result, -435, 1000, true),
+            set_ttl(&mut bb, &result, &-435, &1000, true, false),
             Err(WTypeErr::WorkTimeErr(
                 "is_start_ttl is true, but ttl_i_edit is a negative number, which is an error, \
                  since the initial TTL must be positive."
             ))
         );
-
-        assert_eq!(set_ttl(&mut bb, &result, 999, 1000, true), Ok(999));
+        //forsed false
+        assert_eq!(set_ttl(&mut bb, &result, &999, &1000, true, false), Ok(999));
         assert_eq!(
-            set_ttl(&mut bb, &result, -500, 800, false),
+            set_ttl(&mut bb, &result, &-500, &800, false, false),
             Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "))
+        );
+
+        //forsed true
+        assert_eq!(set_ttl(&mut bb, &result, &999, &1000, true, false), Ok(999));
+        assert_eq!(
+            set_ttl(&mut bb, &result, &-500, &800, false, true),
+            Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "))
+        );
+        //
+        //ttl len =4
+        assert_eq!(
+            set_ttl(
+                &mut bb,
+                &result,
+                &0xFF_FF_FF_FF,
+                &99999999999999,
+                true,
+                false
+            ),
+            Ok(0xFF_FF_FF_FF)
+        );
+        assert_eq!(
+            set_ttl(&mut bb, &result, &0x11, &99999999999999, false, false),
+            Err(WTypeErr::WorkTimeErr(
+                "ttl_is TTL is more than capable of accommodating the TTL_SLICE field"
+            ))
         );
     }
 
@@ -1124,9 +1183,9 @@ mod tests {
             *x.1 = x.0.wrapping_add(1) as u8;
         }
 
-        assert!(set_ttl(&mut bb, &result, 100, 200, true).is_ok());
+        assert!(set_ttl(&mut bb, &result, &100, &200, true, false).is_ok());
 
-        assert_eq!(set_len(&mut bb, &result, 100), Ok(()));
+        assert_eq!(set_len(&mut bb, &result, &100), Ok(()));
 
         let mut noncex = DumpNonser::new(&[0]).unwrap();
 
@@ -1169,7 +1228,7 @@ mod tests {
             Ok(())
         ); //decr
 
-        let _ = set_ttl(&mut bbb1, &result, 21, 200, true).unwrap();
+        let _ = set_ttl(&mut bbb1, &result, &21, &200, true, false).unwrap();
         assert_eq!(
             crypt(
                 &mut bbb1,
@@ -1284,9 +1343,9 @@ mod tests {
 
         let mut bb = vec![0_u8; result.total_minimal_len() + 132];
 
-        assert!(set_len(&mut bb, &result, 435,).is_ok());
+        assert!(set_len(&mut bb, &result, &435,).is_ok());
 
-        assert!(set_len(&mut bb, &result, 15).is_err());
+        assert!(set_len(&mut bb, &result, &15).is_err());
 
         let fields2 = vec![
             //t2page::PackFields::HeadByte,
@@ -1316,18 +1375,18 @@ mod tests {
         let mut bb = vec![0_u8; result.total_minimal_len() + 242];
 
         assert_eq!(
-            set_len(&mut bb, &result, 435,),
+            set_len(&mut bb, &result, &435,),
             Err(WTypeErr::LenSizeErr(
                 "pack.len()> len_byte_maximal_capacity_cheak(len)"
             ))
         );
 
         assert_eq!(
-            set_len(&mut bb[..result.len_slice().unwrap().1], &result, 435,),
+            set_len(&mut bb[..result.len_slice().unwrap().1], &result, &435,),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            set_len(&mut bb, &result_non_len, 435,),
+            set_len(&mut bb, &result_non_len, &435,),
             Err(WTypeErr::CompileFieldsErr(" topology.len_slice() is none"))
         );
 
@@ -1475,7 +1534,7 @@ mod tests {
                     let ccc = if tt { i1 } else { i2 };
 
                     assert!(
-                        set_counter(&mut bb, &result, ccc, PackType::bit_to_state(tt as u8))
+                        set_counter(&mut bb, &result, &ccc, &PackType::bit_to_state(tt as u8))
                             .is_ok()
                     );
                     assert!(get_counter(&bb, &result, i1, i2).is_ok());
@@ -1495,8 +1554,8 @@ mod tests {
             set_counter(
                 &mut bb[..result.counter_slice().unwrap().1],
                 &result,
-                21,
-                PackType::FBack
+                &21,
+                &PackType::FBack
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
@@ -1525,15 +1584,15 @@ mod tests {
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
 
-        assert!(set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok());
+        assert!(set_id_conn(&mut bb, &result1, &213214, &MyRole::Initiator).is_ok());
 
-        assert!(set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator).is_err());
+        assert!(set_id_conn(&mut bb, &result2, &213214, &MyRole::Initiator).is_err());
 
-        assert!(set_id_conn(&mut bb, &result1, 213214, MyRole::Initiator).is_ok());
+        assert!(set_id_conn(&mut bb, &result1, &213214, &MyRole::Initiator).is_ok());
 
-        assert!(set_id_conn(&mut bb, &result1, (!0_u64) >> 8, MyRole::Initiator).is_err());
+        assert!(set_id_conn(&mut bb, &result1, &((!0_u64) >> 8), &MyRole::Initiator).is_err());
 
-        assert!(set_id_conn(&mut bb, &result1, 100000, MyRole::Initiator).is_ok());
+        assert!(set_id_conn(&mut bb, &result1, &100000, &MyRole::Initiator).is_ok());
 
         assert!(get_id_conn(&bb, &result2).is_err());
 
@@ -1544,7 +1603,7 @@ mod tests {
             (100000, MyRole::Initiator)
         );
 
-        assert!(set_id_conn(&mut bb, &result1, 13321, MyRole::Passive).is_ok());
+        assert!(set_id_conn(&mut bb, &result1, &13321, &MyRole::Passive).is_ok());
         assert_eq!(
             get_id_conn(&bb, &result1).unwrap(),
             (13321, MyRole::Passive)
@@ -1560,7 +1619,7 @@ mod tests {
         );
 
         assert_eq!(
-            set_id_conn(&mut bb, &result1, 2312123213213221221, MyRole::Initiator),
+            set_id_conn(&mut bb, &result1, &2312123213213221221, &MyRole::Initiator),
             Err(WTypeErr::PackageDamaged(
                 "id_conn > wutils::len_byte_maximal_capacity_cheak(x.2).0 >>1"
             ))
@@ -1569,13 +1628,13 @@ mod tests {
             set_id_conn(
                 &mut bb[0..result1.idconn_slice().unwrap().1],
                 &result1,
-                2,
-                MyRole::Initiator
+                &2,
+                &MyRole::Initiator
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            set_id_conn(&mut bb, &result2, 213214, MyRole::Initiator),
+            set_id_conn(&mut bb, &result2, &213214, &MyRole::Initiator),
             Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
         );
     }
@@ -1622,8 +1681,8 @@ mod tests {
             set_id_sender_and_recv(
                 &mut bb[..result1.id_of_receiver_slice().unwrap().1],
                 &result1,
-                0,
-                0
+                &0,
+                &0
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
@@ -1632,8 +1691,8 @@ mod tests {
             set_id_sender_and_recv(
                 &mut bb[..result1.id_of_sender_slice().unwrap().1],
                 &result1,
-                0,
-                0
+                &0,
+                &0
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
@@ -1642,8 +1701,8 @@ mod tests {
             set_id_sender_and_recv(
                 &mut bb[..result1.id_of_receiver_slice().unwrap().1],
                 &result2,
-                0,
-                0
+                &0,
+                &0
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
@@ -1652,8 +1711,8 @@ mod tests {
             set_id_sender_and_recv(
                 &mut bb[..result1.id_of_sender_slice().unwrap().1],
                 &result2,
-                0,
-                0
+                &0,
+                &0
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
@@ -1678,13 +1737,18 @@ mod tests {
         let result2 = PackTopology::new(5, &fields2, true, false).unwrap();
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
-        assert!(set_id_sender_and_recv(&mut bb, &result1, 213214, 213214).is_ok());
-        assert!(set_id_sender_and_recv(&mut bb, &result2, 213214, 213214).is_err());
+        assert!(set_id_sender_and_recv(&mut bb, &result1, &213214, &213214).is_ok());
+        assert!(set_id_sender_and_recv(&mut bb, &result2, &213214, &213214).is_err());
         assert!(
-            set_id_sender_and_recv(&mut bb, &result1, !(312312_u64) << 16, !(111233_u64) << 8)
-                .is_err()
+            set_id_sender_and_recv(
+                &mut bb,
+                &result1,
+                &(!(312312_u64) << 16),
+                &(!(111233_u64) << 8)
+            )
+            .is_err()
         );
-        assert!(set_id_sender_and_recv(&mut bb, &result1, 987654, 1234567).is_ok());
+        assert!(set_id_sender_and_recv(&mut bb, &result1, &987654, &1234567).is_ok());
         assert!(get_id_sender_and_recv(&bb, &result1).is_ok());
         assert_eq!(
             get_id_sender_and_recv(&bb, &result1).unwrap(),
@@ -1703,13 +1767,13 @@ mod tests {
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
         assert_eq!(
-            set_id_sender_and_recv(&mut bb, &result2, 987, 123),
+            set_id_sender_and_recv(&mut bb, &result2, &987, &123),
             Err(WTypeErr::CompileFieldsErr(
                 "topology.id_of_sender_slice() or topology.id_of_receiver_slice() is None"
             ))
         );
         assert_eq!(
-            set_id_sender_and_recv(&mut bb[..5], &result1, 7, 1),
+            set_id_sender_and_recv(&mut bb[..5], &result1, &7, &1),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
         );
     }
@@ -1742,13 +1806,13 @@ mod tests {
         let mut pak = vec![0_u8; topology.total_minimal_len() + 100];
         let pack = &mut pak[..];
         //id R  S
-        assert!(set_id_sender_and_recv(pack, &topology, 0x22, 0x1122334455667788).is_err());
-        assert!(set_id_sender_and_recv(pack, &topology, 0x2299FFAABBCC1088, 0x11).is_err());
+        assert!(set_id_sender_and_recv(pack, &topology, &0x22, &0x1122334455667788).is_err());
+        assert!(set_id_sender_and_recv(pack, &topology, &0x2299FFAABBCC1088, &0x11).is_err());
         assert!(
-            set_id_sender_and_recv(pack, &topology, 0x2299FFAABBCC1088, 0x1122334455667788)
+            set_id_sender_and_recv(pack, &topology, &0x2299FFAABBCC1088, &0x1122334455667788)
                 .is_err()
         );
-        assert!(set_id_sender_and_recv(pack, &topology, id_s, id_r).is_ok());
+        assert!(set_id_sender_and_recv(pack, &topology, &id_s, &id_r).is_ok());
 
         assert!(get_id_sender_and_recv(pack, &topology).is_ok());
 
@@ -1757,17 +1821,17 @@ mod tests {
             (id_s, id_r)
         );
         //LEN
-        assert!(set_len(pack, &topology, 0x10).is_err());
+        assert!(set_len(pack, &topology, &0x10).is_err());
         {
             let mut pack = [0_u8; 256];
-            assert!(set_len(&mut pack, &topology, 0x1000).is_err());
+            assert!(set_len(&mut pack, &topology, &0x1000).is_err());
         }
-        assert!(set_len(pack, &topology, 0x1000).is_ok());
+        assert!(set_len(pack, &topology, &0x1000).is_ok());
 
         assert_eq!(get_len(pack, &topology).unwrap(), pack.len());
 
         //COUNTER
-        assert!(set_counter(pack, &topology, ctr_m, PackType::FBack).is_ok());
+        assert!(set_counter(pack, &topology, &ctr_m, &PackType::FBack).is_ok());
         assert_eq!(
             set_get_head_crc(true, pack, &topology, dummy_crc_gen),
             Ok(false)
@@ -1786,14 +1850,14 @@ mod tests {
         );
 
         //TTL
-        assert!(set_ttl(pack, &topology, 70000, 100000, true).is_err());
+        assert!(set_ttl(pack, &topology, &70000, &100000, true, false).is_err());
 
-        assert!(set_ttl(pack, &topology, ttl, 1000, true).is_ok());
-        assert_eq!(get_ttl(pack, &topology).unwrap(), ttl as u64);
+        assert!(set_ttl(pack, &topology, &ttl, &1000, true, false).is_ok());
+        assert_eq!(get_ttl(pack, &topology, &999999999999).unwrap(), ttl as u64);
 
         //IDC
-        assert!(set_id_conn(pack, &topology, (!0_u32) as u64, MyRole::Initiator).is_err());
-        assert!(set_id_conn(pack, &topology, id_c, MyRole::bit_to_state(id_c_b as u8)).is_ok());
+        assert!(set_id_conn(pack, &topology, &((!0_u32) as u64), &MyRole::Initiator).is_err());
+        assert!(set_id_conn(pack, &topology, &id_c, &MyRole::bit_to_state(id_c_b as u8)).is_ok());
         assert_eq!(
             get_id_conn(pack, &topology).unwrap(),
             (id_c, MyRole::bit_to_state(id_c_b as u8))
@@ -2032,7 +2096,16 @@ mod tests {
             get_counter(pack, &topology, ctr_m - 10, ctr_m - 11),
             Ok((ctr_m, PackType::FBack))
         );
-        assert_eq!(get_ttl(pack, &topology).unwrap(), ttl as u64);
+        assert_eq!(get_ttl(pack, &topology, &999999999999).unwrap(), ttl as u64);
+
+        assert_eq!(get_ttl(pack, &topology, &(ttl as u64)).unwrap(), ttl as u64);
+
+        assert_eq!(get_ttl(pack, &topology, &(ttl as u64)).unwrap(), ttl as u64);
+        assert_eq!(
+            get_ttl(pack, &topology, &(ttl as u64 - 1)),
+            Err(WTypeErr::PackageDamaged("num in pack ttl > max_ttl"))
+        );
+
         assert_eq!(
             get_id_sender_and_recv(pack, &topology).unwrap(),
             (id_s, id_r)

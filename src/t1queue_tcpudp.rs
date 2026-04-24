@@ -1534,7 +1534,7 @@ pub mod recv_queue {
                 let paaake = &mut packet[..];
 
                 t1fields::set_tricky_byte(paaake, my_top, tbute).unwrap();
-                t1fields::set_len(paaake, my_top, 1000).unwrap();
+                t1fields::set_len(paaake, my_top, &1000).unwrap();
                 if my_top.head_crc_slice().is_some() {
                     t1fields::set_get_head_crc(true, paaake, my_top, &mut lbo).unwrap();
                 }

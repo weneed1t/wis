@@ -66,6 +66,7 @@ pub mod t3poc_files;
 pub mod t4algo_param;
 pub mod t5_2_connect_data;
 pub mod t5_connect_data;
+pub mod t5_preparing_pack_fields;
 pub mod w1utils;
 pub mod wt1types; //utils //topology
 
@@ -87,7 +88,13 @@ pub mod private_core {
 /*
 delete this in prod dapgp
 
+NO unstall
 
+cargo clippy --fix --allow-dirty && cargo fix --allow-dirty && cargo clippy --fix --allow-dirty --broken-
+code && cargo clippy --fix --all --allow-dirty && rustup run nightly cargo fmt && cargo fmt && cargo test && git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
+
+
+Wisth  install
 rustup component add clippy && rustup toolchain install nightly && cargo clippy --fix --allow-dirty && cargo fix --allow-dirty && cargo clippy --fix --allow-dirty --broken-code && cargo clippy --fix --all --allow-dirty && rustup run nightly cargo fmt && cargo fmt && cargo test && git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
 
 

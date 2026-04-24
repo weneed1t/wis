@@ -43,6 +43,8 @@ pub enum PackFields {
     IdSender(usize),
     ///id of receiver
     IdReceiver(usize),
+    ///id of connect
+    IdConnect(usize),
     ///len
     Len(usize),
     ///Counter
@@ -55,8 +57,6 @@ pub enum PackFields {
     TTL(usize),
     ///nonce for encrypt
     Nonce(usize),
-    ///id of connect
-    IdConnect(usize),
     ///Tricky Byte
     TrickyByte,
 }
