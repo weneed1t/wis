@@ -1,9 +1,9 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
-
+#![deny(clippy::as_conversions)]
 use crate::t0pology::PackTopology;
 use crate::wt1types::*;
-use crate::{t0pology, w1utils};
+use crate::{checked_cast, t0pology, w1utils};
 ///get tricky byte
 pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
@@ -100,8 +100,9 @@ where
         let temp_new_slice = temp_new
             .get_mut(..len)
             .ok_or(WTypeErr::LenSizeErr("temp_new slice error"))?;
+        //
         crcfn(head, temp_new_slice).map_err(WTypeErr::PackageDamaged)?;
-
+        //
         let target_slice = head
             .get_mut(start..end)
             .ok_or(WTypeErr::LenSizeErr("invalid crc slice range"))?;
@@ -167,6 +168,12 @@ pub fn set_ttl(
             .get_mut(start..end)
             .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
 
+        if checked_cast!(*ttl_max=>i64, err WTypeErr::WorkTimeErr("err convert ttl_max u64 to i64"))?
+            < *ttl_i_edit
+        {
+            return Err(WTypeErr::WorkTimeErr("err ttl_i_edit > ttl_max "));
+        }
+
         let temp = w1utils::add_u64_i64(
             //ttl start = (0 + ttl_i_edit)
             //ttl no start = (from pack ttl + ttl_i_edit)
@@ -190,7 +197,7 @@ pub fn set_ttl(
         )
         .map_err(WTypeErr::PackageDamaged)?;
 
-        let temp = if *ttl_max <= temp {
+        let temp = if *ttl_max < temp {
             if forced_pruning {
                 *ttl_max
             } else {
@@ -265,7 +272,9 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: &usize) -> Result<
         return Err(WTypeErr::LenSizeErr("pack len non correct"));
     }
 
-    if plen > w1utils::len_byte_maximal_capacity_check(sls.2).0 as usize {
+    if plen
+        > checked_cast!(w1utils::len_byte_maximal_capacity_check(sls.2).0 => usize, err WTypeErr::CompileFieldsErr("len of len slice into to 64 is overflow"))?
+    {
         return Err(WTypeErr::LenSizeErr(
             "pack.len()> len_byte_maximal_capacity_cheak(len)",
         ));
@@ -274,7 +283,11 @@ pub fn set_len(pack: &mut [u8], topology: &PackTopology, mtu: &usize) -> Result<
     let len_slice = pack
         .get_mut(sls.0..sls.1)
         .ok_or(WTypeErr::LenSizeErr("invalid len slice range"))?;
-    w1utils::u64_to_1_8bytes(plen as u64, len_slice).map_err(WTypeErr::WorkTimeErr)?;
+    w1utils::u64_to_1_8bytes(
+        checked_cast!(plen => u64, err WTypeErr::WorkTimeErr("plen to u64 conversion failed"))?,
+        len_slice,
+    )
+    .map_err(WTypeErr::WorkTimeErr)?;
 
     Ok(())
 }
@@ -294,7 +307,9 @@ pub fn get_len(pack: &[u8], topology: &PackTopology) -> Result<usize, WTypeErr> 
     let len_slice = pack
         .get(sls.0..sls.1)
         .ok_or(WTypeErr::LenSizeErr("invalid len slice range"))?;
-    Ok(w1utils::bytes_to_u64(len_slice).map_err(WTypeErr::WorkTimeErr)? as usize)
+    Ok(
+        checked_cast!(w1utils::bytes_to_u64(len_slice).map_err(WTypeErr::WorkTimeErr)? => usize, err WTypeErr::WorkTimeErr("u64 to usize conversion failed"))?,
+    )
 }
 
 /// set_id_conn sets the connection identifier and sender role bit in the packet header
@@ -325,8 +340,9 @@ pub fn set_id_conn(
         let id_slice = pack
             .get_mut(x.0..x.1)
             .ok_or(WTypeErr::LenSizeErr("invalid id_conn slice range"))?;
-        w1utils::u64_to_1_8bytes((id_conn << 1) | role.sate_to_bit() as u64, id_slice)
-            .map_err(WTypeErr::WorkTimeErr)?;
+        let combined = (id_conn << 1)
+            | checked_cast!(role.sate_to_bit() => u64, err WTypeErr::WorkTimeErr("role.sate_to_bit conversion to u64 failed"))?;
+        w1utils::u64_to_1_8bytes(combined, id_slice).map_err(WTypeErr::WorkTimeErr)?;
         return Ok(());
     }
 
@@ -349,7 +365,12 @@ pub fn get_id_conn(pack: &[u8], topology: &PackTopology) -> Result<(u64, MyRole)
             .get(x.0..x.1)
             .ok_or(WTypeErr::LenSizeErr("invalid id_conn slice range"))?;
         let reta = w1utils::bytes_to_u64(id_slice).map_err(WTypeErr::WorkTimeErr)?;
-        return Ok((reta >> 1, MyRole::bit_to_state((reta & 1) as u8)));
+        return Ok((
+            reta >> 1,
+            MyRole::bit_to_state(
+                checked_cast!(reta & 1 => u8, expect "bit to u8 conversion failed"),
+            ),
+        ));
     }
     Err(WTypeErr::CompileFieldsErr("topology.idconn_slice is None"))
 }
@@ -458,7 +479,8 @@ pub fn set_counter(
         }
         let max_cap = w1utils::len_byte_maximal_capacity_check(x.2).0 >> 1;
 
-        let pack_ctr = ((max_cap & countr) << 1) | my_type.sate_to_bit() as u64;
+        let pack_ctr = checked_cast!((max_cap & countr) << 1 => u64, err WTypeErr::WorkTimeErr("pack_ctr conversion failed"))?
+            | checked_cast!(my_type.sate_to_bit() => u64, err WTypeErr::WorkTimeErr("my_type conversion failed"))?;
 
         let counter_slice = pack
             .get_mut(x.0..x.1)
@@ -514,7 +536,9 @@ pub fn get_counter(
         let (max_cap, _) = w1utils::len_byte_maximal_capacity_check(x.2);
         let max_cap = max_cap >> 1;
         let pack_ctr = (ctr_in_pack >> 1) & max_cap;
-        let my_type = PackType::bit_to_state((ctr_in_pack & 1) as u8);
+        let my_type = PackType::bit_to_state(
+            checked_cast!(ctr_in_pack & 1 => u8, expect "bit to u8 conversion failed"),
+        );
 
         let countr = if my_type.is_fback() {
             countr1_fback
@@ -578,7 +602,7 @@ pub fn set_user_field<F>(
     mut field_gen: F,
 ) -> Result<(), WTypeErr>
 where
-    F: FnMut(&mut [u8], u64, usize, usize, &PackTopology) -> Result<(), &'static str>,
+    F: FnMut(&mut [u8], &u64, &usize, &usize, &PackTopology) -> Result<(), &'static str>,
 {
     if let Some(vecta_trash) = topology.trash_content_slice() {
         for (i, (start, end, _)) in vecta_trash.iter().enumerate() {
@@ -589,7 +613,7 @@ where
             let field_slice = pack
                 .get_mut(*start..*end)
                 .ok_or(WTypeErr::LenSizeErr("invalid user field slice range"))?;
-            field_gen(field_slice, counter, full_len, i, topology)
+            field_gen(field_slice, &counter, &full_len, &i, topology)
                 .map_err(WTypeErr::PackageDamaged)?;
         }
         return Ok(());
@@ -819,6 +843,7 @@ fn if_encrypt<Tnoncer: Noncer>(
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -913,7 +938,7 @@ mod tests {
 
         if let Some((start, end, _)) = result.head_crc_slice() {
             println!("{:?}", &bb[start..end]);
-            assert_eq!(&bb[start..end], [45, 22, 151, 232, 151, 44, 216, 206]);
+            assert_eq!(&bb[start..end], [251, 101, 178, 118, 224, 42, 80, 167]);
         } else {
             panic!(
                 "result.head_crc_slice() is er {:?}",
@@ -1053,7 +1078,7 @@ mod tests {
 
         let result_no_ttl = PackTopology::new(5, &fields2, true, false).unwrap();
 
-        let mut bb = vec![0_u8; result.total_minimal_len()];
+        let mut bb = vec![88_u8; result.total_minimal_len()];
 
         for x in bb.iter_mut().enumerate() {
             *x.1 = x.0 as u8;
@@ -1061,6 +1086,18 @@ mod tests {
 
         //println!("{:?}",&bb[result.head_crc_slice().unwrap().0..result.head_crc_slice().
         // unwrap().1]);
+        assert_eq!(
+            set_ttl(&mut bb, &result, &4315, &1000, true, false),
+            Err(WTypeErr::WorkTimeErr("err ttl_i_edit > ttl_max "))
+        );
+        assert_eq!(
+            set_ttl(&mut bb, &result, &9999, &9998, true, false),
+            Err(WTypeErr::WorkTimeErr("err ttl_i_edit > ttl_max "))
+        );
+        assert_eq!(
+            set_ttl(&mut bb, &result, &1000, &1000, true, false),
+            Ok(1000)
+        );
 
         assert_eq!(set_ttl(&mut bb, &result, &435, &1000, true, false), Ok(435));
 
@@ -1092,7 +1129,7 @@ mod tests {
         assert_eq!(get_ttl(&bb, &result, &999999999999), Ok(9));
 
         assert_eq!(
-            set_ttl(&mut bb, &result, &1000, &9, false, false),
+            set_ttl(&mut bb, &result, &1000, &1001, false, false),
             Err(WTypeErr::PackageDamaged(
                 "ttl_max < ttl in pack + ttl_i_edit"
             ))
@@ -1448,10 +1485,10 @@ mod tests {
         let mut tb3 = vec![0_u8; 334];
         let mut tb4 = vec![0_u8; 334];
 
-        dummy_usf(&mut tb1, 312, 38865, 0, &result1).unwrap();
-        dummy_usf(&mut tb2, 675, 7564, 0, &result1).unwrap();
-        dummy_usf(&mut tb3, 987, 765, 0, &result1).unwrap();
-        dummy_usf(&mut tb4, 12213, 987, 0, &result1).unwrap();
+        dummy_usf(&mut tb1, &312, &38865, &0, &result1).unwrap();
+        dummy_usf(&mut tb2, &675, &7564, &0, &result1).unwrap();
+        dummy_usf(&mut tb3, &987, &765, &0, &result1).unwrap();
+        dummy_usf(&mut tb4, &12213, &987, &0, &result1).unwrap();
 
         set_user_field(&mut bb4_usr_test, &result_usr_test, 20, 111, dummy_usf).unwrap();
 
@@ -2120,12 +2157,12 @@ mod tests {
 
     fn dummy_usf(
         field: &mut [u8],
-        counter: u64,
-        full_len: usize,
-        i: usize,
+        counter: &u64,
+        full_len: &usize,
+        i: &usize,
         _topoligy: &PackTopology,
     ) -> Result<(), &'static str> {
-        let teto = [counter as u8, full_len as u8, i as u8];
+        let teto = [*counter as u8, *full_len as u8, *i as u8];
         for (x, t) in field.iter_mut().zip(teto.iter().cycle()) {
             *x = *t;
         }
@@ -2133,7 +2170,7 @@ mod tests {
     }
 
     fn dummy_crc_gen(inp: &[u8], crc: &mut [u8]) -> Result<(), &'static str> {
-        DumpCfcser::new(&[0]).unwrap().gen_crc(inp, crc)?;
+        DumpCrcser::new(&[0]).unwrap().gen_crc(inp, crc)?;
 
         Ok(())
     }

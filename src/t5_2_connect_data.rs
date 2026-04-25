@@ -1,5 +1,6 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 
 include!("t5_connect_data.rs");
 
@@ -10,7 +11,7 @@ impl<
     Twait: Clone,
     Tencrypt: EncWis,
     TRandomer: Randomer,
-    TCfcser: Cfcser,
+    TCfcser: Crcser,
     Hmaker: HandMaker,
 > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {

@@ -5,8 +5,11 @@
 //! all errors are returned as static string slices.
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 
 use std::collections::HashSet;
+
+use crate::checked_cast;
 
 /// possible field values.
 #[derive(Debug, Clone, PartialEq)]
@@ -254,7 +257,8 @@ impl Codec {
         if n == 0 {
             return vec![0];
         }
-        let leading = n.leading_zeros() as usize / 8;
+        let leading = checked_cast!(n.leading_zeros() => usize, expect "Leading zeros conversion to usize failed")
+            / 8;
         let be_bytes = n.to_be_bytes();
         be_bytes.get(leading..).unwrap_or(&[]).to_vec()
     }
@@ -263,10 +267,16 @@ impl Codec {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(bytes.len() * 2);
         for &b in bytes {
-            let high = HEX.get((b >> 4) as usize).copied().unwrap_or(b'0');
-            let low = HEX.get((b & 0x0f) as usize).copied().unwrap_or(b'0');
-            out.push(high as char);
-            out.push(low as char);
+            let high = HEX
+                .get(checked_cast!(b >> 4 => usize, expect "High nibble index conversion failed"))
+                .copied()
+                .unwrap_or(b'0');
+            let low = HEX
+                .get(checked_cast!(b & 0x0f => usize, expect "Low nibble index conversion failed"))
+                .copied()
+                .unwrap_or(b'0');
+            out.push(checked_cast!(high => char, expect "ASCII byte to char conversion failed"));
+            out.push(checked_cast!(low => char, expect "ASCII byte to char conversion failed"));
         }
         out
     }

@@ -1,8 +1,9 @@
-//#![deny(clippy::indexing_slicing)]
-//#![deny(clippy::unwrap_used)]
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 use std::ops::BitXor;
 
-use crate::EXPCP;
+use crate::{EXPCP, checked_cast};
 const CHUNK_SIZE: usize = 64;
 const WORDS_PER_CHUNK: usize = CHUNK_SIZE / 4;
 
@@ -45,8 +46,8 @@ fn test_vec_enc() -> &'static Mutex<Vec<Vec<u32>>> {
 
 #[inline]
 fn split_u64_to_u32_be_shift(value: u64) -> (u32, u32) {
-    let high = (value >> 32) as u32;
-    let low = value as u32;
+    let high = checked_cast!(value >> 32 => u32, expect "high part conversion to u32 failed");
+    let low = checked_cast!(value => u32, expect "low part conversion to u32 failed");
     (high, low)
 }
 //===============================================================
@@ -183,7 +184,7 @@ pub fn zero_right_bytes_be(data: &mut [u32], n_bytes: usize) {
     // zero complete words from the end
     if full_words > 0 {
         let start = data.len() - full_words;
-        data[start..].fill(0);
+        EXPCP!(data.get_mut(start..), "failed to get mutable range").fill(0);
     }
 
     // zero partial bytes in the word just before the full ones
@@ -191,7 +192,7 @@ pub fn zero_right_bytes_be(data: &mut [u32], n_bytes: usize) {
         let idx = data.len() - full_words - 1; // index of the word to partially zero
         // mask that preserves the high (4 - partial_bytes) bytes and zeros the low partial_bytes
         let mask = !((1u32 << (partial_bytes << 3)) - 1);
-        data[idx] &= mask;
+        *EXPCP!(data.get_mut(idx), "failed to get mutable byte at index") &= mask;
     }
 }
 
@@ -256,7 +257,8 @@ where
     let remainder = chunks.into_remainder();
     if !remainder.is_empty() {
         let mut buf = [0u8; CHUNK_SIZE];
-        buf[..remainder.len()].copy_from_slice(remainder);
+        EXPCP!(buf.get_mut(..remainder.len()), "failed to get buffer range")
+            .copy_from_slice(remainder);
 
         let mut words = bytes_to_words(&buf);
         process(
@@ -270,7 +272,8 @@ where
         );
         write_words_to_bytes(&words, &mut buf);
 
-        remainder.copy_from_slice(&buf[..remainder.len()]);
+        let src = EXPCP!(buf.get(..remainder.len()), "failed to get source range");
+        remainder.copy_from_slice(src);
     }
 }
 ///set key
@@ -309,7 +312,9 @@ pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
             "w 1-2|ct1-2: ",
         ];
 
-        let a = (0..32).map(|x| x as u8).collect::<Vec<u8>>();
+        let a = (0..32)
+            .map(|x| checked_cast!(x => u8, expect "x conversion to u8 failed"))
+            .collect::<Vec<u8>>();
         if key8.eq(a.as_slice()) {
             let ctr2 = split_u64_to_u32_be_shift(0x11_22_33_44_55_66_77_88);
             key_state[14] ^= ctr2.0;
@@ -319,9 +324,12 @@ pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
             for i in 0..16 {
                 if 0 == i % 4 {
                     println!("\n");
-                    print!("{:?} | ", op[i / 4]);
+                    print!("{:?} | ", EXPCP!(op.get(i / 4), "failed to get op element"));
                 }
-                print!("{:08X} | ", key_state[i]);
+                print!(
+                    "{:08X} | ",
+                    EXPCP!(key_state.get(i), "failed to get key_state element")
+                );
             }
             let test_var = [
                 0xF0F1F2F3,
@@ -411,7 +419,9 @@ pub fn encrypt(
     let mut ctr: u64 = 0;
     let mut state_hash = [0; 16];
 
-    if plaintext.len() > u64::MAX as usize {
+    if plaintext.len()
+        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
+    {
         return Err("plaintext.len() > u64::MAX as usize; len() is to big");
     }
 
@@ -438,7 +448,7 @@ pub fn encrypt(
         //
 
         ctr = EXPCP!(
-            ctr.checked_add(adder as u64),
+            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
             "counter overflow during addition, if you see this, it means the program is not \
              working correctly, since there should have already been an overflow check in the \
              code before this"
@@ -463,7 +473,9 @@ pub fn decrypt(
     let mut ctr: u64 = 0;
     let mut state_hash = [0; 16];
 
-    if plaintext.len() > u64::MAX as usize {
+    if plaintext.len()
+        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
+    {
         return Err("plaintext.len() > u64::MAX as usize; len() is to big");
     }
 
@@ -479,7 +491,7 @@ pub fn decrypt(
         //
 
         ctr = EXPCP!(
-            ctr.checked_add(adder as u64),
+            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
             "counter overflow during addition, if you see this, it means the program is not \
              working correctly, since there should have already been an overflow check in the \
              code before this"
@@ -498,6 +510,7 @@ pub fn decrypt(
 
 #[cfg(test)]
 mod tests_proc {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -717,6 +730,7 @@ mod tests_proc {
 
 #[cfg(test)]
 mod wdel {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -847,6 +861,7 @@ mod wdel {
 
 #[cfg(test)]
 mod tests_split {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -925,6 +940,7 @@ mod tests_split {
 
 #[cfg(test)]
 mod tests_b_to_w {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -982,6 +998,7 @@ mod tests_b_to_w {
 
 #[cfg(test)]
 mod tests_split_u64 {
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     #[test]
@@ -1031,6 +1048,7 @@ mod tests_split_u64 {
 
 #[cfg(test)]
 mod tests_write {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -1095,6 +1113,7 @@ mod tests_write {
 
 #[cfg(test)]
 mod tests_add_vec {
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     #[test]
@@ -1150,6 +1169,7 @@ mod tests_add_vec {
 
 #[cfg(test)]
 mod tests_xor_vec {
+    #![allow(clippy::as_conversions)]
     use std::ops::BitXor;
 
     use super::*;
@@ -1224,6 +1244,7 @@ mod tests_xor_vec {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     #[test]

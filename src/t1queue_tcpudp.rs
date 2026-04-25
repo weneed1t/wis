@@ -1,9 +1,11 @@
 // I HATE FUCKING RUST!
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 const U64_LEN_IN_BYTES: usize = 8;
 
 pub mod recv_queue {
+    #![deny(clippy::as_conversions)]
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::fmt::Debug;
@@ -12,8 +14,8 @@ pub mod recv_queue {
     use crate::t0_grouper::GroupTopology;
     use crate::t0pology::PackTopology;
     use crate::t1queue_tcpudp::U64_LEN_IN_BYTES;
-    use crate::wt1types::{Cfcser, WSQueueErr};
-    use crate::{EXPCP, t1fields, w1utils};
+    use crate::wt1types::{Crcser, WSQueueErr};
+    use crate::{EXPCP, checked_cast, t1fields, w1utils};
     #[derive(Clone)]
     pub enum TcpSheme<'a> {
         OnePack(&'a PackTopology),
@@ -21,7 +23,7 @@ pub mod recv_queue {
     }
     #[derive(Clone)]
     ///See the description of the `new` method
-    pub struct WSTcpLike<'a, TCfcser: Cfcser> {
+    pub struct WSTcpLike<'a, TCfcser: Crcser> {
         elems_in_buf: usize,
         u_buf: RefCell<Box<[u8]>>,
         sheme_topology: RefCell<TcpSheme<'a>>,
@@ -29,7 +31,7 @@ pub mod recv_queue {
         crc_gener: RefCell<Option<TCfcser>>,
     }
 
-    impl<'a, TCfcser: Cfcser> WSTcpLike<'a, TCfcser> {
+    impl<'a, TCfcser: Crcser> WSTcpLike<'a, TCfcser> {
         ///TCP queue, already directly related to conversion into packets from a TCP data
         /// stream,  since such data exchange protocols do not divide data into packets at
         /// the user level  and provide abstraction only as a data stream.
@@ -410,7 +412,7 @@ pub mod recv_queue {
         ///  in the sequence, and must be unique. T is its data.
         pub fn insert(&mut self, item_ctr: u64, item: &T) -> WSQueueState {
             if item_ctr == u64::MAX {
-                panic!("item_ctr == u64::MAX ")
+                panic!("item_ctr == u64 MAX ")
             }
 
             let minimal_ctr = match self.last_give_ctr {
@@ -419,7 +421,9 @@ pub mod recv_queue {
             };
 
             let pos = match item_ctr.checked_sub(minimal_ctr) {
-                Some(diff) => diff as usize,
+                Some(diff) => {
+                    checked_cast!(diff => usize, expect "diff conversion to usize failed")
+                },
                 None => return WSQueueState::ElemIdIsSmall,
             };
 
@@ -530,9 +534,11 @@ pub mod recv_queue {
         /// If packet number 14 is missing, then there is a gap.<br>
         /// if there are no packets in the queue, false is returned
         pub fn gap_in_queue(&self) -> bool {
-            if self.in_queue > u64::MAX as usize {
+            if self.in_queue
+                > checked_cast!(u64::MAX => usize, expect "u64::MAX to usize conversion failed")
+            {
                 panic!(
-                    "self.in_queue > u64::MAX as usize  There is a slight discrepancy between the \
+                    "self.in_queue > u64 MAX as usize  There is a slight discrepancy between the \
                      capacity of usize and u64. Your device is not suitable for this code :("
                 );
             }
@@ -544,10 +550,11 @@ pub mod recv_queue {
             }
 
             if let Some(lctr) = self.largest_ctr {
-                let ad = self.last_give_ctr.is_some() as u64 & 1;
+                let ad = if self.last_give_ctr.is_some() { 1 } else { 0 };
 
                 (EXPCP!(
-                    (self.in_queue as u64).checked_add(ad),
+                    checked_cast!(self.in_queue => u64, expect "in_queue conversion to u64 failed")
+                        .checked_add(ad),
                     "err ad + self.in_queue"
                 )) < EXPCP!(
                     (EXPCP!(lctr.checked_sub(lgctr), "err (lctr - lgctr)")).checked_add(1),
@@ -1251,6 +1258,7 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_wait {
+        #![allow(clippy::as_conversions)]
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
         use super::*;
@@ -1418,11 +1426,12 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wtcp {
+        #![allow(clippy::as_conversions)]
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
         use super::*;
         use crate::t0pology::{PackFields, PackTopology};
-        use crate::t1dumps_struct::DumpCfcser;
+        use crate::t1dumps_struct::DumpCrcser;
         use crate::t1fields;
 
         fn datas() -> (Vec<Vec<u8>>, Vec<u8>, Vec<usize>, Box<[u8]>, PackTopology) {
@@ -1449,7 +1458,7 @@ pub mod recv_queue {
             let pack_topology = PackTopology::new(2, &fields, true, true).unwrap();
 
             let mut pkks: Vec<u8> = Vec::new();
-            let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+            let mut d_crc = DumpCrcser::new(&[0]).unwrap();
 
             let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
                 d_crc.gen_crc(da1ta, out)?;
@@ -1519,7 +1528,7 @@ pub mod recv_queue {
             let pack_topology_group = GroupTopology::new(&ffilders[..], 3, true, true).unwrap();
 
             let mut pkks: Vec<u8> = Vec::new();
-            let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+            let mut d_crc = DumpCrcser::new(&[0]).unwrap();
 
             let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
                 d_crc.gen_crc(da1ta, out)?;
@@ -1569,7 +1578,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
+            let mut w_tcp: WSTcpLike<'_, DumpCrcser> =
                 WSTcpLike::new(41, TcpSheme::OnePack(&datas_x.4), Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
@@ -1599,7 +1608,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
+            let mut w_tcp: WSTcpLike<'_, DumpCrcser> =
                 WSTcpLike::new(39, TcpSheme::OnePack(&datas_x.4), Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
@@ -1636,7 +1645,7 @@ pub mod recv_queue {
 
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
-            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
+            let mut w_tcp: WSTcpLike<'_, DumpCrcser> =
                 WSTcpLike::new(39, TcpSheme::OnePack(&datas_x.4), Some(&[0])).unwrap();
             while index < datas_x.1.len() {
                 let s = data_slises.next().unwrap();
@@ -1679,7 +1688,7 @@ pub mod recv_queue {
 
                 assert_eq!(vi.len(), t1fields::get_len(&vi[..], te1).unwrap());
 
-                let mut d_crc = DumpCfcser::new(&[0]).unwrap();
+                let mut d_crc = DumpCrcser::new(&[0]).unwrap();
 
                 let mut lbo = |da1ta: &[u8], out: &mut [u8]| -> Result<(), &'static str> {
                     d_crc.gen_crc(da1ta, out)?;
@@ -1705,7 +1714,7 @@ pub mod recv_queue {
             let mut arepackets = datas_x.0.iter();
             let mut data_slises = datas_x.2.iter().cycle();
 
-            let mut w_tcp: WSTcpLike<'_, DumpCfcser> =
+            let mut w_tcp: WSTcpLike<'_, DumpCrcser> =
                 WSTcpLike::new(311, TcpSheme::GroupPack(&datas_x.3), Some(&[0])).unwrap();
 
             while index < datas_x.1.len() {
@@ -2025,7 +2034,7 @@ pub mod recv_queue {
     mod test_recv_queue_ctrs {
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
-
+        #![allow(clippy::as_conversions)]
         use ::std::collections::HashMap;
 
         use crate::t0pology::{PackFields, PackTopology};
@@ -2273,6 +2282,7 @@ pub mod recv_queue {
     mod test_collab {
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
+        #![allow(clippy::as_conversions)]
         #[cfg(test)]
         //use crate::t0pology::PackFields;
         use crate::t0pology::*;

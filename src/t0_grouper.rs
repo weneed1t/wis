@@ -1,8 +1,9 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 // specific imports for clarity and to avoid namespace pollution
-use crate::EXPCP;
 use crate::t0pology::{PackFields, PackTopology};
+use crate::{EXPCP, checked_cast};
 
 const PRIMES: &[u16] = &[
     1, 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89,
@@ -99,8 +100,10 @@ impl GroupTopology {
             vec![None; Self::find_minimal_table_size(input_topoler)?].into_boxed_slice();
 
         for (fields, key) in input_topoler.iter() {
+            let idx =
+                checked_cast!(*key => usize, err "Key out of range for usize")? % topologs.len();
             let temp = topologs
-                .get_mut(*key as usize % topologs.len())
+                .get_mut(idx)
                 .expect("An impossible condition due to modulo division");
 
             let topology = if temp.is_some() {
@@ -292,8 +295,10 @@ impl GroupTopology {
     }
     ///Get the PackTopology diagram by its ID (byte)
     pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
+        let idx = checked_cast!(trikly_byte => usize,expect "u8 to usize conversion failed")
+            % self.topologs.len();
         self.topologs
-            .get(trikly_byte as usize % self.topologs.len())
+            .get(idx)
             .expect("impossible state since here the index is taken in the length model")
             .as_ref()
     }
@@ -328,20 +333,25 @@ impl GroupTopology {
         input_topoler: &[(Box<[PackFields]>, u8)],
     ) -> Result<usize, &'static str> {
         let target_len = input_topoler.len();
-        if target_len > u8::MAX as usize {
+        let max_u8 = checked_cast!(u8::MAX => usize,err "u8::MAX to usize conversion failed")?;
+        if target_len > max_u8 {
             return Err("input length exceeds maximum supported prime (255)");
         }
 
-        let start_idx = PRIMES.partition_point(|&p| (p as usize) < target_len);
+        let start_idx = PRIMES.partition_point(|&p| {
+            checked_cast!(p => usize, expect "Prime conversion to usize failed") < target_len
+        });
 
         for &size in PRIMES
             .get(start_idx..)
             .ok_or("no collision‑free prime size found (all have conflicts)")?
         {
-            let mut seen = vec![false; size as usize];
+            let mut seen =
+                vec![false; checked_cast!(size => usize, err "Size conversion to usize failed")?];
             let mut ok = true;
             for (_, val) in input_topoler {
-                let h = *val as usize % size as usize;
+                let h = checked_cast!(*val => usize, err "Value conversion to usize failed")?
+                    % checked_cast!(size => usize, err "Size conversion to usize failed")?;
                 if let Some(seen_val) = seen.get_mut(h) {
                     if *seen_val {
                         ok = false;
@@ -354,7 +364,7 @@ impl GroupTopology {
                 }
             }
             if ok {
-                return Ok(size as usize);
+                return Ok(checked_cast!(size => usize, err "Size conversion to usize failed")?);
             }
         }
         Err("no collision‑free prime size found (all have conflicts)")
@@ -471,6 +481,7 @@ impl GroupTopology {
 mod tests_find_minimal_table_size {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     // ---------- deterministic pseudo‑random generator (xorshift) ----------
@@ -702,6 +713,7 @@ mod tests_find_minimal_table_size {
 mod tests_new {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
 
     // use exact types from the t0pology module to avoid type mismatch errors
     use super::*;
@@ -1579,6 +1591,7 @@ mod tests_new {
 
 #[cfg(test)]
 mod test_get {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
 

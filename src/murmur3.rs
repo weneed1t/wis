@@ -4,6 +4,9 @@
 //#![allow(clippy::identity_op)]
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
+
+use crate::checked_cast;
 
 /// 128‑bit x64 version (output as two `u64`).
 pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
@@ -11,8 +14,8 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     let len = data.len();
     let nblocks = len / 16;
 
-    let mut h1 = seed as u64;
-    let mut h2 = seed as u64;
+    let mut h1 = checked_cast!(seed => u64, expect "Seed conversion to u64 failed");
+    let mut h2 = checked_cast!(seed => u64, expect "Seed conversion to u64 failed");
 
     const C1: u64 = 0x87c37b91114253d5;
     const C2: u64 = 0x4cf5ad432745937f;
@@ -71,7 +74,8 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     for i in (8..15).rev() {
         if rem > i {
             let shift = (i - 8) * 8;
-            k2 ^= (*tail.get(i).expect("'this is not a real state") as u64) << shift;
+            k2 ^= (checked_cast!(*tail.get(i).expect("'this is not a real state") => u64, expect "Byte to u64 conversion failed")
+                << shift);
         }
     }
     if rem >= 9 {
@@ -85,7 +89,8 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     for i in (0..8).rev() {
         if rem > i {
             let shift = i * 8;
-            k1 ^= (*tail.get(i).expect("'this is not a real state") as u64) << shift;
+            k1 ^= (checked_cast!(*tail.get(i).expect("'this is not a real state") => u64, expect "Byte to u64 conversion failed")
+                << shift);
         }
     }
     if rem >= 1 {
@@ -96,8 +101,8 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     }
 
     // Finalization
-    h1 ^= len as u64;
-    h2 ^= len as u64;
+    h1 ^= checked_cast!(len => u64, expect "Length conversion to u64 failed");
+    h2 ^= checked_cast!(len => u64, expect "Length conversion to u64 failed");
 
     h1 = h1.wrapping_add(h2);
     h2 = h2.wrapping_add(h1);

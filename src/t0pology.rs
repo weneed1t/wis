@@ -1,5 +1,6 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 use crate::EXPCP;
 
 //using in other files
@@ -12,10 +13,15 @@ pub const MAXIMAL_NONCE_LEN: usize = 32; //maxiaml 512 bits
 const fn maxval(a: usize, b: usize) -> usize {
     if a > b { a } else { b }
 }
+
+///Did I fucking get this right—that in this fucking programming language for morons,
+/// you can’t fucking use `result<>`
+/// in constants and have to use `“as”` with `#[allow(clippy::as_conversions)]`???????
+/// Are you fucking out of your minds over there?
 ///There's no real hard limit, but if you need that many user fields,
 ///  you're probably doing something wrong.
+#[allow(clippy::as_conversions)]
 pub const MAXIMAL_NUMS_USER_FIELDS: usize = 16 & (u8::MAX as usize);
-
 ///
 pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, MAXIMAL_NONCE_LEN));
 

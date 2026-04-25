@@ -90,7 +90,6 @@ delete this in prod dapgp
 
 NO unstall
 
-cargo clippy --fix --allow-dirty && cargo fix --allow-dirty && cargo clippy --fix --allow-dirty --broken-
 code && cargo clippy --fix --all --allow-dirty && rustup run nightly cargo fmt && cargo fmt && cargo test && git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
 
 

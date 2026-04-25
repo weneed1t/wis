@@ -1,7 +1,8 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
-use crate::w1utils;
+#![deny(clippy::as_conversions)]
 use crate::wt1types::InFile;
+use crate::{checked_cast, w1utils};
 
 const FILE_HEAD_LEN: usize = 9;
 
@@ -63,21 +64,11 @@ impl WSFileSplitter {
         if rc_file.is_empty() {
             return Err("rc_file must be greater than zero");
         }
-        if rc_file.len() > u64::MAX as usize {
-            panic!(
-                "rc_file.len() > u64::MAX as usize  There is a slight discrepancy between the \
-                 capacity of usize and u64. Your device is not suitable for this code :("
-            );
-        }
-        //Calculates how many bytes the file size will fit into
-        let cap_head_of_rc = w1utils::len_u64_as_bytes(rc_file.len() as u64);
 
-        if cap_head_of_rc > u8::MAX as usize {
-            panic!(
-                "panic because the values from cap_head_of_rc.1 must be in a range smaller than \
-                 u8::MAX"
-            );
-        }
+        //Calculates how many bytes the file size will fit into
+        let cap_head_of_rc = w1utils::len_u64_as_bytes(
+            checked_cast!(rc_file.len() => u64, err "rc_file.len() conversion to u64 failed")?,
+        );
 
         if cap_head_of_rc + 1 > FILE_HEAD_LEN {
             panic!(
@@ -97,14 +88,18 @@ impl WSFileSplitter {
         // | 1 byte length counter |length of user data (from 1 to 8 bytes)|bytes of user data|
         // |-----------------------|---------------------------------------|------------------|
 
-        *new_file.head.get_mut(0).ok_or("invalid head index 0")? = cap_head_of_rc as u8;
+        *new_file.head.get_mut(0).ok_or("invalid head index 0")? =
+            checked_cast!(cap_head_of_rc => u8, err "cap_head_of_rc conversion to u8 failed")?;
 
         let head_slice = new_file
             .head
             .get_mut(1..1 + cap_head_of_rc)
             .ok_or("invalid head range for length encoding")?;
 
-        w1utils::u64_to_1_8bytes(rc_file.len() as u64, head_slice)?;
+        w1utils::u64_to_1_8bytes(
+            checked_cast!(rc_file.len() => u64, err "rc_file.len() conversion to u64 failed")?,
+            head_slice,
+        )?;
 
         self.send_file = Some((new_file, rc_file));
         Ok(())
@@ -233,7 +228,7 @@ impl WSFileSplitter {
         }
 
         if self.recv_data.is_none() {
-            let len_of_head = *slice.first().ok_or("empty slice for header length")? as usize;
+            let len_of_head = checked_cast!(*slice.first().ok_or("empty slice for header length")? => usize, err "slice first element conversion to usize failed")?;
 
             self.recv_data = Some((
                 DataDrain {
@@ -324,14 +319,6 @@ impl WSFileSplitter {
                          compile time, and do not change dynamically."
                     })?;
 
-                    if len_vec > usize::MAX as u64 {
-                        panic!(
-                            "len_vec > usize::MAX as u64  There is a slight discrepancy between \
-                             the capacity of usize and u64. Your device is not suitable for this \
-                             code :("
-                        );
-                    }
-
                     if 0 == len_vec {
                         return Err(
                             "An error occurred, the file size == 0 which is impossible, it's \
@@ -339,14 +326,18 @@ impl WSFileSplitter {
                         );
                     }
                     if let Some(m_len) = self.max_len_of_file
-                        && len_vec as usize > m_len
+                        && checked_cast!(len_vec => usize, err "len_vec conversion to usize failed")?
+                            > m_len
                     {
                         return Err(
                             "The size of the received file exceeds the maximum max_len_of_file.",
                         );
                     }
 
-                    recv_me.1 = Some(vec![0; len_vec as usize]);
+                    recv_me.1 = Some(vec![
+                        0;
+                        checked_cast!(len_vec => usize, err "len_vec conversion to usize failed")?
+                    ]);
                 }
                 //if the load vector has already been allocated
                 if let Some(file_recv) = &mut recv_me.1 {
@@ -490,6 +481,7 @@ impl WSFileSplitter {
 mod tests_file {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
 
     use super::*;
     #[test]

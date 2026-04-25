@@ -1,9 +1,9 @@
 //Gaoo~~~ :3
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
-
+#![deny(clippy::as_conversions)]
 use crate::t0pology::PackTopology;
-use crate::{EXPCP, w1utils};
+use crate::{EXPCP, checked_cast, w1utils};
 
 #[derive(Debug, PartialEq, Clone)]
 ///static algorithm settings that do not change—in other words, constants
@@ -130,7 +130,7 @@ impl WsConnectParam {
                 );
             }
         }
-        let ctr_max_capacity_real = {
+        let (ctr_max_capacity_real, ctr_max_capacity_real_usize) = {
             let ctr_max_capacity = w1utils::len_byte_maximal_capacity_check(
                 pack_topology
                     .counter_slice()
@@ -149,17 +149,9 @@ impl WsConnectParam {
                  is greater than 1."
             );
 
-            //https://github.com/ilostmyg1thubkey You dumbass,
-            //this shit will only work if ctr_max_capacity_real is not greater than 32 bits, even
-            // on 32-bit systems, bitch.
-            if ctr_max_capacity_real > usize::MAX as u64 {
-                return Err(
-                    "ctr_max_capacity_real > usize::MAX as u64, Counter capacity exceeds system's \
-                     usize limit",
-                );
-            }
+            let ctr_max_capacity_real_usize = checked_cast!(ctr_max_capacity_real => usize, err "ctr_max_capacity_real conversion to usize failed")?;
 
-            if maximum_length_udp_queue_packages > ctr_max_capacity_real as usize {
+            if maximum_length_udp_queue_packages > ctr_max_capacity_real_usize {
                 return Err(
                     " maximum_length_udp_queue_packages must be less than the maximum capacity of \
                      the pack_topology.counter_slice() field. ",
@@ -172,21 +164,21 @@ impl WsConnectParam {
                             variable at the beginning of the file.");
             }
 
-            if maximum_length_fback_queue_packages > ctr_max_capacity_real as usize {
+            if maximum_length_fback_queue_packages > ctr_max_capacity_real_usize {
                 return Err(
                     "maximum_length_fback_queue_packages must not exceed the maximum capacity of \
                      the pack_topology.counter_slice() counter. ",
                 );
             }
 
-            if max_num_attempts_resend_package > ctr_max_capacity_real as usize {
+            if max_num_attempts_resend_package > ctr_max_capacity_real_usize {
                 return Err(
                     "max_num_attempts_resend_package > ctr_max_capacity_real as usize.  \
                      max_num_attempts_resend_package must be less than the maximum possible \
                      capacity in pack_topology.counter_slice().",
                 );
             }
-            ctr_max_capacity_real
+            (ctr_max_capacity_real, ctr_max_capacity_real_usize)
         };
 
         if maximum_packet_delay_absolute_fback > max_ms_latency {
@@ -265,14 +257,7 @@ impl WsConnectParam {
                 );
             }
 
-            if xxx > u64::MAX as usize {
-                return Err(
-                    "Some( intermediate_questionable_packages_queue) > u64::MAX as usize, Some( \
-                     intermediate_questionable_packages_queue) capacity exceeds system's u64 limit",
-                );
-            }
-
-            if ctr_max_capacity_real < xxx as u64 {
+            if ctr_max_capacity_real_usize < xxx {
                 return Err("Some(intermediate_questionable_packages_queue) > \
                             ctr_max_capacity_real, The maximum value that the counter field in \
                             the packet topology can hold must be GREATER than \
@@ -839,6 +824,7 @@ pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
 
 #[cfg(test)]
 mod all_test {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;

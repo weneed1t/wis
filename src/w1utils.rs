@@ -1,24 +1,7 @@
-//#![deny(clippy::indexing_slicing)]
-//#![deny(clippy::unwrap_used)]
-
-/*
-pub enum WNotification {
-    CriticalErrorKillConnect(&'static str),
-    WarningNonCirtical(&'static str),
-}
-
-impl PartialEq for WNotification {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (
-                Self::CriticalErrorKillConnect(_),
-                Self::CriticalErrorKillConnect(_)
-            ) | (Self::WarningNonCirtical(_), Self::WarningNonCirtical(_))
-        )
-    }
-}
-*/
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
+use crate::{EXPCP, checked_cast};
 
 /// a fixed-size buffer that stores only the last written data.
 /// when writing a new block, old data becomes inaccessible, even if the new block is
@@ -41,31 +24,49 @@ impl SafeBuffer {
     /// writes new data, completely replacing the content.
     /// panics if `input` is longer than n.
     pub fn write(&mut self, input: &[u8]) {
-        assert!(input.len() <= self.data.len(), "input too large for buffer");
-        self.data[..input.len()].copy_from_slice(input);
+        EXPCP!(
+            if input.len() <= self.data.len() {
+                Some(())
+            } else {
+                None
+            },
+            "input too large for buffer"
+        );
+        let dst = EXPCP!(
+            self.data.get_mut(..input.len()),
+            "failed to get input range"
+        );
+        dst.copy_from_slice(input);
         self.len = input.len();
     }
-    ///usize
+    ///capacity
     pub fn capacity(&self) -> usize {
         self.data.len()
     }
 
     /// returns a slice with the actual data (exactly `len` bytes).
     pub fn get(&self) -> &[u8] {
-        &self.data[..self.len]
+        EXPCP!(self.data.get(..self.len), "failed to get data range")
     }
 
     /// modifies a part of the already written data.
     /// panics if the range `offset..offset+new_data.len()` exceeds `self.len`.
     pub fn modify(&mut self, offset: usize, new_data: &[u8]) {
         let end = offset + new_data.len();
-        assert!(end <= self.len, "modify range out of bounds");
-        self.data[offset..end].copy_from_slice(new_data);
+        EXPCP!(
+            if end <= self.len { Some(()) } else { None },
+            "modify range out of bounds"
+        );
+        let dst = EXPCP!(self.data.get_mut(offset..end), "failed to get modify range");
+        dst.copy_from_slice(new_data);
     }
 
     /// returns a mutable slice for modifying data (only within the written length).
     pub fn get_mut(&mut self) -> &mut [u8] {
-        &mut self.data[..self.len]
+        EXPCP!(
+            self.data.get_mut(..self.len),
+            "failed to get mutable data range"
+        )
     }
 
     /// returns the current length of written data.
@@ -89,7 +90,10 @@ pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     }
 
     let mut buffer = [0u8; 8];
-    buffer[8 - bytes.len()..].copy_from_slice(bytes);
+    let dst = buffer
+        .get_mut(8 - bytes.len()..)
+        .ok_or("failed to get buffer range")?;
+    dst.copy_from_slice(bytes);
 
     Ok(u64::from_be_bytes(buffer))
 }
@@ -100,7 +104,10 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     }
 
     let buffer: [u8; 8] = num.to_be_bytes();
-    bytes.copy_from_slice(&buffer[buffer.len() - bytes.len()..]);
+    let src = buffer
+        .get(buffer.len() - bytes.len()..)
+        .ok_or("failed to get source range")?;
+    bytes.copy_from_slice(src);
     Ok(())
 }
 /// a (+ or -) b  = u64
@@ -110,10 +117,10 @@ pub fn add_u64_i64(
     zero_if_in_sub_a_less_than_b: bool,
 ) -> Result<u64, &'static str> {
     if b >= 0 {
-        a.checked_add(b as u64)
+        a.checked_add(checked_cast!(b.wrapping_abs() => u64, err "b.wrapping_abs() conversion to u64 failed")?)
             .ok_or("overflow occurred adding positive")
     } else {
-        a.checked_sub(b.wrapping_abs() as u64).map_or(
+        a.checked_sub(checked_cast!(b.wrapping_abs() => u64, err "b.wrapping_abs() conversion to u64 failed")?).map_or(
             if zero_if_in_sub_a_less_than_b {
                 Ok(0)
             } else {
@@ -129,7 +136,7 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
     }
-    let end_pos: usize = pos + len as usize;
+    let end_pos: usize = pos + checked_cast!(len => usize, err "len conversion to usize failed")?;
 
     if end_pos > data.len() * 8 {
         return Err("end_pos > output.len() * 8");
@@ -142,9 +149,10 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
         let byte_index: usize = i / 8; // Byte index
         let bit_offset: usize = 7 - (i % 8); // Bit offset (big-endian)
         // extract the bit from the byte
-        let bit: u8 = (data[byte_index] >> bit_offset) & 1;
+        let byte1 = data.get(byte_index).ok_or("failed to get byte from data")?;
+        let bit: u8 = (*byte1 >> bit_offset) & 1;
         // add the bit to the result
-        result = (result << 1) | (bit as u32);
+        result = (result << 1) | checked_cast!(bit => u32, err "bit conversion to u32 failed")?;
     }
 
     Ok(result)
@@ -156,7 +164,7 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
     }
-    let end_pos: usize = pos + len as usize;
+    let end_pos: usize = pos + checked_cast!(len => usize, err "len conversion to usize failed")?;
 
     if end_pos > output.len() * 8 {
         return Err("end_pos > output.len() * 8");
@@ -170,10 +178,13 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
         let bit_offst: usize = 7 - (i % 8); // Bit offset (big-endian)
         // extract the current bit from the input bits
         let bit: u32 = (bits_to_insert >> (end_pos - i - 1)) & 1;
+        let out_byte = output
+            .get_mut(byte_indx)
+            .ok_or("failed to get mutable byte from output")?;
         if bit == 1 {
-            output[byte_indx] |= 1 << bit_offst; // set the bit
+            *out_byte |= 1 << bit_offst;
         } else {
-            output[byte_indx] &= !(1 << bit_offst); // clear the bit
+            *out_byte &= !(1 << bit_offst);
         }
     }
 
@@ -369,6 +380,8 @@ impl Ema {
     /// n - the virtual window size (period)
     pub fn new(n: usize) -> Self {
         Self {
+            //Damn, it's not implemented for f64 either, damn it
+            #[allow(clippy::as_conversions)]
             alpha: 2.0 / (n as f64 + 1.0),
             current_avg: 0.0,
             is_initialized: false,
@@ -401,6 +414,8 @@ impl Ema {
 mod tests {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+
     use super::*;
 
     #[test]
@@ -502,6 +517,7 @@ mod tests {
 
 #[cfg(test)]
 mod length_tests {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -560,6 +576,7 @@ mod length_tests {
 
 #[cfg(test)]
 mod position_tests {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
@@ -650,6 +667,7 @@ mod position_tests {
 
 #[cfg(test)]
 mod tests_f32 {
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -883,6 +901,7 @@ mod tests_f32 {
 
 #[cfg(test)]
 mod tests_ema {
+    #![allow(clippy::as_conversions)]
     use super::*;
 
     #[test]
@@ -996,6 +1015,7 @@ mod tests_ema {
 
 #[cfg(test)]
 mod tests_safe_buffer {
+    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;

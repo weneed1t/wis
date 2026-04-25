@@ -1,8 +1,9 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
+#![deny(clippy::as_conversions)]
 
+use crate::t0pology::PackTopology;
 use crate::wt1types::*;
-
 //#############################################################3
 ///
 pub struct DumpNonser {
@@ -12,7 +13,7 @@ pub struct DumpNonser {
     pub v: Vec<u8>,
 }
 ///
-pub struct DumpCfcser {
+pub struct DumpCrcser {
     ///
     pub t: u64,
     /// only in test
@@ -21,7 +22,7 @@ pub struct DumpCfcser {
 ///
 pub struct DumpThrasher {
     #[cfg(test)]
-    t: u64,
+    _t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
@@ -50,10 +51,13 @@ impl Noncer for DumpNonser {
           serves to indicate it as None in variable:Option<DumpNonser> = None;"
         );
         #[cfg(test)]
-        Ok(Self {
-            t: _key.iter().map(|&x| x as u64).sum(),
-            v: _key.to_vec(),
-        })
+        {
+            #![allow(clippy::as_conversions)]
+            Ok(Self {
+                t: _key.iter().map(|&x| x as u64).sum(),
+                v: _key.to_vec(),
+            })
+        }
     }
     fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), &'static str> {
         #[cfg(not(test))]
@@ -69,7 +73,7 @@ impl Noncer for DumpNonser {
     }
 }
 
-impl Cfcser for DumpCfcser {
+impl Crcser for DumpCrcser {
     fn new(_key: &[u8]) -> Result<Self, &'static str> {
         #[cfg(not(test))]
         {
@@ -81,6 +85,7 @@ impl Cfcser for DumpCfcser {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
@@ -99,11 +104,13 @@ impl Cfcser for DumpCfcser {
         }
         #[cfg(test)]
         {
-            let mut tt: u64 = _payload.iter().enumerate().fold(0u64, |acc, (u, &x)| {
-                let rotated = (x as u64).rotate_left(((u as u32).wrapping_mul(17)) % 64);
-                acc.wrapping_add(rotated)
-            });
-            bpg(&mut tt, _crc_field);
+            #![allow(clippy::as_conversions)]
+
+            use crate::murmur3::*;
+
+            let mut hash = murmurhash3_x64_128(_payload, self.t as u32);
+
+            bpg(&mut hash[0], _crc_field);
             Ok(())
         }
     }
@@ -121,8 +128,9 @@ impl Thrasher for DumpThrasher {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             Ok(Self {
-                t: _key.iter().map(|&x| x as u64).sum(),
+                _t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
             })
         }
@@ -130,7 +138,10 @@ impl Thrasher for DumpThrasher {
     fn set_user_field(
         &mut self,
         _user_field: &mut [u8],
-        _countr: &u64,
+        _counter_pack: &u64,
+        _len_pack: &usize,
+        _counter_of_field: &usize,
+        _topoligy: &PackTopology,
     ) -> Result<(), &'static str> {
         #[cfg(not(test))]
         panic!(
@@ -140,7 +151,16 @@ impl Thrasher for DumpThrasher {
         );
         #[cfg(test)]
         {
-            bpg(&mut self.t, _user_field);
+            #![allow(clippy::as_conversions)]
+            let teto: [u8; 3] = [
+                *_counter_pack as u8,
+                *_len_pack as u8,
+                *_counter_of_field as u8,
+            ];
+            for (x, t) in _user_field.iter_mut().zip(teto.iter().cycle()) {
+                *x = *t;
+            }
+
             Ok(())
         }
     }
@@ -158,6 +178,7 @@ impl Randomer for DumpRandomer {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
@@ -175,6 +196,7 @@ impl Randomer for DumpRandomer {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             self.gen_rand_u64() as u32
         }
     }
@@ -209,6 +231,7 @@ impl EncWis for DumpEnc {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
@@ -234,6 +257,7 @@ impl EncWis for DumpEnc {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             bpg(&mut (self.t.clone()), _enc_payload);
 
             let mut hat = vec![];
@@ -268,6 +292,7 @@ impl EncWis for DumpEnc {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             let mut hat = vec![];
             hat.extend_from_slice(_non_enc_head);
             hat.extend_from_slice(_enc_payload);
@@ -290,6 +315,7 @@ impl EncWis for DumpEnc {
 
 #[cfg(test)]
 fn bpg(t: &mut u64, v: &mut [u8]) {
+    #![allow(clippy::as_conversions)]
     for x in v.iter_mut() {
         *t = t.rotate_left(11).wrapping_add(*t).wrapping_add(42389);
         *x ^= *t as u8;
@@ -319,6 +345,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             let mut staka: u64 = 0;
             for x in _seed {
                 staka = staka.rotate_left(27).wrapping_add(*x as u64 * 123345)
@@ -352,6 +379,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             let curent_step = self
                 ._in_state
                 .get(self._ptr_in_state)
@@ -404,6 +432,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             let curent_step = self
                 ._in_state
                 .get(self._ptr_in_state)
@@ -609,13 +638,13 @@ mod tests_dumps_nonser_cfcser {
     #[test]
     //#[should_panic(expected = "This panic is called from DumpCfcser")]
     fn dumpcfcser_new_panics() {
-        let _ = DumpCfcser::new(&[]);
+        let _ = DumpCrcser::new(&[]);
     }
 
     #[test]
     //#[should_panic(expected = "This panic is called from DumpCfcser")]
     fn dumpcfcser_gen_crc_panics() {
-        let mut stub = DumpCfcser { t: 10, v: vec![] };
+        let mut stub = DumpCrcser { t: 10, v: vec![] };
         let mut crc_field = [0u8; 4];
         let payload = [1, 2, 3];
         stub.gen_crc(&payload, &mut crc_field).unwrap();
@@ -623,7 +652,7 @@ mod tests_dumps_nonser_cfcser {
 
     #[test]
     fn dumpcfcser_option_none_works() {
-        let opt: Option<DumpCfcser> = None;
+        let opt: Option<DumpCrcser> = None;
         assert!(opt.is_none());
     }
 
@@ -639,7 +668,7 @@ mod tests_dumps_nonser_cfcser {
 
     #[test]
     fn dumpcfcser_impl_cfcser() {
-        fn takes_cfcser<T: Cfcser>(_: T) {}
-        takes_cfcser(DumpCfcser { t: 10, v: vec![] }); // compiles -> ok
+        fn takes_cfcser<T: Crcser>(_: T) {}
+        takes_cfcser(DumpCrcser { t: 10, v: vec![] }); // compiles -> ok
     }
 }

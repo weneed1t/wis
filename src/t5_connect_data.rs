@@ -1,9 +1,10 @@
 use crate::t1queue_tcpudp::recv_queue::{WSRecvQueueCtrs, WSUdpLike, WSWaitQueue};
 use crate::t3poc_files::WSFileSplitter;
 use crate::t4algo_param::WsConnectParam;
-use crate::t5_preparing_pack_fields::Identified;
 use crate::w1utils::SafeBuffer;
-use crate::wt1types::{Cfcser, EncWis, HandMaker, MyRole, Noncer, Randomer, Thrasher, WSQueueErr};
+use crate::wt1types::{
+    Crcser, EncWis, HandMaker, Identified, MyRole, Noncer, Randomer, Thrasher, WSQueueErr,
+};
 
 const FBACK_START_CTR: u64 = 1;
 const DATA_START_CTR: u64 = 0;
@@ -17,7 +18,7 @@ pub struct WsConnection<
     Twait: Clone,
     Tencrypt: EncWis,
     TRandomer: Randomer,
-    TCfcser: Cfcser,
+    TCfcser: Crcser,
     Hmaker: HandMaker,
 > {
     file_proc: WSFileSplitter,           //-
@@ -55,7 +56,7 @@ impl<
     Twait: Clone,
     Tencrypt: EncWis,
     TRandomer: Randomer,
-    TCfcser: Cfcser,
+    TCfcser: Crcser,
     Hmaker: HandMaker,
 >
     WsConnection<
@@ -236,7 +237,7 @@ impl<
     Twait: Clone,
     Tencrypt: EncWis,
     TRandomer: Randomer,
-    TCfcser: Cfcser,
+    TCfcser: Crcser,
     Hmaker: HandMaker,
 > WsConnection<Tnoncer, TThrasher, Tudp, Twait, Tencrypt, TRandomer, TCfcser, Hmaker>
 {
@@ -304,7 +305,7 @@ mod test_new {
 
     use super::*;
     use crate::t1dumps_struct::*;
-    use crate::t5_preparing_pack_fields::Ids;
+    use crate::wt1types::Ids;
     use crate::{t0pology, t4algo_param};
 
     #[test]
@@ -331,7 +332,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -385,7 +386,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -433,7 +434,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -488,7 +489,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -546,7 +547,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -599,7 +600,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -658,7 +659,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -715,7 +716,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -774,7 +775,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -839,7 +840,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -903,7 +904,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -962,7 +963,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -1021,7 +1022,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -1086,7 +1087,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -1144,7 +1145,7 @@ mod test_new {
                 u32,
                 DumpEnc,
                 DumpRandomer,
-                DumpCfcser,
+                DumpCrcser,
                 DumpHandMaker,
             >,
             WSQueueErr,
@@ -1190,7 +1191,7 @@ mod test_new {
             u32,
             DumpEnc,
             DumpRandomer,
-            DumpCfcser,
+            DumpCrcser,
             DumpHandMaker,
         > = WsConnection::new(
             &result,
