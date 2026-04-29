@@ -1,18 +1,22 @@
 //! MurmurHash3 implementation in pure Rust.
 
-#![allow(clippy::unreadable_literal)]
-//#![allow(clippy::identity_op)]
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
-
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::checked_cast;
 
 /// 128‑bit x64 version (output as two `u64`).
 pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     let data = key;
     let len = data.len();
-    let nblocks = len / 16;
+    let nblocks = len >> 4;
 
     let mut h1 = checked_cast!(seed => u64, expect "Seed conversion to u64 failed");
     let mut h2 = checked_cast!(seed => u64, expect "Seed conversion to u64 failed");
@@ -21,7 +25,7 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     const C2: u64 = 0x4cf5ad432745937f;
 
     // Body: process 16‑byte blocks in little‑endian order
-    let blocks = data.get(..nblocks * 16).expect("'this is not a real state");
+    let blocks = data.get(..nblocks << 4).expect("'this is not a real state");
     for chunk in blocks.chunks_exact(16) {
         let k1 = u64::from_le_bytes([
             *chunk.first().expect("'this is not a real state"),
@@ -64,7 +68,7 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     }
 
     // Tail: handle remaining 1‑15 bytes with fallthrough behaviour
-    let tail = data.get(nblocks * 16..).expect("'this is not a real state");
+    let tail = data.get(nblocks << 4..).expect("'this is not a real state");
     let rem = len & 15;
 
     let mut k1 = 0u64;
@@ -73,7 +77,7 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     // k2 (bytes 8‑14): accumulate with shifts, then mix if rem >= 9
     for i in (8..15).rev() {
         if rem > i {
-            let shift = (i - 8) * 8;
+            let shift = i.checked_sub(8).expect("subtraction underflow: i < 8") << 3;
             k2 ^= (checked_cast!(*tail.get(i).expect("'this is not a real state") => u64, expect "Byte to u64 conversion failed")
                 << shift);
         }
@@ -88,7 +92,7 @@ pub fn murmurhash3_x64_128(key: &[u8], seed: u32) -> [u64; 2] {
     // k1 (bytes 0‑7): accumulate with shifts, then mix if rem >= 1
     for i in (0..8).rev() {
         if rem > i {
-            let shift = i * 8;
+            let shift = i << 3;
             k1 ^= (checked_cast!(*tail.get(i).expect("'this is not a real state") => u64, expect "Byte to u64 conversion failed")
                 << shift);
         }

@@ -1,8 +1,16 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::EXPCP;
-
+#[cfg(test)]
+const PRINT_TOPOLOGY_IN_TEST: bool = false;
 //using in other files
 ///
 pub const MAXIMAL_CRC_LEN: usize = 32; //maxiaml 512 bits
@@ -177,7 +185,11 @@ impl PackTopology {
                             //done just in case, maximum length limit
                             return Err("userfield value is 0");
                         }
-                        trash_content_slices_vec.push((shift, shift + le, le));
+                        trash_content_slices_vec.push((
+                            shift,
+                            shift.checked_add(le).ok_or("shift+le overflow")?,
+                            le,
+                        ));
                         le
                     },
 
@@ -188,7 +200,8 @@ impl PackTopology {
                         if matches!(le, 0 | 9..) {
                             return Err("idconn value exceeds 8");
                         }
-                        idconn_slice = Some((shift, shift + le, le));
+                        idconn_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
 
@@ -209,7 +222,8 @@ impl PackTopology {
                             return Err("len value exceeds 8");
                         }
 
-                        len_slice = Some((shift, shift + le, le));
+                        len_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                     PackFields::Counter(le) => {
@@ -219,7 +233,8 @@ impl PackTopology {
                         if matches!(le, 0 | 9..) {
                             return Err("counter value exceeds 8");
                         }
-                        counter_slice = Some((shift, shift + le, le));
+                        counter_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                     PackFields::IdSender(le) => {
@@ -229,7 +244,8 @@ impl PackTopology {
                         if matches!(le, 0 | 9..) {
                             return Err("IdSender value exceeds 8");
                         }
-                        id_of_sender_slice = Some((shift, shift + le, le));
+                        id_of_sender_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                     PackFields::IdReceiver(le) => {
@@ -239,7 +255,8 @@ impl PackTopology {
                         if matches!(le, 0 | 9..) {
                             return Err("idreceiver value exceeds 8");
                         }
-                        id_of_receiver_slice = Some((shift, shift + le, le));
+                        id_of_receiver_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                     PackFields::HeadCRC(le) => {
@@ -251,7 +268,8 @@ impl PackTopology {
                             return Err("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0");
                         }
 
-                        crc_slice = Some((shift, shift + le, le));
+                        crc_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                     PackFields::Nonce(le) => {
@@ -263,7 +281,8 @@ impl PackTopology {
                             return Err("duplicate nonce");
                         }
 
-                        nonce_slice = Some((shift, shift + le, le));
+                        nonce_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
 
@@ -275,7 +294,8 @@ impl PackTopology {
                             return Err("TTL value exceeds MAXIMAL_TTL_LEN or  == 0");
                         }
 
-                        ttl_slice = Some((shift, shift + le, le));
+                        ttl_slice =
+                            Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
                         le
                     },
                 })
@@ -356,7 +376,9 @@ impl PackTopology {
 
         #[cfg(test)]
         {
-            topology.display_layout_with_separators();
+            if PRINT_TOPOLOGY_IN_TEST {
+                topology.display_layout_with_separators();
+            }
         }
 
         Ok(topology)
@@ -473,9 +495,18 @@ impl PackTopology {
         let total_len = self.total_minimal_len;
 
         let st_data = "PAYLOADENC".to_string();
-        let mut layout: Vec<String> = vec!['-'.to_string(); total_len + st_data.len()];
+        let mut layout: Vec<String> = vec![
+            '-'.to_string();
+            total_len
+                .checked_add(st_data.len())
+                .expect("total_len + st_data overflow")
+        ];
 
-        for i in (self.content_start_pos()..self.content_start_pos() + st_data.len())
+        for i in (self.content_start_pos()
+            ..self
+                .content_start_pos()
+                .checked_add(st_data.len())
+                .expect("content_start_pos + st_data overflow"))
             .zip(st_data.chars())
         {
             let t = layout.get_mut(i.0).expect("unreal state");
@@ -495,10 +526,18 @@ impl PackTopology {
             sf: &mut usize,
         ) {
             let t = layout
-                .get_mut(*sf + start..*sf + end)
+                .get_mut(
+                    sf.checked_add(start).expect("sf + end overflow")
+                        ..sf.checked_add(end).expect("sf + end overflow"),
+                )
                 .expect("unreal state");
             t.fill(label.to_string());
-            let t2 = layout.get_mut(*sf + end - 1).expect("unreal_state");
+            let t2 = layout
+                .get_mut(
+                    sf.checked_add(end.checked_sub(1).expect("-1 end overflow"))
+                        .expect("sf  overflow"),
+                )
+                .expect("unreal_state");
             *t2 += "_";
         }
         {

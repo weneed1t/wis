@@ -2,6 +2,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::t0pology::PackTopology;
 use crate::{EXPCP, checked_cast, w1utils};
 
@@ -36,6 +43,7 @@ pub struct WsConnectParam {
 impl WsConnectParam {
     ///<h2>Each variable is described in detail at the beginning of this file. Open the
     /// beginning of the file and read what is written there to avoid mistakes.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         pack_topology: &PackTopology,
         mtu: usize,
@@ -827,6 +835,9 @@ mod all_test {
     #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![deny(clippy::indexing_slicing)]
+    #![allow(clippy::float_cmp)]
+
     use super::*;
     #[cfg(test)]
     fn get_topol(

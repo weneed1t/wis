@@ -73,7 +73,7 @@ pub mod wt1types; //utils //topology
 pub mod t0_grouper;
 pub mod t0_parsel;
 
-#[cfg(feature = "wisdel")]
+#[cfg(any(feature = "wisdel", test))]
 pub mod wisdel;
 
 pub use crate::t1queue_tcpudp::recv_queue::{
@@ -88,9 +88,7 @@ pub mod private_core {
 /*
 delete this in prod dapgp
 
-NO unstall
-
-code && cargo clippy --fix --all --allow-dirty && rustup run nightly cargo fmt && cargo fmt && cargo test && git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
+NO unstall && git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
 
 
 Wisth  install

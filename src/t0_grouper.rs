@@ -1,6 +1,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 // specific imports for clarity and to avoid namespace pollution
 use crate::t0pology::{PackFields, PackTopology};
 use crate::{EXPCP, checked_cast};
@@ -100,8 +107,9 @@ impl GroupTopology {
             vec![None; Self::find_minimal_table_size(input_topoler)?].into_boxed_slice();
 
         for (fields, key) in input_topoler.iter() {
-            let idx =
-                checked_cast!(*key => usize, err "Key out of range for usize")? % topologs.len();
+            let idx = checked_cast!(*key => usize, err "Key out of range for usize")?
+                .checked_rem(topologs.len())
+                .ok_or("Modulo operation failed: divisor is zero")?;
             let temp = topologs
                 .get_mut(idx)
                 .expect("An impossible condition due to modulo division");
@@ -295,8 +303,9 @@ impl GroupTopology {
     }
     ///Get the PackTopology diagram by its ID (byte)
     pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
-        let idx = checked_cast!(trikly_byte => usize,expect "u8 to usize conversion failed")
-            % self.topologs.len();
+        let idx = checked_cast!(trikly_byte => usize, expect "u8 to usize conversion failed")
+            .checked_rem(self.topologs.len())
+            .expect("Modulo by zero: topologs is empty");
         self.topologs
             .get(idx)
             .expect("impossible state since here the index is taken in the length model")
@@ -350,8 +359,14 @@ impl GroupTopology {
                 vec![false; checked_cast!(size => usize, err "Size conversion to usize failed")?];
             let mut ok = true;
             for (_, val) in input_topoler {
-                let h = checked_cast!(*val => usize, err "Value conversion to usize failed")?
-                    % checked_cast!(size => usize, err "Size conversion to usize failed")?;
+                let numerator =
+                    checked_cast!(*val => usize, err "Value conversion to usize failed")?;
+                let denominator =
+                    checked_cast!(size => usize, err "Size conversion to usize failed")?;
+
+                let h = numerator
+                    .checked_rem(denominator)
+                    .ok_or("Modulo operation failed: denominator is zero")?;
                 if let Some(seen_val) = seen.get_mut(h) {
                     if *seen_val {
                         ok = false;
@@ -711,6 +726,8 @@ mod tests_find_minimal_table_size {
 //
 #[cfg(test)]
 mod tests_new {
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     #![allow(clippy::as_conversions)]

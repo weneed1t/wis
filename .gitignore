@@ -3,6 +3,6 @@
 /.vscode
 /.trunk
 /.idea
+/.continue
 private.key.asc
 rustfmt.toml
-

@@ -2,6 +2,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 const U64_LEN_IN_BYTES: usize = 8;
 
 pub mod recv_queue {
@@ -407,6 +414,7 @@ pub mod recv_queue {
                 data: vec![None; sizecap].into_boxed_slice(),
             })
         }
+
         /// insert(&mut self,item_ctr: u64, item: T)
         ///The element is u64, must always be increasing except when there are gaps
         ///  in the sequence, and must be unique. T is its data.
@@ -431,8 +439,9 @@ pub mod recv_queue {
                 return WSQueueState::ElemIdIsBig;
             }
 
-            let idx =
-                (pos.checked_add(self.k_mod).expect("err pos + self.k_mod")) % self.data.len();
+            let idx = (pos.checked_add(self.k_mod).expect("err pos + self.k_mod"))
+                .checked_rem(self.data.len())
+                .expect("modulo by zero: data.len() is 0");
 
             let elem_url = self.data.get_mut(idx).expect("invalid data index");
 
@@ -456,8 +465,10 @@ pub mod recv_queue {
         }
 
         fn k_add(&mut self, addin: usize) {
-            self.k_mod =
-                EXPCP!(self.k_mod.checked_add(addin), "err addin + self.k_mod") % self.data.len();
+            let sum = EXPCP!(self.k_mod.checked_add(addin), "err addin + self.k_mod");
+            self.k_mod = sum
+                .checked_rem(self.data.len())
+                .expect("modulo by zero (data.len() == 0)");
         }
 
         fn edit_my_state(&mut self, size_of_ret: usize, last_item_ctr: u64) {
@@ -468,7 +479,9 @@ pub mod recv_queue {
             );
 
             for x in self.k_mod..end {
-                let idx = x % le;
+                let idx = x
+                    .checked_rem(le)
+                    .expect("division by zero in modulo operation");
                 if let Some(slot) = self.data.get_mut(idx) {
                     *slot = None;
                 }
@@ -834,7 +847,11 @@ pub mod recv_queue {
             //3 the recipient sends confirmation packets to the network
             //Therefore, in the vast majority of cases, the queue of unconfirmed packets will not
             // exceed 1/3 of the total number of packets.
-            let mut reta_vec = Vec::with_capacity(self.elems_in_me / 3);
+            let mut reta_vec = Vec::with_capacity(
+                self.elems_in_me
+                    .checked_div(3)
+                    .expect("division by zero or overflow"),
+            );
 
             let mut temp_id = first;
 
@@ -903,7 +920,8 @@ pub mod recv_queue {
             let ctrs = payload_mtu
                 .checked_sub(U64_LEN_IN_BYTES)
                 .ok_or("mtu < (pack_topology.total_minimal_len() + U64_LEN_IN_BYTES )")?
-                / len_ctr_slise;
+                .checked_div(len_ctr_slise)
+                .ok_or("division by zero or overflow")?;
 
             if ctrs == 0 {
                 return Err("The MTU is too small to accommodate even one counter.");
@@ -1146,7 +1164,9 @@ pub mod recv_queue {
 
             Ok((
                 w1utils::bytes_to_u64(main_ctr_slice)?,
-                ret_len_ctrs / len_ctr_slise,
+                ret_len_ctrs
+                    .checked_div(len_ctr_slise)
+                    .expect("division by zero or overflow"),
                 payload_rest.chunks_exact(len_ctr_slise),
             ))
         }
@@ -1258,6 +1278,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_wait {
+        #![allow(clippy::arithmetic_side_effects)]
+        #![allow(clippy::integer_division)]
         #![allow(clippy::as_conversions)]
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
@@ -1426,6 +1448,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod tests_wtcp {
+        #![allow(clippy::arithmetic_side_effects)]
+        #![allow(clippy::integer_division)]
         #![allow(clippy::as_conversions)]
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
@@ -2032,6 +2056,8 @@ pub mod recv_queue {
 
     #[cfg(test)]
     mod test_recv_queue_ctrs {
+        #![allow(clippy::arithmetic_side_effects)]
+        #![allow(clippy::integer_division)]
         #![allow(clippy::indexing_slicing)]
         #![allow(clippy::unwrap_used)]
         #![allow(clippy::as_conversions)]

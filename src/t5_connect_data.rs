@@ -87,6 +87,7 @@ impl<
     /// generating a packet, a new array isn't allocated in memory, but instead uses
     /// an already allocated temp array; if use_non_alloc_buf is true, then a temp
     /// array of length MTU is created (so don't set MTU to a very large value)
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         connect_param: &WsConnectParam,
         default_enc_key: &[u8],

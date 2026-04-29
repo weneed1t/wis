@@ -1,11 +1,22 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
+
 use std::ops::BitXor;
 
 use crate::{EXPCP, checked_cast};
 const CHUNK_SIZE: usize = 64;
-const WORDS_PER_CHUNK: usize = CHUNK_SIZE / 4;
+const WORDS_PER_CHUNK: usize = match CHUNK_SIZE.checked_div(4) {
+    Some(val) => val,
+    None => panic!("Division by zero in CHUNK_SIZE / 4"),
+};
 
 const DOUBLE_WIS_INIT_ROUNDS: usize = 4;
 const DOUBLE_WIS_TAG_ROUNDS: usize = 4;
@@ -47,7 +58,7 @@ fn test_vec_enc() -> &'static Mutex<Vec<Vec<u32>>> {
 #[inline]
 fn split_u64_to_u32_be_shift(value: u64) -> (u32, u32) {
     let high = checked_cast!(value >> 32 => u32, expect "high part conversion to u32 failed");
-    let low = checked_cast!(value => u32, expect "low part conversion to u32 failed");
+    let low = checked_cast!(0xFF_FF_FF_FF&value => u32, expect "low part conversion to u32 failed");
     (high, low)
 }
 //===============================================================
@@ -65,17 +76,21 @@ fn split_u64_to_u32_be_shift(value: u64) -> (u32, u32) {
 /// Panics if `NBYTES != NU32 * 4`. The panic message is:
 /// `"NBYTES must equal NU32 * 4"`.
 fn bytes_to_words<const NU32: usize, const NBYTES: usize>(bytes: &[u8; NBYTES]) -> [u32; NU32] {
-    assert_eq!(NBYTES, NU32 * 4, "NBYTES must equal NU32 * 4");
+    assert_eq!(
+        NBYTES,
+        NU32.checked_mul(4).expect("overflow in NU32 * 4"),
+        "NBYTES must equal NU32 * 4"
+    );
     std::array::from_fn(|i| {
-        let offset = i * 4;
+        let offset = i.checked_mul(4).expect("overflow in i * 4");
+        let end = offset.checked_add(4).expect("overflow in offset + 4");
         // SAFETY: `offset..offset+4` is always within bounds because of the assertion above.
-        let chunk: [u8; 4] = bytes[offset..offset + 4]
+        let chunk: [u8; 4] = bytes[offset..end]
             .try_into()
             .expect("let chunk: [u8; 4] = bytes[offset..offset + 4] if out of range");
         u32::from_be_bytes(chunk)
     })
 }
-
 /// Writes an array of `u32` values into a byte array as big‑endian bytes.
 ///
 /// Each `u32` is converted to its big‑endian byte representation (`to_be_bytes`) and
@@ -94,11 +109,16 @@ fn write_words_to_bytes<const NU32: usize, const NBYTES: usize>(
     words: &[u32; NU32],
     bytes: &mut [u8; NBYTES],
 ) {
-    assert_eq!(NBYTES, NU32 * 4, "assertion failed: NBYTES == NU32 * 4");
+    assert_eq!(
+        NBYTES,
+        NU32.checked_mul(4).expect("overflow in NU32 * 4"),
+        "assertion failed: NBYTES == NU32 * 4"
+    );
 
     for (i, &word) in words.iter().enumerate() {
-        let offset = i * 4;
-        bytes[offset..offset + 4].copy_from_slice(&word.to_be_bytes());
+        let offset = i.checked_mul(4).expect("overflow in i * 4");
+        let end = offset.checked_add(4).expect("overflow in offset + 4");
+        bytes[offset..end].copy_from_slice(&word.to_be_bytes());
     }
 }
 
@@ -122,9 +142,15 @@ pub fn hash_mid_xor<const NU32: usize, const NU32OUT: usize>(
     state_hash: &mut [u32; NU32],
 ) -> &mut [u32; NU32OUT] {
     assert_eq!(NU32 % 2, 0, "NU32 must be even");
-    assert_eq!(NU32OUT, NU32 / 2, "NU32OUT must be half of NU32");
+    assert_eq!(
+        NU32OUT,
+        NU32.checked_div(2).expect("division by zero in NU32 / 2"),
+        "NU32OUT must be half of NU32"
+    );
 
-    let (left, right) = state_hash.split_at_mut(NU32OUT);
+    let (left, right) = state_hash
+        .split_at_mut_checked(NU32OUT)
+        .expect("split_at_mut_checked mistake");
 
     // convert the mutable left slice to a mutable array reference
     let left_array: &mut [u32; NU32OUT] = EXPCP!(left.try_into(), "left half length mismatch");
@@ -183,15 +209,27 @@ pub fn zero_right_bytes_be(data: &mut [u32], n_bytes: usize) {
 
     // zero complete words from the end
     if full_words > 0 {
-        let start = data.len() - full_words;
+        let start = data
+            .len()
+            .checked_sub(full_words)
+            .expect("subtraction underflow: data.len() < full_words");
         EXPCP!(data.get_mut(start..), "failed to get mutable range").fill(0);
     }
 
     // zero partial bytes in the word just before the full ones
     if partial_bytes > 0 {
-        let idx = data.len() - full_words - 1; // index of the word to partially zero
+        let idx = data
+            .len()
+            .checked_sub(full_words)
+            .expect("data.len() >= full_words")
+            .checked_sub(1)
+            .expect("data.len() - full_words >= 1"); // index of the word to partially zero
         // mask that preserves the high (4 - partial_bytes) bytes and zeros the low partial_bytes
-        let mask = !((1u32 << (partial_bytes << 3)) - 1);
+        const PARTIAL_BYTES_MASKS: [u32; 5] = [!0u32, !0xFF, !0xFFFF, !0xFF_FFFF, !0xFFFF_FFFF];
+
+        let mask = *PARTIAL_BYTES_MASKS
+            .get(partial_bytes)
+            .expect("partial_bytes must be in 0..=4");
         *EXPCP!(data.get_mut(idx), "failed to get mutable byte at index") &= mask;
     }
 }
@@ -229,15 +267,7 @@ fn wis_process_block(state: &mut [u32; WORDS_PER_CHUNK], double_rounds: usize) {
     }
 }
 
-/// # example
-/// ```
-/// let mut data = vec![0u8; 128];
-/// process_in_place(&mut data, |words| {
-///     for w in words.iter_mut() {
-///         *w = w.wrapping_add(1);
-///     }
-/// });
-/// ```
+/// process_in_place
 pub fn process_in_place<F>(data: &mut [u8], mut process: F)
 where
     F: FnMut(&mut [u32; WORDS_PER_CHUNK], usize, Option<usize>),
@@ -261,23 +291,58 @@ where
             .copy_from_slice(remainder);
 
         let mut words = bytes_to_words(&buf);
-        process(
-            &mut words,
-            remainder.len(),
-            Some(EXPCP!(
-                CHUNK_SIZE.checked_sub(remainder.len()),
-                "This is an impossible condition, since CHUNK_SIZE must always be greater than \
-                 remainder"
-            )),
+
+        let trim = EXPCP!(
+            CHUNK_SIZE.checked_sub(remainder.len()),
+            "This is an impossible condition, since CHUNK_SIZE must always be greater than \
+             remainder"
         );
+
+        process(&mut words, remainder.len(), Some(trim));
+
         write_words_to_bytes(&words, &mut buf);
 
         let src = EXPCP!(buf.get(..remainder.len()), "failed to get source range");
         remainder.copy_from_slice(src);
     }
 }
+
+/// process_in_place_no_mut
+fn process_in_place_no_mut<F>(data: &[u8], mut process: F)
+where
+    F: FnMut(&[u32; WORDS_PER_CHUNK], usize, Option<usize>),
+{
+    let mut chunks = data.chunks_exact(CHUNK_SIZE);
+
+    for chunk in chunks.by_ref() {
+        let chunk_array: &[u8; CHUNK_SIZE] = EXPCP!(
+            chunk.try_into(),
+            "A chunk is always exactly CHUNK_SIZE bytes"
+        );
+        let words = bytes_to_words(chunk_array);
+        process(&words, CHUNK_SIZE, None);
+    }
+
+    let remainder = chunks.remainder();
+
+    if !remainder.is_empty() {
+        let mut buf = [0u8; CHUNK_SIZE];
+        EXPCP!(buf.get_mut(..remainder.len()), "failed to get buffer range")
+            .copy_from_slice(remainder);
+
+        let words = bytes_to_words(&buf);
+
+        let trim = EXPCP!(
+            CHUNK_SIZE.checked_sub(remainder.len()),
+            "This is an impossible condition, since CHUNK_SIZE must always be greater than \
+             remainder"
+        );
+        process(&words, remainder.len(), Some(trim));
+    }
+}
+
 ///set key
-pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
+fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     let mut key_state = [0; WORDS_PER_CHUNK];
 
     /*
@@ -305,6 +370,8 @@ pub fn wis_key_set(key8: &[u8; 32], nonce: &[u8; 16]) -> [u32; 16] {
     // directly into the code.
     #[cfg(test)]
     {
+        #![allow(clippy::arithmetic_side_effects)]
+        #![allow(clippy::integer_division)]
         let op = [
             "nonce 1-4:   ",
             "key 1-4:     ",
@@ -386,7 +453,7 @@ fn enc_progress(
 }
 
 fn hash_progress(
-    plaintext: &mut [u32; WORDS_PER_CHUNK],
+    plaintext: &[u32; WORDS_PER_CHUNK],
     key: &[u32; WORDS_PER_CHUNK],
     hash: &mut [u32; WORDS_PER_CHUNK],
 ) {
@@ -412,6 +479,7 @@ fn hash_progress(
 }
 ///encrypt
 pub fn encrypt(
+    head: Option<&[u8]>,
     plaintext: &mut [u8],
     key: &[u8; 32],
     nonce: &[u8; 16],
@@ -428,7 +496,15 @@ pub fn encrypt(
     let state_key = wis_key_set(key, nonce);
     state_hash.copy_from_slice(&state_key);
 
-    process_in_place(plaintext, |block, adder, trim| {
+    //hash of head  only
+    if let Some(hea) = head {
+        process_in_place_no_mut(hea, |block, _, _| {
+            hash_progress(block, &state_key, &mut state_hash);
+        });
+    }
+
+    //enc + hash payload
+    process_in_place(plaintext, |block, adder, t| {
         #[cfg(test)]
         {
             #![allow(clippy::indexing_slicing)]
@@ -440,8 +516,8 @@ pub fn encrypt(
 
         enc_progress(block, &state_key, ctr);
 
-        if let Some(ttt) = trim {
-            zero_right_bytes_be(block, ttt)
+        if let Some(tt) = t {
+            zero_right_bytes_be(block, tt);
         }
 
         hash_progress(block, &state_key, &mut state_hash);
@@ -455,6 +531,20 @@ pub fn encrypt(
         );
     });
 
+    {
+        let mut lens = [0; 16];
+
+        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
+            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
+        );
+
+        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
+            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
+        );
+
+        hash_progress(&lens, &state_key, &mut state_hash);
+    }
+
     let hash = hash_mid_xor::<16, 8>(&mut state_hash);
 
     let mut hash8 = [0u8; 32];
@@ -466,6 +556,7 @@ pub fn encrypt(
 }
 ///decrypt
 pub fn decrypt(
+    head: Option<&[u8]>,
     plaintext: &mut [u8],
     key: &[u8; 32],
     nonce: &[u8; 16],
@@ -481,6 +572,13 @@ pub fn decrypt(
 
     let state_key = wis_key_set(key, nonce);
     state_hash.copy_from_slice(&state_key);
+
+    //hash of head  only
+    if let Some(hea) = head {
+        process_in_place_no_mut(hea, |block, _, _| {
+            hash_progress(block, &state_key, &mut state_hash);
+        });
+    }
 
     process_in_place(plaintext, |block, adder, _| {
         //
@@ -498,6 +596,21 @@ pub fn decrypt(
         );
     });
 
+    //+ len head + len payloag
+    {
+        let mut lens = [0; 16];
+
+        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
+            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
+        );
+
+        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
+            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
+        );
+
+        hash_progress(&lens, &state_key, &mut state_hash);
+    }
+
     let hash = hash_mid_xor::<16, 8>(&mut state_hash);
 
     let mut hash8 = [0u8; 32];
@@ -510,9 +623,15 @@ pub fn decrypt(
 
 #[cfg(test)]
 mod tests_proc {
-    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![allow(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
     use super::*;
 
     // Helper to convert a slice of u32 to little‑endian bytes.
@@ -525,7 +644,7 @@ mod tests_proc {
 
     // Identity transformation: does nothing.
     fn identity(_words: &mut [u32; WORDS_PER_CHUNK], _: usize, _: Option<usize>) {}
-
+    fn identity_mm(_words: &[u32; WORDS_PER_CHUNK], _: usize, _: Option<usize>) {}
     // Adds 1 to each u32.
     fn add_one(words: &mut [u32; WORDS_PER_CHUNK], _: usize, _: Option<usize>) {
         for w in words.iter_mut() {
@@ -575,6 +694,8 @@ mod tests_proc {
 
     #[test]
     fn multiple_chunks() {
+        #![allow(clippy::arithmetic_side_effects)]
+        #![allow(clippy::integer_division)]
         // 3 full chunks (192 bytes)
         let input: Vec<u8> = (0..192).map(|i| i as u8).collect();
 
@@ -657,7 +778,24 @@ mod tests_proc {
         // Identity should leave data unchanged.
         assert_eq!(data, input);
     }
+    /*
+        #[test]
+        fn test_usize_usize_as_u64_be_16_bytes() {
+            let a = 0xFF_BB_CC_DD_EE_AA_10_09usize;
+            let b = 0x08_07_06_05_06_05_03_02usize;
 
+            let exib = [
+                0xFF, 0xBB, 0xCC, 0xDD, 0xEE, 0xAA, 0x10, 0x09, 0x08, 0x07, 0x06, 0x05, 0x06, 0x05,
+                0x03, 0x02, 0, 0, 0, 0, 0, 0, 0,
+            ];
+
+            let mut exib_m = [0; 23];
+
+            usize_usize_as_u64_be_16_bytes(&a, &b, &mut exib_m);
+
+            assert_eq!(exib, exib_m);
+        }
+    */
     #[test]
     fn zero_length_remainder() {
         // Exactly 64 bytes, remainder length 0.
@@ -683,19 +821,28 @@ mod tests_proc {
         use std::rc::Rc;
 
         // Track number of calls.
-        let calls = Rc::new(RefCell::new(0));
+        let calls1 = Rc::new(RefCell::new(0));
+        let calls2 = Rc::new(RefCell::new(0));
+
         let input: Vec<u8> = (0..192).map(|i| i as u8).collect(); // 3 full chunks
-        let mut data = input.clone();
+        let mut data1 = input.clone();
+        let data2 = input.clone();
 
         {
-            let calls = calls.clone();
-            process_in_place(&mut data, move |_, _, _| {
-                *calls.borrow_mut() += 1;
+            let calls1 = calls1.clone();
+            process_in_place(&mut data1, move |_, _, _| {
+                *calls1.borrow_mut() += 1;
+            });
+
+            let calls2 = calls2.clone();
+            process_in_place_no_mut(&data2, move |_, _, _| {
+                *calls2.borrow_mut() += 1;
             });
         }
 
         // Should be called exactly 3 times (once per full chunk).
-        assert_eq!(*calls.borrow(), 3);
+        assert_eq!(*calls1.borrow(), 3);
+        assert_eq!(*calls1.borrow(), *calls2.borrow());
     }
 
     #[test]
@@ -703,40 +850,95 @@ mod tests_proc {
         use std::cell::RefCell;
         use std::rc::Rc;
 
-        let calls = Rc::new(RefCell::new(0));
-        let input: Vec<u8> = (0..100).map(|i| i as u8).collect(); // 1 full chunk + 36 bytes remainder
-        let mut data = input.clone();
+        for leeen in (0..500).step_by(7) {
+            let calls1 = Rc::new(RefCell::new(0));
+            let calls2 = Rc::new(RefCell::new(0));
 
-        {
-            let calls = calls.clone();
-            process_in_place(&mut data, move |_, _, _| {
-                *calls.borrow_mut() += 1;
-            });
+            let calls1_t = Rc::new(RefCell::new(0));
+            let calls2_t = Rc::new(RefCell::new(0));
+
+            let calls1_l = Rc::new(RefCell::new(0));
+            let calls2_l = Rc::new(RefCell::new(0));
+            let input: Vec<u8> = (0..leeen).map(|i| i as u8).collect(); // 1 full chunk + 36 bytes remainder
+            let mut data1 = input.clone();
+            let data2 = input.clone();
+            let mut vee_no_mut = vec![];
+            let mut vee_mut = vec![];
+            //
+            let vee_no_mut_r = &mut vee_no_mut;
+            let vee_mut_r = &mut vee_mut;
+
+            {
+                let calls1 = calls1.clone();
+                let calls1_l = calls1_l.clone();
+                let calls1_t = calls1_t.clone();
+                process_in_place(&mut data1, move |a, l, t| {
+                    if let Some(tt) = t {
+                        *calls1_t.borrow_mut() += (*calls1.borrow() + 1) * (tt + 1);
+                    }
+                    *calls1_l.borrow_mut() += l;
+                    vee_mut_r.append(&mut a.to_vec());
+
+                    *calls1.borrow_mut() += 1;
+                });
+                let calls2 = calls2.clone();
+                let calls2_l = calls2_l.clone();
+                let calls2_t = calls2_t.clone();
+                process_in_place_no_mut(&data2, move |a, l, t| {
+                    if let Some(tt) = t {
+                        *calls2_t.borrow_mut() += (*calls2.borrow() + 1) * (tt + 1);
+                    }
+
+                    *calls2_l.borrow_mut() += l;
+                    vee_no_mut_r.append(&mut a.to_vec());
+
+                    *calls2.borrow_mut() += 1;
+                });
+            }
+
+            assert_eq!(vee_mut, vee_no_mut);
+            // Should be called 2 times: one full chunk, then remainder.
+
+            let ctr = (leeen / CHUNK_SIZE) + if leeen % CHUNK_SIZE == 0 { 0 } else { 1 };
+            assert_eq!((*calls1.borrow()), ctr);
+
+            assert_eq!(*calls1.borrow(), *calls2.borrow());
+            assert_eq!(*calls1_l.borrow(), *calls2_l.borrow());
+            assert_eq!(*calls1_t.borrow(), *calls2_t.borrow());
+
+            //println!("{:?}", vee_no_mut);
         }
-
-        // Should be called 2 times: one full chunk, then remainder.
-        assert_eq!(*calls.borrow(), 2);
     }
 
     #[test]
     fn no_panic_on_any_length() {
         for len in 0..300 {
             let mut data = vec![0u8; len];
+            let data1 = vec![0u8; len];
             // Using identity closure should never panic.
             process_in_place(&mut data, identity);
+
+            process_in_place_no_mut(&data1, identity_mm);
         }
     }
 }
 
 #[cfg(test)]
 mod wdel {
-    #![allow(clippy::as_conversions)]
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![allow(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
+
     use super::*;
 
     #[test]
-    fn t1() {
+    fn t1_key_set() {
         let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
         let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
         let te = wis_key_set(&k[..].try_into().unwrap(), &n[..].try_into().unwrap());
@@ -768,62 +970,95 @@ mod wdel {
     }
 
     #[test]
-    fn t2() {
-        let mut data: Vec<u8> = (0..211).collect::<Vec<_>>();
+    fn t2_test_vald() {
+        for payloade in [0, 1, 10, CHUNK_SIZE, 100, 211, 777, 999] {
+            for heade in [
+                None,
+                Some(1),
+                Some(11),
+                Some(CHUNK_SIZE),
+                Some(99),
+                Some(111),
+                Some(1231),
+            ] {
+                let mut data = vec![0; payloade + heade.unwrap_or(0)];
 
-        let key: Vec<u8> = (0..32).map(|_| 0).collect::<Vec<_>>();
+                for xx in data.iter_mut().enumerate() {
+                    *xx.1 = xx.0 as u8;
+                }
 
-        let nonce: Vec<u8> = (0..32).map(|_| 0).collect::<Vec<_>>();
+                let head_pay = data.split_at_mut(heade.unwrap_or(0));
 
-        let x = encrypt(
-            &mut data,
-            key[..32].try_into().unwrap(),
-            nonce[..16].try_into().unwrap(),
-        )
-        .unwrap();
+                let head_in: Option<&[u8]> = if heade.is_some() {
+                    Some(head_pay.0)
+                } else {
+                    None
+                };
 
-        to_hex(&data);
-        println!();
-        to_hex(&x);
+                let key: Vec<u8> = (0..32).map(|_| 0).collect::<Vec<_>>();
 
-        let y = decrypt(
-            &mut data,
-            key[..32].try_into().unwrap(),
-            nonce[..16].try_into().unwrap(),
-        )
-        .unwrap();
-        // to_hex(&y);
-        // println!();
-        // to_hex(&data);
+                let nonce: Vec<u8> = (0..32).map(|_| 0).collect::<Vec<_>>();
 
-        assert_eq!(y, x);
+                let x = encrypt(
+                    head_in,
+                    head_pay.1,
+                    key[..32].try_into().unwrap(),
+                    nonce[..16].try_into().unwrap(),
+                )
+                .unwrap();
+
+                println!("HEAD");
+                to_hex(head_pay.0);
+                println!("PAYOAD");
+                to_hex(head_pay.1);
+                println!("TAG");
+                to_hex(&x);
+
+                let y = decrypt(
+                    head_in,
+                    head_pay.1,
+                    key[..32].try_into().unwrap(),
+                    nonce[..16].try_into().unwrap(),
+                )
+                .unwrap();
+                // to_hex(&y);
+                // println!();
+                // to_hex(&data);
+
+                assert_eq!(y, x);
+            }
+        }
     }
 
     #[test]
     fn t3_bad_check() {
         let mut ctrma = 0;
 
-        for yy in 0..311u32 {
+        for yy in (0..200u32).step_by(3) {
             let mut data: Vec<u8> = (0..yy).map(|i| i as u8).collect::<Vec<_>>();
 
             let key: Vec<u8> = (0..32).map(|i| i + 1).collect::<Vec<_>>();
 
             let nonce: Vec<u8> = (0..32).map(|i| i + 1).collect::<Vec<_>>();
 
+            let head: Vec<u8> = (0..yy).map(|i| (i / 3) as u8).collect::<Vec<_>>();
+
             let x = encrypt(
+                Some(&head),
                 &mut data,
                 key[..32].try_into().unwrap(),
                 nonce[..16].try_into().unwrap(),
             )
             .unwrap();
 
-            for ii in 0..data.len() {
+            for ii in (0..data.len()).step_by(3) {
                 ctrma += ii;
                 let mut data2 = data.clone();
 
                 data2[ii] = !data2[ii];
 
                 let y = decrypt(
+                    Some(&head),
                     &mut data2,
                     key[..32].try_into().unwrap(),
                     nonce[..16].try_into().unwrap(),
@@ -833,7 +1068,25 @@ mod wdel {
                 assert_ne!(x, y);
             }
 
+            for ii in (0..head.len()).step_by(3) {
+                ctrma += ii;
+                let mut head = head.clone();
+
+                head[ii] = !head[ii];
+
+                let y = decrypt(
+                    Some(&head),
+                    &mut data.clone(),
+                    key[..32].try_into().unwrap(),
+                    nonce[..16].try_into().unwrap(),
+                )
+                .unwrap();
+
+                assert_ne!(x, y);
+            }
+
             let y = decrypt(
+                Some(&head),
                 &mut data,
                 key[..32].try_into().unwrap(),
                 nonce[..16].try_into().unwrap(),

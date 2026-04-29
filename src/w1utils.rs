@@ -1,6 +1,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::{EXPCP, checked_cast};
 
 /// a fixed-size buffer that stores only the last written data.
@@ -52,7 +59,9 @@ impl SafeBuffer {
     /// modifies a part of the already written data.
     /// panics if the range `offset..offset+new_data.len()` exceeds `self.len`.
     pub fn modify(&mut self, offset: usize, new_data: &[u8]) {
-        let end = offset + new_data.len();
+        let end = offset
+            .checked_add(new_data.len())
+            .expect("overflow in offset + new_data.len()");
         EXPCP!(
             if end <= self.len { Some(()) } else { None },
             "modify range out of bounds"
@@ -88,10 +97,12 @@ pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     if bytes.len() > 8 || bytes.is_empty() {
         return Err("bytes.len() must be between 1 and 8");
     }
-
+    let padding = 8usize
+        .checked_sub(bytes.len())
+        .expect("subtraction underflow: bytes.len() > 8");
     let mut buffer = [0u8; 8];
     let dst = buffer
-        .get_mut(8 - bytes.len()..)
+        .get_mut(padding..)
         .ok_or("failed to get buffer range")?;
     dst.copy_from_slice(bytes);
 
@@ -104,8 +115,12 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     }
 
     let buffer: [u8; 8] = num.to_be_bytes();
+    let remaining = buffer
+        .len()
+        .checked_sub(bytes.len())
+        .expect("subtraction underflow: buffer.len() < bytes.len()");
     let src = buffer
-        .get(buffer.len() - bytes.len()..)
+        .get(remaining..)
         .ok_or("failed to get source range")?;
     bytes.copy_from_slice(src);
     Ok(())
@@ -136,9 +151,10 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
     }
-    let end_pos: usize = pos + checked_cast!(len => usize, err "len conversion to usize failed")?;
+    let len_usize = checked_cast!(len => usize, err "len conversion to usize failed")?;
+    let end_pos = pos.checked_add(len_usize).ok_or("overflow in pos + len")?;
 
-    if end_pos > data.len() * 8 {
+    if end_pos > data.len() << 3 {
         return Err("end_pos > output.len() * 8");
     }
 
@@ -146,8 +162,11 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
     let mut result: u32 = 0;
 
     for i in pos..end_pos {
-        let byte_index: usize = i / 8; // Byte index
-        let bit_offset: usize = 7 - (i % 8); // Bit offset (big-endian)
+        let byte_index: usize = i >> 3; // Byte index
+        let bit_index = i & 0b111;
+        let bit_offset = 7usize
+            .checked_sub(bit_index)
+            .ok_or("subtraction underflow: bit_index > 7")?; // Bit offset (big-endian)
         // extract the bit from the byte
         let byte1 = data.get(byte_index).ok_or("failed to get byte from data")?;
         let bit: u8 = (*byte1 >> bit_offset) & 1;
@@ -164,20 +183,35 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
     if len == 0 || len > 32 {
         return Err("len> 32 bits or len == 0");
     }
-    let end_pos: usize = pos + checked_cast!(len => usize, err "len conversion to usize failed")?;
+    let len_usize = checked_cast!(len => usize, err "len conversion to usize failed")?;
+    let end_pos = pos.checked_add(len_usize).ok_or("overflow in pos + len")?;
 
-    if end_pos > output.len() * 8 {
+    if end_pos > output.len() << 3 {
         return Err("end_pos > output.len() * 8");
     }
     // extract the lowest len bits from the input
-    let mask: u32 = 0xFFFFFFFF >> (32 - len);
+    let mask = 0xFFFFFFFFu32
+        .checked_shr(
+            32u32
+                .checked_sub(checked_cast!(len =>u32,err "len conversion to u32 failed")?)
+                .ok_or("len > 32")?,
+        )
+        .ok_or("shift overflow")?;
     let bits_to_insert: u32 = input & mask;
 
     for i in pos..end_pos {
-        let byte_indx: usize = i / 8; // Byte index
-        let bit_offst: usize = 7 - (i % 8); // Bit offset (big-endian)
+        let byte_indx: usize = i >> 3; // Byte index
+        let bit_index = i & 0b111;
+        let bit_offst = 7usize
+            .checked_sub(bit_index)
+            .ok_or("bit_index out of range (must be 0-7)")?;
         // extract the current bit from the input bits
-        let bit: u32 = (bits_to_insert >> (end_pos - i - 1)) & 1;
+        let shift = end_pos
+            .checked_sub(i)
+            .ok_or("shift underflow: end_pos < i")?
+            .checked_sub(1)
+            .ok_or("shift underflow: end_pos == i")?;
+        let bit: u32 = (bits_to_insert >> shift) & 1;
         let out_byte = output
             .get_mut(byte_indx)
             .ok_or("failed to get mutable byte from output")?;
@@ -272,7 +306,11 @@ pub fn split_by_lengths<'a, T>(
 ) -> Result<Vec<&'a mut [T]>, &'static str> {
     let total: usize = data.len();
     let mut remaining_data: &'a mut [T] = data;
-    let mut result: Vec<&mut [T]> = Vec::with_capacity(lengths.len() + 1);
+    let capacity = lengths
+        .len()
+        .checked_add(1)
+        .ok_or("overflow in lengths.len() + 1")?;
+    let mut result: Vec<&mut [T]> = Vec::with_capacity(capacity);
 
     if absolute {
         for &len in lengths {
@@ -331,7 +369,11 @@ pub fn split_by_positions<'a, T>(
 ) -> Result<Vec<&'a mut [T]>, &'static str> {
     let total = data.len();
     let mut remaining_data: &'a mut [T] = data;
-    let mut result: Vec<&mut [T]> = Vec::with_capacity(positions.len() + 1);
+    let capacity = positions
+        .len()
+        .checked_add(1)
+        .ok_or("overflow in positions.len() + 1")?;
+    let mut result: Vec<&mut [T]> = Vec::with_capacity(capacity);
     let mut last_pos: usize = 0;
 
     for &pos in positions {
@@ -345,7 +387,9 @@ pub fn split_by_positions<'a, T>(
                 return Err("position exceeds data length");
             }
         }
-        let len = pos - last_pos;
+        let len = pos
+            .checked_sub(last_pos)
+            .ok_or("subtraction underflow: pos < last_pos")?;
         let (slice, rest) = remaining_data.split_at_mut(len);
         result.push(slice);
         remaining_data = rest;
@@ -667,6 +711,7 @@ mod position_tests {
 
 #[cfg(test)]
 mod tests_f32 {
+    #![allow(clippy::float_cmp)]
     #![allow(clippy::as_conversions)]
     use super::*;
 
@@ -902,6 +947,8 @@ mod tests_f32 {
 #[cfg(test)]
 mod tests_ema {
     #![allow(clippy::as_conversions)]
+    #![allow(clippy::float_cmp)]
+
     use super::*;
 
     #[test]
@@ -1260,5 +1307,406 @@ mod tests_safe_buffer {
         assert_eq!(buf.get(), b"rust");
         buf.get_mut()[2] = b'p';
         assert_eq!(buf.get(), b"rupt");
+    }
+}
+
+#[cfg(test)]
+mod test_mod_onsert_bits {
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    use super::*;
+
+    #[test]
+    fn test_invalid_len_zero() {
+        let data = [0xFF, 0xFF];
+        let result = extract_bits(&data, 0, 0);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "len> 32 bits or len == 0");
+    }
+
+    #[test]
+    fn test_invalid_len_too_large() {
+        let data = [0xFF, 0xFF];
+        let result = extract_bits(&data, 0, 33);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "len> 32 bits or len == 0");
+    }
+
+    #[test]
+    fn test_out_of_bounds_end_pos() {
+        let data = [0b11110000]; // 8 бит
+        let result = extract_bits(&data, 0, 9);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_out_of_bounds_start_pos() {
+        let data = [0b11110000];
+        let result = extract_bits(&data, 8, 1); // pos == 8 (первый бит за пределами)
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_empty_data() {
+        let data = [];
+        let result = extract_bits(&data, 0, 1);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_overflow_pos_len() {
+        let data = [0xFF; 100];
+        let pos = usize::MAX - 10;
+        let len = 32;
+        extract_bits(&data, pos, len).err().unwrap();
+    }
+
+    #[test]
+    fn test_extract_single_bit() {
+        let data = [0b10000000];
+        assert_eq!(extract_bits(&data, 0, 1), Ok(1));
+        let data = [0b01000000];
+        assert_eq!(extract_bits(&data, 1, 1), Ok(1));
+        let data = [0b00000001];
+        assert_eq!(extract_bits(&data, 7, 1), Ok(1));
+        let data = [0b00000000];
+        assert_eq!(extract_bits(&data, 0, 1), Ok(0));
+    }
+
+    #[test]
+    fn test_extract_multiple_bits_same_byte() {
+        let data = [0b10110010];
+        assert_eq!(extract_bits(&data, 0, 4), Ok(0b1011));
+
+        assert_eq!(extract_bits(&data, 2, 4), Ok(0b1100));
+        assert_eq!(extract_bits(&data, 4, 4), Ok(0b0010));
+    }
+
+    #[test]
+    fn test_extract_across_byte_boundary() {
+        let data = [0b11001100, 0b00110011];
+        assert_eq!(extract_bits(&data, 4, 7), Ok(0b1100001));
+        assert_eq!(extract_bits(&data, 0, 16), Ok(0b1100110000110011));
+    }
+
+    #[test]
+    fn test_extract_all_ones() {
+        let data = [0xFF, 0xFF, 0xFF, 0xFF];
+        assert_eq!(extract_bits(&data, 0, 32), Ok(u32::MAX));
+        assert_eq!(extract_bits(&data, 7, 25), Ok((1 << 25) - 1));
+    }
+
+    #[test]
+    fn test_boundary_conditions() {
+        let data = [0b00000001];
+
+        assert_eq!(extract_bits(&data, 7, 1), Ok(1));
+
+        assert!(extract_bits(&data, 7, 2).is_err());
+    }
+
+    #[test]
+    fn test_big_endian_order() {
+        let data = [0b10101010];
+
+        assert_eq!(extract_bits(&data, 0, 4), Ok(0b1010));
+        assert_eq!(extract_bits(&data, 4, 4), Ok(0b1010));
+
+        let data2 = [0b11110000, 0b00001111];
+
+        assert_eq!(extract_bits(&data2, 0, 8), Ok(240));
+
+        assert_eq!(extract_bits(&data2, 8, 8), Ok(15));
+
+        assert_eq!(extract_bits(&data2, 4, 8), Ok(0));
+    }
+}
+
+#[cfg(test)]
+mod test_mod_insert {
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    use super::*;
+
+    fn reference_insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) {
+        let len = len as usize;
+        let mask = if len == 32 { !0u32 } else { (1u32 << len) - 1 };
+        let bits = input & mask;
+        for i in pos..pos + len {
+            let byte_idx = i >> 3;
+            let bit_offset = 7 - (i & 7);
+            let bit = (bits >> (len - 1 - (i - pos))) & 1;
+            if bit == 1 {
+                output[byte_idx] |= 1 << bit_offset;
+            } else {
+                output[byte_idx] &= !(1 << bit_offset);
+            }
+        }
+    }
+
+    fn extract_bits_from_output(data: &[u8], pos: usize, len: u8) -> u32 {
+        let mut res = 0u32;
+        for i in pos..pos + len as usize {
+            let byte_idx = i >> 3;
+            let bit_offset = 7 - (i & 7);
+            let bit = (data[byte_idx] >> bit_offset) & 1;
+            res = (res << 1) | bit as u32;
+        }
+        res
+    }
+
+    struct Lcg {
+        state: u64,
+    }
+    impl Lcg {
+        fn new(seed: u64) -> Self {
+            Self { state: seed }
+        }
+        fn next(&mut self) -> u64 {
+            self.state = self
+                .state
+                .wrapping_mul(48271)
+                .wrapping_rem(2u64.pow(31) - 1);
+            self.state
+        }
+        fn gen_range(&mut self, low: usize, high: usize) -> usize {
+            low + (self.next() as usize) % (high - low)
+        }
+        fn gen_byte(&mut self) -> u8 {
+            (self.next() % 256) as u8
+        }
+    }
+
+    #[test]
+    fn test_invalid_len_zero() {
+        let mut data = [0u8; 4];
+        let result = insert_bits(&mut data, 0, 0, 0x1234);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "len> 32 bits or len == 0");
+    }
+
+    #[test]
+    fn test_invalid_len_too_large() {
+        let mut data = [0u8; 4];
+        let result = insert_bits(&mut data, 0, 33, 0x1234);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "len> 32 bits or len == 0");
+    }
+
+    #[test]
+    fn test_overflow_pos_len() {
+        let mut data = [0u8; 4];
+        let pos = usize::MAX - 10;
+        let len = 20;
+        let result = insert_bits(&mut data, pos, len, 0x1234);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "overflow in pos + len");
+    }
+
+    #[test]
+    fn test_out_of_bounds_end_pos() {
+        let mut data = [0u8; 4];
+        let result = insert_bits(&mut data, 0, 33, 0x1234);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "len> 32 bits or len == 0");
+
+        let result = insert_bits(&mut data, 30, 5, 0x1234);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_out_of_bounds_start_pos() {
+        let mut data = [0u8; 4];
+        let result = insert_bits(&mut data, 32, 1, 0x1);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_empty_output() {
+        let mut data = [];
+        let result = insert_bits(&mut data, 0, 1, 0x1);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "end_pos > output.len() * 8");
+    }
+
+    #[test]
+    fn test_insert_single_bit() {
+        let mut data = [0u8; 1];
+
+        insert_bits(&mut data, 0, 1, 0b1).unwrap();
+        assert_eq!(data[0], 0b10000000);
+
+        insert_bits(&mut data, 1, 1, 0b0).unwrap();
+        assert_eq!(data[0], 0b10000000);
+
+        let mut data2 = [0u8; 1];
+        insert_bits(&mut data2, 7, 1, 0b1).unwrap();
+        assert_eq!(data2[0], 0b00000001);
+    }
+
+    #[test]
+    fn test_insert_multiple_bits_same_byte() {
+        let mut data = [0u8; 1];
+
+        insert_bits(&mut data, 0, 4, 0b1011).unwrap();
+        assert_eq!(data[0], 0b10110000);
+
+        data = [0u8; 1];
+        insert_bits(&mut data, 2, 4, 0b1011).unwrap();
+
+        assert_eq!(data[0], 0b00101100);
+    }
+
+    #[test]
+    fn test_insert_across_byte_boundary() {
+        let mut data = [0u8; 2];
+
+        let input = 0b1100110011u32;
+        insert_bits(&mut data, 4, 10, input).unwrap();
+        let extracted = extract_bits_from_output(&data, 4, 10);
+        assert_eq!(extracted, input & ((1 << 10) - 1));
+    }
+
+    #[test]
+    fn test_insert_full_32_bits() {
+        let mut data = [0u8; 4];
+        let input = 0x12345678;
+        insert_bits(&mut data, 0, 32, input).unwrap();
+        let extracted = extract_bits_from_output(&data, 0, 32);
+        assert_eq!(extracted, input);
+    }
+
+    #[test]
+    fn test_insert_does_not_affect_other_bits() {
+        let mut data = [0b11111111u8; 2];
+
+        insert_bits(&mut data, 0, 4, 0b0000).unwrap();
+        assert_eq!(data[0], 0b00001111);
+        assert_eq!(data[1], 0b11111111);
+
+        let mut data = [0b00000000u8; 2];
+        insert_bits(&mut data, 12, 4, 0b1111).unwrap();
+
+        assert_eq!(data[1], 0b00001111);
+    }
+
+    #[test]
+    fn test_insert_extract_roundtrip() {
+        let data = [0u8; 8];
+        for pos in [0, 3, 7, 8, 13, 31] {
+            for len in [1, 4, 8, 16, 24, 32] {
+                if pos + len as usize > 64 {
+                    continue;
+                }
+                for input in [0, 1, 0xAAAAAAAA, 0x55555555, 0xFFFFFFFF, 0x12345678] {
+                    let input_masked = input & (!0u32 >> (32 - len));
+                    let mut local_data = data;
+                    insert_bits(&mut local_data, pos, len, input).unwrap();
+                    let extracted = extract_bits_from_output(&local_data, pos, len);
+                    assert_eq!(
+                        extracted, input_masked,
+                        "pos={}, len={}, input={:#x}",
+                        pos, len, input
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_random_against_reference() {
+        let mut rng = Lcg::new(123456789);
+        for _ in 0..1000 {
+            let data_len = rng.gen_range(1, 20);
+            let mut data = vec![0u8; data_len];
+
+            for byte in &mut data {
+                *byte = rng.gen_byte();
+            }
+            let max_bits = data_len * 8;
+            let pos = rng.gen_range(0, max_bits);
+            let max_len = (max_bits - pos).min(32);
+            if max_len == 0 {
+                continue;
+            }
+            let len = rng.gen_range(1, max_len + 1) as u8;
+            let input = rng.next() as u32;
+
+            let mut test_data = data.clone();
+            let result = insert_bits(&mut test_data, pos, len, input);
+            assert!(result.is_ok());
+            let mut ref_data = data;
+            reference_insert_bits(&mut ref_data, pos, len, input);
+            assert_eq!(
+                test_data, ref_data,
+                "pos={}, len={}, input={:#x}",
+                pos, len, input
+            );
+        }
+    }
+
+    #[test]
+    fn test_stress_large_buffer() {
+        let mut rng = Lcg::new(987654321);
+        for _ in 0..500 {
+            let data_len = rng.gen_range(100, 1000);
+            let mut data = vec![0u8; data_len];
+            let max_bits = data_len * 8;
+            let pos = rng.gen_range(0, max_bits);
+            let max_len = (max_bits - pos).min(32);
+            if max_len == 0 {
+                continue;
+            }
+            let len = rng.gen_range(1, max_len + 1) as u8;
+            let input = rng.next() as u32;
+            let mut reference = data.clone();
+            reference_insert_bits(&mut reference, pos, len, input);
+            let result = insert_bits(&mut data, pos, len, input);
+            assert!(result.is_ok());
+            assert_eq!(data, reference);
+        }
+    }
+
+    #[test]
+    fn test_boundary_positions() {
+        let mut data = [0u8; 4];
+        for pos in [0, 8, 16, 24] {
+            let input = 0b10101010;
+            insert_bits(&mut data, pos, 8, input).unwrap();
+            let extracted = extract_bits_from_output(&data, pos, 8);
+            assert_eq!(extracted, input);
+            data = [0u8; 4];
+        }
+    }
+
+    #[test]
+    fn test_mask_input() {
+        let mut data = [0u8; 4];
+        let input = 0xFFFFFFFF;
+
+        insert_bits(&mut data, 0, 1, input).unwrap();
+        let extracted = extract_bits_from_output(&data, 0, 1);
+        assert_eq!(extracted, 1);
+
+        let mut data = [0u8; 4];
+        insert_bits(&mut data, 0, 32, input).unwrap();
+        let extracted = extract_bits_from_output(&data, 0, 32);
+        assert_eq!(extracted, input);
+
+        let mut data = [0u8; 4];
+        insert_bits(&mut data, 0, 16, input).unwrap();
+        let extracted = extract_bits_from_output(&data, 0, 16);
+        assert_eq!(extracted, input & 0xFFFF);
     }
 }

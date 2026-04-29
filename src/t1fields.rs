@@ -1,6 +1,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::t0pology::PackTopology;
 use crate::wt1types::*;
 use crate::{checked_cast, t0pology, w1utils};
@@ -221,6 +228,77 @@ pub fn set_ttl(
     }
     Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
 }
+/*
+pub fn set_ttl2(
+    pack: &mut [u8],v
+    topology: &PackTopology,
+    ttl_sturct: &Ttl,
+
+    is_start_ttl: bool,
+) -> Result<u64, WTypeErr> {
+    if let Some((start, end, len)) = topology.ttl_slice() {
+        if pack.len() <= end {
+            return Err(WTypeErr::LenSizeErr("pack len non correct"));
+        }
+
+        let ttl_slice = pack
+            .get_mut(start..end)
+            .ok_or(WTypeErr::LenSizeErr("invalid ttl slice range"))?;
+
+        if checked_cast!(ttl_sturct.ttl_max=>i64, err WTypeErr::WorkTimeErr("err convert ttl_max u64 to i64"))?
+            < ttl_sturct.ttl_edit
+        {
+            return Err(WTypeErr::WorkTimeErr("err ttl_i_edit > ttl_max "));
+        }
+
+        let temp = w1utils::add_u64_i64(
+            //ttl start = (0 + ttl_i_edit)
+            //ttl no start = (from pack ttl + ttl_i_edit)
+            if is_start_ttl {
+                if *ttl_i_edit < 0 {
+                    return Err(WTypeErr::WorkTimeErr(
+                        "is_start_ttl is true, but ttl_i_edit is a negative number, which is an \
+                         error, since the initial TTL must be positive.",
+                    ));
+                }
+                0 // is start ttl
+            } else {
+                let ttl_before = w1utils::bytes_to_u64(ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
+                if ttl_before > *ttl_max {
+                    return Err(WTypeErr::PackageDamaged("ttl_max <=ttl_before "));
+                }
+                ttl_before
+            },
+            *ttl_i_edit,
+            true,
+        )
+        .map_err(WTypeErr::PackageDamaged)?;
+
+        let temp = if *ttl_max < temp {
+            if forced_pruning {
+                *ttl_max
+            } else {
+                return Err(WTypeErr::PackageDamaged(
+                    "ttl_max < ttl in pack + ttl_i_edit",
+                ));
+            }
+        } else {
+            temp
+        };
+
+        if temp > w1utils::len_byte_maximal_capacity_check(len).0 {
+            return Err(WTypeErr::WorkTimeErr(
+                "ttl_is TTL is more than capable of accommodating the TTL_SLICE field",
+            ));
+        }
+
+        w1utils::u64_to_1_8bytes(temp, ttl_slice).map_err(WTypeErr::WorkTimeErr)?;
+
+        return Ok(temp);
+    }
+    Err(WTypeErr::CompileFieldsErr(" set_ttl not in  PackTopology"))
+}
+*/
 ///
 /// get_ttl reads the current ttl value from the packet header
 /// returns Ok(u64) if ttl field exists and is valid, Err otherwise
@@ -393,14 +471,17 @@ pub fn set_id_sender_and_recv(
         topology.id_of_sender_slice(),
         topology.id_of_receiver_slice(),
     ) {
-        let maxim = w1utils::len_byte_maximal_capacity_check(x_s.2).0;
+        let maximal = w1utils::len_byte_maximal_capacity_check(x_s.2).0;
         if pack.len() <= x_s.1 || pack.len() <= x_r.1 {
             return Err(WTypeErr::LenSizeErr("pack len non correct"));
         }
-        if maxim < *id_recv || maxim < *id_sender {
+        if maximal < *id_recv || maximal < *id_sender {
             return Err(WTypeErr::PackageDamaged(
                 "maxim < id_recv OR maxim < id_sender",
             ));
+        }
+        if *id_recv == *id_sender {
+            return Err(WTypeErr::WorkTimeErr("err id_recv ==  id_sender"));
         }
 
         let recv_slice = pack
@@ -597,8 +678,8 @@ pub fn get_counter(
 pub fn set_user_field<F>(
     pack: &mut [u8],
     topology: &PackTopology,
-    counter: u64,
-    full_len: usize,
+    counter: &u64,
+    full_len: &usize,
     mut field_gen: F,
 ) -> Result<(), WTypeErr>
 where
@@ -613,7 +694,7 @@ where
             let field_slice = pack
                 .get_mut(*start..*end)
                 .ok_or(WTypeErr::LenSizeErr("invalid user field slice range"))?;
-            field_gen(field_slice, &counter, &full_len, &i, topology)
+            field_gen(field_slice, counter, full_len, &i, topology)
                 .map_err(WTypeErr::PackageDamaged)?;
         }
         return Ok(());
@@ -665,8 +746,8 @@ pub fn crypt<Tenc, Tnoncer>(
     pack: &mut [u8],
     topology: &PackTopology,
     enc_mode: Cryptlag,
-    enc_struct: &Tenc,
-    countr: Option<u64>,
+    enc_struct: &mut Tenc,
+    countr: Option<&u64>,
     nonce_gener: Option<&mut Tnoncer>,
 ) -> Result<(), WTypeErr>
 where
@@ -757,16 +838,24 @@ fn crypt_procress<Tenc: EncWis>(
     p_len: usize,
     enc_struct: &Tenc,
     pack: &mut [u8],
-    countr: Option<u64>,
+    countr: Option<&u64>,
 ) -> Result<(), WTypeErr> {
     let enc_start = topology.encrypt_start_pos();
-    let enc_end = p_len - topology.tag_len();
+    let enc_end = p_len
+        .checked_sub(topology.tag_len())
+        .ok_or(WTypeErr::WorkTimeErr(
+            "p_len - topology.tag_len() = overflow",
+        ))?;
 
     // Previously, a check was performed to ensure that p_len < topology.total_minimal_len(),
     // which means that the packet length is large enough so that the operation of splitting
     // into slays does not cause panic.
-    let (free_data, mac_only) = pack.split_at_mut(enc_end);
-    let (head, to_enc_only) = free_data.split_at_mut(enc_start);
+    let (free_data, mac_only) = pack
+        .split_at_mut_checked(enc_end)
+        .ok_or(WTypeErr::WorkTimeErr("enc_end is bigest that pack.len()"))?;
+    let (head, to_enc_only) = free_data
+        .split_at_mut_checked(enc_start)
+        .ok_or(WTypeErr::WorkTimeErr("enc_start bigest that free_data"))?;
 
     let nonce = if let Some(x) = topology.nonce_slice() {
         Some(
@@ -777,7 +866,7 @@ fn crypt_procress<Tenc: EncWis>(
         None
     };
 
-    let counter_val = countr.unwrap_or(0);
+    let counter_val = countr.unwrap_or(&0); //<-
 
     if is_encrypt {
         enc_struct
@@ -795,46 +884,46 @@ fn crypt_procress<Tenc: EncWis>(
     Ok(())
 }
 
-///---Nonce gen     or/and counter set---<br>
-///nonce + counter:valid<br>
-///counter only :valid<br>
-///nonce only:valid<br>
-///not counter and nonce :invalid<br>
+/// Validates and prepares encryption data: generates a Nonce and/or verifies the counter.
+/// Valid combinations:
+/// - Nonce + Counter: valid
+/// - Counter only: valid
+/// - Nonce only: valid
+/// - Neither: invalid
 fn if_encrypt<Tnoncer: Noncer>(
     topology: &PackTopology,
     pack: &mut [u8],
     nonce_gener: Option<&mut Tnoncer>,
-    countr: Option<u64>,
+    countr: Option<&u64>,
 ) -> Result<(), WTypeErr> {
-    let (n, c) = (
-        if let Some(x) = topology.nonce_slice() {
-            let nonce_slice = pack
-                .get_mut(x.0..x.1)
-                .ok_or(WTypeErr::LenSizeErr("invalid nonce slice range"))?;
-            nonce_gener
-                .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
-                .set_nonce(nonce_slice)
-                .map_err(WTypeErr::WorkTimeErr)?;
-            1
-        } else {
-            0
-        },
-        if topology.counter_slice().is_some() {
-            if countr.is_none() {
-                return Err(WTypeErr::CompileFieldsErr("counter_field required"));
-            }
-            1
-        } else {
-            0
-        },
-    );
-    if 0 == n + c {
+    let nonce_range = topology.nonce_slice();
+    let counter_range = topology.counter_slice();
+
+    // 1. Early exit: Check if topology is valid for encryption
+    if nonce_range.is_none() && counter_range.is_none() {
         return Err(WTypeErr::CompileFieldsErr(
-            "Incorrect combination, the packet must have either a counter field, a nonce field, \
-             or a nonce field + a counter field. This topology has neither a counter field nor a \
-             nonce field.",
+            "Invalid combination: topology must contain either a counter field, a nonce field, or \
+             both. This topology has neither.",
         ));
     }
+
+    // 2. Handle Nonce generation if required by topology
+    if let Some((start, end, _)) = nonce_range {
+        let nonce_slice = pack
+            .get_mut(start..end)
+            .ok_or(WTypeErr::LenSizeErr("invalid nonce slice range"))?;
+
+        nonce_gener
+            .ok_or(WTypeErr::CompileFieldsErr("nonce_gener required"))?
+            .set_nonce(nonce_slice)
+            .map_err(WTypeErr::WorkTimeErr)?;
+    }
+
+    // 3. Ensure counter value is provided if topology expects a counter
+    if counter_range.is_some() && countr.is_none() {
+        return Err(WTypeErr::CompileFieldsErr("counter_field required"));
+    }
+
     Ok(())
 }
 
@@ -1226,9 +1315,9 @@ mod tests {
 
         let mut noncex = DumpNonser::new(&[0]).unwrap();
 
-        let ctr_n = Some(1000);
+        let ctr_n = Some(&1000);
 
-        let cs = DumpEnc::new(&[1, 2, 3, 4, 5, 6]).unwrap();
+        let mut cs = DumpEnc::new(&[1, 2, 3, 4, 5, 6]).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
@@ -1236,7 +1325,7 @@ mod tests {
                 &mut bb,
                 &result,
                 Cryptlag::Encrypt,
-                &cs,
+                &mut cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -1258,7 +1347,7 @@ mod tests {
                 &mut bbb,
                 &result,
                 Cryptlag::Decrypt,
-                &cs,
+                &mut cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -1271,7 +1360,7 @@ mod tests {
                 &mut bbb1,
                 &result,
                 Cryptlag::Decrypt,
-                &cs,
+                &mut cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -1284,7 +1373,7 @@ mod tests {
                 &mut bbb2,
                 &result,
                 Cryptlag::Decrypt,
-                &cs,
+                &mut cs,
                 ctr_n,
                 Some(&mut noncex)
             ),
@@ -1314,7 +1403,7 @@ mod tests {
                         &mut bbb,
                         &result,
                         Cryptlag::Decrypt,
-                        &cs,
+                        &mut cs,
                         ctr_n,
                         Some(&mut noncex)
                     ),
@@ -1331,7 +1420,7 @@ mod tests {
                         &mut bbb,
                         &result,
                         Cryptlag::Decrypt,
-                        &cs,
+                        &mut cs,
                         ctr_n,
                         Some(&mut noncex)
                     ),
@@ -1344,7 +1433,7 @@ mod tests {
                     &mut bbb,
                     &result,
                     Cryptlag::Decrypt,
-                    &cs,
+                    &mut cs,
                     ctr_n,
                     Some(&mut noncex)
                 ),
@@ -1490,7 +1579,7 @@ mod tests {
         dummy_usf(&mut tb3, &987, &765, &0, &result1).unwrap();
         dummy_usf(&mut tb4, &12213, &987, &0, &result1).unwrap();
 
-        set_user_field(&mut bb4_usr_test, &result_usr_test, 20, 111, dummy_usf).unwrap();
+        set_user_field(&mut bb4_usr_test, &result_usr_test, &20, &111, dummy_usf).unwrap();
 
         assert_eq!(
             bb4_usr_test,
@@ -1507,21 +1596,21 @@ mod tests {
         assert_ne!(tb1, tb3);
         assert_ne!(tb2, tb4);
 
-        set_user_field(&mut bb1, &result, 312, 38865, dummy_usf).unwrap();
-        set_user_field(&mut bb2, &result, 675, 7564, dummy_usf).unwrap();
-        set_user_field(&mut bb3, &result, 987, 765, dummy_usf).unwrap();
-        set_user_field(&mut bb4, &result, 12213, 987, dummy_usf).unwrap();
+        set_user_field(&mut bb1, &result, &312, &38865, dummy_usf).unwrap();
+        set_user_field(&mut bb2, &result, &675, &7564, dummy_usf).unwrap();
+        set_user_field(&mut bb3, &result, &987, &765, dummy_usf).unwrap();
+        set_user_field(&mut bb4, &result, &12213, &987, dummy_usf).unwrap();
 
         assert_eq!(
-            set_user_field(&mut bb3, &result1, 987, 765, dummy_usf),
+            set_user_field(&mut bb3, &result1, &987, &765, dummy_usf),
             Err(WTypeErr::CompileFieldsErr("user_field not in PackTopology"))
         );
         assert_eq!(
             set_user_field(
                 &mut bb4[..result.trash_content_slice().unwrap()[0].1],
                 &result,
-                12213,
-                987,
+                &12213,
+                &987,
                 dummy_usf
             ),
             Err(WTypeErr::LenSizeErr("pack len non correct"))
@@ -1774,8 +1863,13 @@ mod tests {
         let result2 = PackTopology::new(5, &fields2, true, false).unwrap();
 
         let mut bb = vec![32_u8; result1.total_minimal_len() + 132];
-        assert!(set_id_sender_and_recv(&mut bb, &result1, &213214, &213214).is_ok());
-        assert!(set_id_sender_and_recv(&mut bb, &result2, &213214, &213214).is_err());
+
+        assert_eq!(
+            set_id_sender_and_recv(&mut bb, &result1, &213214, &213214),
+            Err(WTypeErr::WorkTimeErr("err id_recv ==  id_sender"))
+        );
+
+        assert!(set_id_sender_and_recv(&mut bb, &result2, &213214, &1114).is_err());
         assert!(
             set_id_sender_and_recv(
                 &mut bb,
@@ -1786,6 +1880,7 @@ mod tests {
             .is_err()
         );
         assert!(set_id_sender_and_recv(&mut bb, &result1, &987654, &1234567).is_ok());
+
         assert!(get_id_sender_and_recv(&bb, &result1).is_ok());
         assert_eq!(
             get_id_sender_and_recv(&bb, &result1).unwrap(),
@@ -1834,7 +1929,7 @@ mod tests {
         let id_r = 0x11223344556677;
         let id_c = 423423;
         let id_c_b = false;
-        let ctr_m = 0x1122334455;
+        let ctr_m = &0x1122334455;
         let len = 234;
         let ttl = 432;
 
@@ -1868,22 +1963,22 @@ mod tests {
         assert_eq!(get_len(pack, &topology).unwrap(), pack.len());
 
         //COUNTER
-        assert!(set_counter(pack, &topology, &ctr_m, &PackType::FBack).is_ok());
+        assert!(set_counter(pack, &topology, ctr_m, &PackType::FBack).is_ok());
         assert_eq!(
             set_get_head_crc(true, pack, &topology, dummy_crc_gen),
             Ok(false)
         );
         assert_eq!(
             get_counter(pack, &topology, ctr_m - 17, ctr_m - 30),
-            Ok((ctr_m, PackType::FBack))
+            Ok((*ctr_m, PackType::FBack))
         );
         assert_eq!(
             get_counter(pack, &topology, ctr_m - 100, ctr_m - 31,),
-            Ok((ctr_m, PackType::FBack))
+            Ok((*ctr_m, PackType::FBack))
         );
         assert_eq!(
             get_counter(pack, &topology, ctr_m - 123, ctr_m - 23,),
-            Ok((ctr_m, PackType::FBack))
+            Ok((*ctr_m, PackType::FBack))
         );
 
         //TTL
@@ -1901,7 +1996,7 @@ mod tests {
         );
 
         //us reash
-        assert!(set_user_field(pack, &topology, ctr_m, len, dummy_usf).is_ok());
+        assert!(set_user_field(pack, &topology, ctr_m, &len, dummy_usf).is_ok());
 
         /*
         IN FUTURE
@@ -1918,7 +2013,7 @@ mod tests {
             true
         )
         ;*/
-        let cs = DumpEnc::new(&[1, 2, 3, 4, 45]).unwrap();
+        let mut cs = DumpEnc::new(&[1, 2, 3, 4, 45]).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
             pack.clone_into(&mut ttt);
@@ -1934,7 +2029,7 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &cs,
+                    &mut cs,
                     None,
                     none_nonse
                 ),
@@ -1945,7 +2040,7 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &cs,
+                    &mut cs,
                     None,
                     Some(&mut noncex)
                 ),
@@ -1957,7 +2052,7 @@ mod tests {
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
-                    &cs,
+                    &mut cs,
                     Some(ctr_m),
                     none_nonse
                 ),
@@ -1974,7 +2069,7 @@ mod tests {
                     pack,
                     &topology,
                     Cryptlag::Encrypt,
-                    &cs,
+                    &mut cs,
                     Some(ctr_m),
                     Some(&mut noncex)
                 ),
@@ -2004,7 +2099,7 @@ mod tests {
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
-                        &cs,
+                        &mut cs,
                         Some(ctr_m),
                         Some(&mut noncex)
                     ),
@@ -2018,7 +2113,7 @@ mod tests {
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
-                        &cs,
+                        &mut cs,
                         Some(ctr_m),
                         Some(&mut noncex)
                     ),
@@ -2031,22 +2126,24 @@ mod tests {
 
         //let ctr_m = 0x1122334415;
 
-        for x in topology.encrypt_start_pos()..pack.len() {
+        for iter in topology.encrypt_start_pos()..pack.len() {
             let mut t = vec![0; pack.len()];
             for x in t.iter_mut().zip(pack.iter()) {
                 *x.0 = *x.1;
             }
-            t[x] = !t[x];
+            t[iter] = !t[iter];
             assert_ne!(
                 crypt(
                     &mut t,
                     &topology,
                     Cryptlag::Decrypt,
-                    &cs,
+                    &mut cs,
                     Some(ctr_m),
                     Some(&mut noncex)
                 ),
-                Ok(())
+                Ok(()),
+                "uter: {}",
+                iter
             );
         }
 
@@ -2090,7 +2187,7 @@ mod tests {
                 pack,
                 &topology,
                 Cryptlag::Decrypt,
-                &cs,
+                &mut cs,
                 Some(ctr_m),
                 Some(&mut noncex)
             ),
@@ -2131,7 +2228,7 @@ mod tests {
         );
         assert_eq!(
             get_counter(pack, &topology, ctr_m - 10, ctr_m - 11),
-            Ok((ctr_m, PackType::FBack))
+            Ok((*ctr_m, PackType::FBack))
         );
         assert_eq!(get_ttl(pack, &topology, &999999999999).unwrap(), ttl as u64);
 

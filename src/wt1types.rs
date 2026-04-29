@@ -1,7 +1,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
-
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 //use std::rc::Rc;
 use std::sync::Arc;
 
@@ -386,7 +392,7 @@ pub trait EncWis: Sized {
         non_enc_head: &[u8],
         enc_payload: &mut [u8],
         auth_tag: &mut [u8],
-        nonce_countr: u64,
+        nonce_countr: &u64,
         nonce: Option<&[u8]>,
     ) -> Result<(), &'static str>;
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
@@ -395,7 +401,7 @@ pub trait EncWis: Sized {
         non_enc_head: &[u8],
         enc_payload: &mut [u8],
         auth_tag: &mut [u8],
-        nonce_countr: u64,
+        nonce_countr: &u64,
         nonce: Option<&[u8]>,
     ) -> Result<StatusDecrypt, &'static str>;
 }
@@ -566,6 +572,11 @@ pub fn pre_alloc(
         .checked_add(payloadlen)
         .ok_or(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))?;
 
+    let remaining = len_pack
+        .checked_sub(topology.tag_len())
+        .ok_or(WTypeErr::WorkTimeErr(
+            "subtraction underflow: len_pack < topology.tag_len()",
+        ))?;
     Ok((
         vec![
             fill;
@@ -576,7 +587,7 @@ pub fn pre_alloc(
             }
         ]
         .into_boxed_slice(),
-        (topology.content_start_pos(), len_pack - topology.tag_len()),
+        (topology.content_start_pos(), remaining),
     ))
 }
 
@@ -947,6 +958,8 @@ pub struct RsaTest {
 #[cfg(test)]
 impl RsaTest {
     #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
     /// Creates a new RSA instance from two prime numbers `p` and `q`.
     /// The public exponent `e` is fixed to 65537.
     /// Returns `Err` if the provided primes are invalid (e.g., equal, or (p-1)*(q-1) not

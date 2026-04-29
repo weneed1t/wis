@@ -1,14 +1,23 @@
+#![deny(clippy::indexing_slicing)]
+#![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::checked_cast;
 use crate::t0pology::*;
 use crate::t1fields::{
-    get_id_conn, get_id_sender_and_recv, get_len, get_tricky_byte, get_ttl, set_counter,
-    set_get_head_crc, set_id_conn, set_id_sender_and_recv, set_len, set_ttl, set_user_field,
+    crypt, get_id_conn, get_id_sender_and_recv, get_len, get_tricky_byte, get_ttl, set_counter,
+    set_get_head_crc, set_id_conn, set_id_sender_and_recv, set_len, set_tricky_byte, set_ttl,
+    set_user_field,
 };
-use crate::wt1types::{Crcser, EncWis, Identified, Ids, Noncer, PackType, Thrasher, Ttl, WTypeErr};
-
-const FBACK_START_CTR: u64 = 1;
-const DATA_START_CTR: u64 = 0;
+use crate::wt1types::{
+    Crcser, Cryptlag, EncWis, Identified, Ids, Noncer, PackType, Thrasher, Ttl, WTypeErr,
+};
 
 ///check crc + get idc/ids/idr + get len + get TrickyByte
 pub fn get_all_pub_info_of_package<'a, Tcrc>(
@@ -107,18 +116,20 @@ where
     ))
 }
 
+///general
+#[allow(clippy::too_many_arguments)]
 pub fn init_all_pack_to_send<Tenc: EncWis, Tnoncer: Noncer, Tcrc: Crcser, Trshr: Thrasher>(
     pack: &mut [u8],
     topology: &PackTopology,
     ctr: &u64,
     pack_type: &PackType,
     all_id: &Identified,
-    _tricky_byte: Option<u8>,
+    tricky_byte: Option<u8>,
     ttl: Option<(&Ttl, bool)>,
-    _nonce_gener: Option<&mut Tnoncer>,
-    _crc: Option<&mut Tcrc>,
+    nonce_gener: Option<&mut Tnoncer>,
+    crc: Option<&mut Tcrc>,
     trash_gener: Option<&mut Trshr>,
-    _enc_struct: &Tenc,
+    enc_struct: &mut Tenc,
     mtu: &usize,
 ) -> Result<(), WTypeErr> {
     //
@@ -169,7 +180,7 @@ pub fn init_all_pack_to_send<Tenc: EncWis, Tnoncer: Noncer, Tcrc: Crcser, Trshr:
             ttl_main.0.forced_pruning,
         )?;
     }
-
+    // user fields
     if topology.trash_content_slice().is_some() {
         let trasher = trash_gener.ok_or(WTypeErr::CompileFieldsErr(
             "trash_gener is none but topology.trash_content_slice().is_some()",
@@ -187,12 +198,43 @@ pub fn init_all_pack_to_send<Tenc: EncWis, Tnoncer: Noncer, Tcrc: Crcser, Trshr:
                 len_of_pack,
                 ctr_field_in_pack,
                 topolog_y,
-            );
-
-            Ok(())
+            )
         };
 
-        set_user_field(pack, topology, *ctr, pack.len(), lbo)?;
+        set_user_field(pack, topology, ctr, &pack.len(), lbo)?;
+    }
+
+    //set_tricky_byte
+    if topology.tricky_byte().is_some() {
+        set_tricky_byte(
+            pack,
+            topology,
+            tricky_byte.ok_or(WTypeErr::CompileFieldsErr(
+                "topology.tricky_byte().is_some() but tricky_byte is none",
+            ))?,
+        )?
+    }
+
+    //crypt
+    crypt(
+        pack,
+        topology,
+        Cryptlag::Encrypt,
+        enc_struct,
+        Some(ctr),
+        nonce_gener,
+    )?;
+
+    if topology.head_crc_slice().is_some() {
+        let crcer = crc.ok_or(WTypeErr::CompileFieldsErr(
+            "topology.head_crc_slice().is_some()  but crc is none",
+        ))?;
+
+        let lbo = |head: &[u8], crc_slice: &mut [u8]| -> Result<(), &'static str> {
+            crcer.gen_crc(head, crc_slice)
+        };
+
+        set_get_head_crc(true, pack, topology, lbo)?;
     }
 
     Ok(())
@@ -203,14 +245,15 @@ mod test_get_all_pub_info_of_package {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     #![allow(clippy::as_conversions)]
-
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
     use super::*;
-    use crate::t1dumps_struct::DumpCrcser;
+    use crate::t1dumps_struct::{DumpCrcser, DumpEnc, DumpNonser, DumpThrasher};
     use crate::t1fields::{set_id_conn, set_id_sender_and_recv, set_len, set_tricky_byte, set_ttl};
     use crate::wt1types::MyRole;
     #[test]
     #[allow(clippy::len_zero)]
-    fn t1_get_set_pack_pube() {
+    fn t1_get_pack_pube() {
         let fields = vec![PackFields::Counter(8)];
 
         let mut ctr_glob = 0;
@@ -417,6 +460,508 @@ mod test_get_all_pub_info_of_package {
                     }
                 }
             }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::len_zero)]
+    fn t1_set_pack_pube() {
+        let mut ctr_glob = 0;
+        let mut ctr_of_err = 0;
+
+        let (
+            pack_ctr_options,
+            len_options,
+            id_connect_options,
+            user_fields_options,
+            nonce_options,
+            sr_options,
+            crc_options,
+            tricky_byte_options,
+            ttl_options,
+        ) = get_options1();
+
+        let mut crcer = DumpCrcser::new(&[0]).unwrap();
+        let mut encer = DumpEnc::new(&[0]).unwrap();
+        let mut user_fieldser = DumpThrasher::new(&[0]).unwrap();
+
+        let mut rolle = true;
+
+        for pack_ctr in pack_ctr_options.iter() {
+            for (user_fields, user_flag) in user_fields_options.iter() {
+                for (a_nonce, nonce_flag) in nonce_options.iter() {
+                    for a_len in len_options.iter() {
+                        for (a_sr, sr_flag) in sr_options.iter() {
+                            for (a_crc, crc_flag) in crc_options.iter() {
+                                for (a_tb, tb_flag) in tricky_byte_options.iter() {
+                                    for (a_ttl, ttl_flag) in ttl_options.iter() {
+                                        for (a_idc, idc_flag) in id_connect_options.iter() {
+                                            let mut nanoser = DumpNonser::new(&[0]).unwrap();
+                                            let mut nanoser_test = DumpNonser::new(&[0]).unwrap();
+                                            let all_flags_true = *user_flag
+                                                && *nonce_flag
+                                                && *sr_flag
+                                                && *crc_flag
+                                                && *tb_flag
+                                                && *ttl_flag
+                                                && *idc_flag;
+
+                                            ctr_glob += 1;
+
+                                            let fields: Vec<PackFields> = {
+                                                vec![]
+                                                    .clone()
+                                                    .into_iter()
+                                                    .chain((*a_crc).clone())
+                                                    .chain((*a_tb).clone())
+                                                    .chain((*a_ttl).clone())
+                                                    .chain((*a_len).clone())
+                                                    .chain((*a_sr).clone())
+                                                    .chain((*a_idc).clone())
+                                                    .chain((*pack_ctr).clone())
+                                                    .chain((*user_fields).clone())
+                                                    .chain((*a_nonce).clone())
+                                                    .collect()
+                                            };
+
+                                            let ttl_struct = Ttl {
+                                                ttl_max: 200,
+                                                ttl_edit: -73,
+                                                ttl_start: 100,
+                                                forced_pruning: false,
+                                            };
+
+                                            let ctr_in_pack = ctr_glob; //randomize
+
+                                            let mut pack = vec![0x11; 500];
+                                            let mut pack_for_check = pack.clone();
+
+                                            let topology =
+                                                PackTopology::new(5, &fields, true, false).unwrap();
+
+                                            let resultat = init_all_pack_to_send(
+                                                &mut pack[..],
+                                                &topology,
+                                                &ctr_in_pack,
+                                                &PackType::Data,
+                                                &ids_get(
+                                                    *idc_flag,
+                                                    *sr_flag,
+                                                    if rolle {
+                                                        rolle = !rolle;
+                                                        MyRole::Initiator
+                                                    } else {
+                                                        rolle = !rolle;
+                                                        MyRole::Passive
+                                                    },
+                                                ),
+                                                if *tb_flag { Some(123) } else { None },
+                                                if *ttl_flag {
+                                                    Some((&ttl_struct, false))
+                                                } else {
+                                                    None
+                                                },
+                                                if *nonce_flag {
+                                                    Some(&mut nanoser)
+                                                } else {
+                                                    None
+                                                },
+                                                if *crc_flag { Some(&mut crcer) } else { None },
+                                                if *user_flag {
+                                                    Some(&mut user_fieldser)
+                                                } else {
+                                                    None
+                                                },
+                                                &mut encer,
+                                                &1000,
+                                            );
+                                            let pack = pack;
+
+                                            if let Some(err_res) = resultat.err() {
+                                                if all_flags_true {
+                                                    println!(
+                                                        "glob:{} err:{}   {:?} {:?}",
+                                                        ctr_glob, ctr_of_err, err_res, fields
+                                                    );
+                                                    assert!(
+                                                        false == true,
+                                                        "The error should only occur when \
+                                                         all_flags_true == false, if the error \
+                                                         occurs when all_flags_true == true, the \
+                                                         code does not work correctly!"
+                                                    );
+                                                } else {
+                                                    continue;
+                                                }
+                                                ctr_of_err += 1;
+
+                                                assert!(!all_flags_true);
+                                            }
+
+                                            //
+                                            //CHECK!!!!
+                                            //
+
+                                            {
+                                                //ttl
+                                                if a_ttl.len() > 0 {
+                                                    set_ttl(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        &(ttl_struct.ttl_start as i64),
+                                                        &ttl_struct.ttl_max,
+                                                        true,
+                                                        ttl_struct.forced_pruning,
+                                                    )
+                                                    .unwrap();
+
+                                                    let (s, n, _) = topology.ttl_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+                                                }
+
+                                                //len
+                                                if a_len.len() > 0 {
+                                                    set_len(&mut pack_for_check, &topology, &1000)
+                                                        .unwrap();
+
+                                                    let (s, n, _) = topology.len_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+                                                }
+
+                                                //nonce
+                                                if a_nonce.len() > 0 {
+                                                    let (s, n, _) = topology.nonce_slice().unwrap();
+
+                                                    nanoser_test
+                                                        .set_nonce(&mut pack_for_check[s..n])
+                                                        .unwrap();
+
+                                                    assert!(
+                                                        pack[s..n].eq(&pack_for_check[s..n]),
+                                                        "noncetes ! = pack[s..n]  \n{:?} \n{:?}",
+                                                        Vec::from(&pack[s..n]),
+                                                        &pack_for_check[s..n],
+                                                    );
+                                                }
+
+                                                // sed recv
+                                                if a_sr.len() > 0 {
+                                                    set_id_sender_and_recv(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        &1111111,
+                                                        &2222222,
+                                                    )
+                                                    .unwrap();
+
+                                                    let (s, n, _) =
+                                                        topology.id_of_sender_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+
+                                                    let (s, n, _) =
+                                                        topology.id_of_receiver_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+                                                }
+
+                                                // sed idc
+                                                if a_idc.len() > 0 {
+                                                    set_id_conn(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        &33333,
+                                                        &if !rolle {
+                                                            MyRole::Initiator
+                                                        } else {
+                                                            MyRole::Passive
+                                                        },
+                                                    )
+                                                    .unwrap();
+
+                                                    let (s, n, _) =
+                                                        topology.idconn_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+                                                }
+
+                                                // sed ctr
+                                                {
+                                                    set_counter(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        &ctr_in_pack,
+                                                        &PackType::Data,
+                                                    )
+                                                    .unwrap();
+
+                                                    let (s, n, _) =
+                                                        topology.counter_slice().unwrap();
+                                                    assert!(
+                                                        pack[s..n].eq(&pack_for_check[s..n]),
+                                                        "noncetes ! = pack[s..n]  \n{:?} \n{:?}",
+                                                        Vec::from(&pack[s..n]),
+                                                        &pack_for_check[s..n],
+                                                    );
+                                                }
+
+                                                // sed tricky_byte
+                                                if a_tb.len() > 0 {
+                                                    set_tricky_byte(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        123,
+                                                    )
+                                                    .unwrap();
+
+                                                    let s = topology.tricky_byte().unwrap();
+                                                    assert!(pack[s] == pack_for_check[s]);
+                                                }
+
+                                                if user_fields.len() > 0 {
+                                                    let lbo =|
+                                                    _user_field: &mut [u8],
+        _counter_pack: &u64,
+        _len_pack: &usize,
+        _counter_of_field: &usize,
+        _topoligy: &PackTopology,| -> Result<(), &'static str> {user_fieldser.set_user_field(_user_field, _counter_pack, _len_pack, _counter_of_field, _topoligy)};
+
+                                                    set_user_field(
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        &ctr_in_pack,
+                                                        &pack.len(),
+                                                        lbo,
+                                                    )
+                                                    .unwrap();
+
+                                                    for &(s, n, _) in topology
+                                                        .trash_content_slice()
+                                                        .unwrap()
+                                                        .iter()
+                                                    {
+                                                        assert!(
+                                                            pack[s..n].eq(&pack_for_check[s..n]),
+                                                            "noncetes ! = pack[s..n]  \n{:?} \
+                                                             \n{:?}",
+                                                            Vec::from(&pack[s..n]),
+                                                            &pack_for_check[s..n],
+                                                        );
+                                                    }
+                                                }
+
+                                                //crc
+
+                                                //  /*
+
+                                                if a_crc.len() > 0 {
+                                                    let lbo =
+                                                    |head: &[u8], crc_slice: &mut [u8]| -> Result<(), &'static str> {crcer.gen_crc(head, crc_slice)};
+
+                                                    set_get_head_crc(
+                                                        true,
+                                                        &mut pack_for_check,
+                                                        &topology,
+                                                        lbo,
+                                                    )
+                                                    .unwrap();
+
+                                                    let (s, n, _) =
+                                                        topology.head_crc_slice().unwrap();
+                                                    assert!(pack[s..n].eq(&pack_for_check[s..n]));
+                                                } // */
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[allow(clippy::len_zero)]
+    fn pack_pube_bnc() {
+        if true == true {
+            return; // =========== NO BENCH IN TEST
+        }
+
+        fn ids_get_s(id_coon: bool, id_sr: bool, p: MyRole) -> Identified {
+            Identified {
+                my_metall_id: 45654654,
+                my_s_r_id: if id_sr {
+                    Some(Ids {
+                        id_sender: 111,
+                        id_receiver: 222,
+                    })
+                } else {
+                    None
+                },
+                id_conn: if id_coon { Some((99, p)) } else { None },
+            }
+        }
+        let mut crcer = DumpCrcser::new(&[0]).unwrap();
+        let mut encer = DumpEnc::new(&[0]).unwrap();
+        let mut user_fieldser = DumpThrasher::new(&[0]).unwrap();
+
+        let mut nanoser = DumpNonser::new(&[0]).unwrap();
+
+        let ttl_struct = Ttl {
+            ttl_max: 200,
+            ttl_edit: -73,
+            ttl_start: 100,
+            forced_pruning: false,
+        };
+
+        let fields = vec![
+            //PackFields::Len(2),
+            //PackFields::UserField(1),
+            PackFields::Counter(4),
+            //PackFields::IdSender(1),
+            //PackFields::IdReceiver(1),
+            //PackFields::UserField(1),
+            //PackFields::HeadCRC(2),
+            //PackFields::TrickyByte,
+            //PackFields::UserField(1),
+            //PackFields::Nonce(1),
+            //PackFields::TTL(1),
+            //PackFields::UserField(1),
+            //PackFields::IdConnect(1),
+        ];
+
+        let topology = PackTopology::new(10, &fields, true, false).unwrap();
+
+        let one_gb = 1 << 30;
+        let pack_len = 26;
+        for all_it in 0..one_gb / pack_len {
+            let mut pack = vec![0x11; pack_len];
+
+            init_all_pack_to_send(
+                &mut pack[..],
+                &topology,
+                &(all_it as u64),
+                &PackType::Data,
+                &ids_get_s(true, true, MyRole::Initiator),
+                Some(123),
+                Some((&ttl_struct, false)),
+                Some(&mut nanoser),
+                Some(&mut crcer),
+                Some(&mut user_fieldser),
+                &mut encer,
+                &50000,
+            )
+            .unwrap();
+        }
+    }
+
+    /// Returns a tuple of nine option arrays for packet field combinations:
+    /// 0: pack_ctr_options - [Vec<PackFields>; 2] (Counter(8), Counter(1))
+    /// 1: len_options - [Vec<PackFields>; 2] (Len(4), empty)
+    /// 2: id_connect_options - [Vec<PackFields>; 2] (IdConnect(7), empty)
+    /// 3: user_fields_options - [(Vec<PackFields>, bool); 6] (UserField variants with
+    /// false/true) 4: nonce_options - [(Vec<PackFields>, bool); 4] (Nonce(20) and
+    /// empty, each with false/true) 5: sr_options - [(Vec<PackFields>, bool); 4]
+    /// (IdSender+IdReceiver and empty, each with false/true) 6: crc_options -
+    /// [(Vec<PackFields>, bool); 4] (HeadCRC(4) and empty, each with false/true)
+    /// 7: tricky_byte_options - [(Vec<PackFields>, bool); 4] (TrickyByte and empty, each
+    /// with false/true) 8: ttl_options - [(Vec<PackFields>, bool); 4] (TTL(3) and
+    /// empty, each with false/true)
+    fn get_options1() -> (
+        [Vec<PackFields>; 2],         // pack_ctr_options
+        [Vec<PackFields>; 2],         // len_options
+        [(Vec<PackFields>, bool); 3], // id_connect_options
+        [(Vec<PackFields>, bool); 5], // user_fields_options
+        [(Vec<PackFields>, bool); 3], // nonce_options
+        [(Vec<PackFields>, bool); 3], // sr_options
+        [(Vec<PackFields>, bool); 3], // crc_options
+        [(Vec<PackFields>, bool); 3], // tricky_byte_options
+        [(Vec<PackFields>, bool); 3], // ttl_options
+    ) {
+        (
+            // pack_ctr_options
+            [vec![PackFields::Counter(8)], vec![PackFields::Counter(1)]],
+            // len_options
+            [vec![PackFields::Len(4)], vec![]],
+            // id_connect_options
+            [
+                (vec![PackFields::IdConnect(7)], true),
+                (vec![PackFields::IdConnect(7)], false),
+                (vec![], false),
+            ],
+            // user_fields_options
+            [
+                (vec![PackFields::UserField(1)], false),
+                (vec![PackFields::UserField(1)], true),
+                (
+                    vec![
+                        PackFields::UserField(14),
+                        PackFields::UserField(6),
+                        PackFields::UserField(65),
+                    ],
+                    false,
+                ),
+                (
+                    vec![
+                        PackFields::UserField(14),
+                        PackFields::UserField(6),
+                        PackFields::UserField(65),
+                    ],
+                    true,
+                ),
+                (vec![], false),
+            ],
+            // nonce_options
+            [
+                (vec![PackFields::Nonce(20)], false),
+                (vec![PackFields::Nonce(20)], true),
+                (vec![], false),
+            ],
+            // sr_options
+            [
+                (
+                    vec![PackFields::IdSender(6), PackFields::IdReceiver(6)],
+                    false,
+                ),
+                (
+                    vec![PackFields::IdSender(6), PackFields::IdReceiver(6)],
+                    true,
+                ),
+                (vec![], false),
+            ],
+            // crc_options
+            [
+                (vec![PackFields::HeadCRC(4)], false),
+                (vec![PackFields::HeadCRC(4)], true),
+                (vec![], false),
+            ],
+            // tricky_byte_options
+            [
+                (vec![PackFields::TrickyByte], false),
+                (vec![PackFields::TrickyByte], true),
+                (vec![], false),
+            ],
+            // ttl_options
+            [
+                (vec![PackFields::TTL(3)], false),
+                (vec![PackFields::TTL(3)], true),
+                (vec![], false),
+            ],
+        )
+    }
+
+    /// all, m+ sr, m+coon , only metall
+    fn ids_get(id_coon: bool, id_sr: bool, p: MyRole) -> Identified {
+        Identified {
+            my_metall_id: 45654654,
+            my_s_r_id: if id_sr {
+                Some(Ids {
+                    id_sender: 1111111,
+                    id_receiver: 2222222,
+                })
+            } else {
+                None
+            },
+            id_conn: if id_coon { Some((33333, p)) } else { None },
         }
     }
 }

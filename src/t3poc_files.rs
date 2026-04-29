@@ -1,6 +1,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use crate::wt1types::InFile;
 use crate::{checked_cast, w1utils};
 
@@ -70,7 +77,11 @@ impl WSFileSplitter {
             checked_cast!(rc_file.len() => u64, err "rc_file.len() conversion to u64 failed")?,
         );
 
-        if cap_head_of_rc + 1 > FILE_HEAD_LEN {
+        if cap_head_of_rc
+            .checked_add(1)
+            .expect("overflow in cap_head_of_rc + 1")
+            > FILE_HEAD_LEN
+        {
             panic!(
                 "Panic because the file header (u64 as bytes len + 1 byte length) is larger than \
                  FILE_HEAD_LEN"
@@ -80,7 +91,9 @@ impl WSFileSplitter {
         let mut new_file = DataDrain {
             ptr_in_head: 0,
             ptr_in_body: 0,
-            len_of_head: 1 + cap_head_of_rc,
+            len_of_head: cap_head_of_rc
+                .checked_add(1)
+                .expect("overflow in cap_head_of_rc + 1"),
             head: [0; FILE_HEAD_LEN],
         };
         //The structure of the slice contained in WSFileSplitter is as follows:
@@ -91,9 +104,12 @@ impl WSFileSplitter {
         *new_file.head.get_mut(0).ok_or("invalid head index 0")? =
             checked_cast!(cap_head_of_rc => u8, err "cap_head_of_rc conversion to u8 failed")?;
 
+        let end = 1usize
+            .checked_add(cap_head_of_rc)
+            .ok_or("overflow in 1 + cap_head_of_rc")?;
         let head_slice = new_file
             .head
-            .get_mut(1..1 + cap_head_of_rc)
+            .get_mut(1..end)
             .ok_or("invalid head range for length encoding")?;
 
         w1utils::u64_to_1_8bytes(
@@ -126,21 +142,30 @@ impl WSFileSplitter {
 
         if let Some(rfile) = &mut self.send_file {
             let slice_after_head = if rfile.0.ptr_in_head < rfile.0.len_of_head {
-                let remaining_head = rfile.0.len_of_head - rfile.0.ptr_in_head;
+                let remaining_head = rfile
+                    .0
+                    .len_of_head
+                    .checked_sub(rfile.0.ptr_in_head)
+                    .expect("subtraction underflow: ptr_in_head > len_of_head");
                 let min_len = min(slice.len(), remaining_head);
 
-                match (
-                    slice.get_mut(..min_len),
-                    rfile
-                        .0
-                        .head
-                        .get(rfile.0.ptr_in_head..rfile.0.ptr_in_head + min_len),
-                ) {
+                let end = rfile
+                    .0
+                    .ptr_in_head
+                    .checked_add(min_len)
+                    .expect("overflow in ptr_in_head + min_len");
+                let range = rfile.0.ptr_in_head..end;
+
+                match (slice.get_mut(..min_len), rfile.0.head.get(range)) {
                     (Some(dest), Some(src)) => dest.copy_from_slice(src),
                     _ => panic!("invalid slice or head range for header copy"),
                 }
 
-                rfile.0.ptr_in_head += min_len;
+                rfile.0.ptr_in_head = rfile
+                    .0
+                    .ptr_in_head
+                    .checked_add(min_len)
+                    .expect("overflow in ptr_in_head addition");
                 match slice.get_mut(min_len..) {
                     Some(s) => s,
                     None => panic!("invalid slice range after header copy"),
@@ -150,7 +175,11 @@ impl WSFileSplitter {
             };
 
             if rfile.0.ptr_in_body < rfile.1.len() {
-                let remaining_body = rfile.1.len() - rfile.0.ptr_in_body;
+                let remaining_body = rfile
+                    .1
+                    .len()
+                    .checked_sub(rfile.0.ptr_in_body)
+                    .expect("subtraction underflow: ptr_in_body > body length");
                 let min_len = min(slice_after_head.len(), remaining_body);
 
                 if min_len < slice_after_head.len() {
@@ -159,17 +188,21 @@ impl WSFileSplitter {
                         None => panic!("invalid slice range for zero fill"),
                     }
                 }
-
-                match (
-                    slice_after_head.get_mut(..min_len),
-                    rfile
-                        .1
-                        .get(rfile.0.ptr_in_body..rfile.0.ptr_in_body + min_len),
-                ) {
+                let end = rfile
+                    .0
+                    .ptr_in_body
+                    .checked_add(min_len)
+                    .expect("overflow in ptr_in_body + min_len");
+                let range = rfile.0.ptr_in_body..end;
+                match (slice_after_head.get_mut(..min_len), rfile.1.get(range)) {
                     (Some(dest), Some(src)) => dest.copy_from_slice(src),
                     _ => panic!("invalid slice or body range for body copy"),
                 }
-                rfile.0.ptr_in_body += min_len;
+                rfile.0.ptr_in_body = rfile
+                    .0
+                    .ptr_in_body
+                    .checked_add(min_len)
+                    .expect("overflow in ptr_in_body addition");
             }
 
             how_much_left = EXPCP!(
@@ -269,17 +302,29 @@ impl WSFileSplitter {
             // IF(if the file is full and completely filled) IF(is there a head )
             if if let Some(recv_me) = &mut self.recv_data {
                 // (1 byte of len) + (1-8bytes of u64)
+
+                let len_of_head_plus_one = recv_me
+                    .0
+                    .len_of_head
+                    .checked_add(1)
+                    .ok_or("overflow in len_of_head + 1")?;
                 //head treatment
-                let head_is_non_full = if recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head {
+                let head_is_non_full = if len_of_head_plus_one > recv_me.0.ptr_in_head {
                     //find the minimum that is shorter than the length
                     //of the slice or the length of the unfilled space in the head
-                    let min_len = min(
-                        slice.len(),
-                        recv_me.0.len_of_head + 1 - recv_me.0.ptr_in_head,
-                    );
+                    let available = recv_me
+                        .0
+                        .len_of_head
+                        .checked_add(1)
+                        .ok_or("overflow in len_of_head + 1")?
+                        .checked_sub(recv_me.0.ptr_in_head)
+                        .ok_or("subtraction underflow: (len_of_head + 1) < ptr_in_head")?;
 
+                    let min_len = std::cmp::min(slice.len(), available);
                     let head_start = recv_me.0.ptr_in_head;
-                    let head_end = head_start + min_len;
+                    let head_end = head_start
+                        .checked_add(min_len)
+                        .ok_or("overflow in head_start + min_len")?;
                     let head_slice = recv_me
                         .0
                         .head
@@ -291,13 +336,22 @@ impl WSFileSplitter {
                     //copy a safe number of bytes to a file in the structure
                     head_slice.copy_from_slice(src_slice);
                     //move the pointer to the number of bytes copied
-                    recv_me.0.ptr_in_head += min_len;
+                    recv_me.0.ptr_in_head = recv_me
+                        .0
+                        .ptr_in_head
+                        .checked_add(min_len)
+                        .ok_or("overflow in ptr_in_head addition")?;
                     //slice trimming
                     slice = slice
                         .get(min_len..)
                         .ok_or("invalid slice range after head copy")?; //new slice
                     //
-                    recv_me.0.len_of_head + 1 > recv_me.0.ptr_in_head //bool
+                    let required = recv_me
+                        .0
+                        .len_of_head
+                        .checked_add(1)
+                        .ok_or("overflow in len_of_head + 1")?;
+                    required > recv_me.0.ptr_in_head
                 } else {
                     false
                 };
@@ -307,8 +361,13 @@ impl WSFileSplitter {
                 //if there is no body (payload)
                 if recv_me.1.is_none() {
                     //calculation of payload length
-                    let head_start = 1;
-                    let head_end = head_start + recv_me.0.len_of_head;
+                    let head_start: usize = 1;
+                    //let head_end = head_start + recv_me.0.len_of_head;
+
+                    let head_end = head_start
+                        .checked_add(recv_me.0.len_of_head)
+                        .ok_or("overflow in head_start + len_of_head")?;
+
                     let head_len_slice = recv_me
                         .0
                         .head
@@ -343,10 +402,16 @@ impl WSFileSplitter {
                 if let Some(file_recv) = &mut recv_me.1 {
                     //find the minimum that is shorter than the length
                     //of the slice or the length of the unfilled space in the body
-                    let min_len = min(slice.len(), file_recv.len() - recv_me.0.ptr_in_body);
+                    let available = file_recv
+                        .len()
+                        .checked_sub(recv_me.0.ptr_in_body)
+                        .ok_or("subtraction underflow: file_recv.len() < ptr_in_body")?;
+                    let min_len = std::cmp::min(slice.len(), available);
 
                     let dest_start = recv_me.0.ptr_in_body;
-                    let dest_end = dest_start + min_len;
+                    let dest_end = (dest_start)
+                        .checked_add(min_len)
+                        .ok_or("overflow in dest_start + min_len")?;
                     let dest_slice = file_recv
                         .get_mut(dest_start..dest_end)
                         .ok_or("invalid destination range for body copy")?;
@@ -356,7 +421,11 @@ impl WSFileSplitter {
                     //copy a safe number of bytes to a file in the structure
                     dest_slice.copy_from_slice(src_slice);
                     //move the pointer to the number of bytes copied
-                    recv_me.0.ptr_in_body += min_len;
+                    recv_me.0.ptr_in_body = recv_me
+                        .0
+                        .ptr_in_body
+                        .checked_add(min_len)
+                        .ok_or("overflow in ptr_in_body addition")?;
                     //slice trimming
                     slice = slice
                         .get(min_len..)

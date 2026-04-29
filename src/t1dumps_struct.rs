@@ -1,8 +1,17 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 
 use crate::t0pology::PackTopology;
+#[cfg(test)]
+use crate::wisdel;
 use crate::wt1types::*;
 //#############################################################3
 ///
@@ -36,7 +45,7 @@ pub struct DumpRandomer {
 ///
 pub struct DumpEnc {
     #[cfg(test)]
-    t: u64,
+    // t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
@@ -233,7 +242,7 @@ impl EncWis for DumpEnc {
         {
             #![allow(clippy::as_conversions)]
             Ok(Self {
-                t: _key.iter().map(|&x| x as u64).sum(),
+                // t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
             })
         }
@@ -244,7 +253,7 @@ impl EncWis for DumpEnc {
         _non_enc_head: &[u8],
         _enc_payload: &mut [u8],
         _auth_tag: &mut [u8],
-        _nonce_countr: u64,
+        _nonce_countr: &u64,
         _nonce: Option<&[u8]>,
     ) -> Result<(), &'static str> {
         #[cfg(not(test))]
@@ -258,17 +267,25 @@ impl EncWis for DumpEnc {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
-            bpg(&mut (self.t.clone()), _enc_payload);
 
-            let mut hat = vec![];
-            hat.extend_from_slice(_non_enc_head);
-            hat.extend_from_slice(_enc_payload);
+            let mut nonce = [0; 16];
+            let mut key8 = [0; 32];
 
-            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
-            hat.extend_from_slice(xh);
+            if let Some(no) = _nonce {
+                nonce.iter_mut().zip(no.iter()).for_each(|(m, n)| {
+                    *m = *n;
+                });
+            }
+            key8.iter_mut().zip(self.v.iter()).for_each(|(m, n)| {
+                *m = *n;
+            });
+
+            let tage = wisdel::encrypt(Some(_non_enc_head), _enc_payload, &key8, &nonce)?;
 
             _auth_tag.fill(0);
-            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), _auth_tag);
+            _auth_tag.iter_mut().zip(tage.iter()).for_each(|(m, n)| {
+                *m = *n;
+            });
 
             Ok(())
         }
@@ -279,7 +296,7 @@ impl EncWis for DumpEnc {
         _non_enc_head: &[u8],
         _enc_payload: &mut [u8],
         _auth_tag: &mut [u8],
-        _nonce_countr: u64,
+        _nonce_countr: &u64,
         _nonce: Option<&[u8]>,
     ) -> Result<StatusDecrypt, &'static str> {
         #[cfg(not(test))]
@@ -293,18 +310,40 @@ impl EncWis for DumpEnc {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
-            let mut hat = vec![];
-            hat.extend_from_slice(_non_enc_head);
-            hat.extend_from_slice(_enc_payload);
 
-            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
-            hat.extend_from_slice(xh);
+            let mut nonce = [0; 16];
+            let mut key8 = [0; 32];
 
-            let mut hat2 = vec![0; _auth_tag.len()];
+            if let Some(no) = _nonce {
+                nonce.iter_mut().zip(no.iter()).for_each(|(m, n)| {
+                    *m = *n;
+                });
+            }
+            key8.iter_mut().zip(self.v.iter()).for_each(|(m, n)| {
+                *m = *n;
+            });
 
-            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), &mut hat2);
-            if hat2.iter().eq(_auth_tag.iter()) {
-                bpg(&mut (self.t.clone()), _enc_payload);
+            let tage = wisdel::decrypt(Some(_non_enc_head), _enc_payload, &key8, &nonce)?;
+
+            let mut is_err = false;
+
+            tage.iter().zip(_auth_tag.iter()).for_each(|(m, n)| {
+                if *m != *n {
+                    is_err = true;
+                }
+            });
+            if _auth_tag.len() > tage.len() {
+                {
+                    #![allow(clippy::indexing_slicing)]
+                    for ttage in _auth_tag[tage.len()..].iter() {
+                        if *ttage != 0 {
+                            is_err = true;
+                        }
+                    }
+                }
+            }
+
+            if !is_err {
                 Ok(StatusDecrypt::DecodedCorrectly)
             } else {
                 Ok(StatusDecrypt::PackageDamaged)
@@ -345,6 +384,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::arithmetic_side_effects)]
             #![allow(clippy::as_conversions)]
             let mut staka: u64 = 0;
             for x in _seed {
@@ -379,6 +419,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::arithmetic_side_effects)]
             #![allow(clippy::as_conversions)]
             let curent_step = self
                 ._in_state
@@ -432,6 +473,7 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::arithmetic_side_effects)]
             #![allow(clippy::as_conversions)]
             let curent_step = self
                 ._in_state
@@ -524,16 +566,16 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
         println!(" ");
         println!(" ");
-        println!("hea {:?} ", a1);
-        println!("pay {:?} ", a2);
-        println!("aut {:?} ", a3);
-        println!("non {:?} ", a4);
-        println!("{:?}", ret);
+        println!("headd {:?} ", a1);
+        println!("paload(enc) {:?} ", a2);
+        println!("auth tag  {:?} ", a3);
+        println!("none  {:?} ", a4);
+        println!("status {:?}", ret);
 
         assert_eq!(StatusDecrypt::DecodedCorrectly, ret);
         //
@@ -545,18 +587,18 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let mut a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
 
         a4[7] = !a4[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        println!("before enc ");
         println!(" ");
-        println!(" ");
-        println!("hea {:?} ", a1);
-        println!("pay {:?} ", a2);
-        println!("aut {:?} ", a3);
-        println!("non {:?} ", a4);
-        println!("{:?}", ret);
+        println!("head {:?} ", a1);
+        println!("paload(enc) {:?} ", a2);
+        println!("auth tag  {:?} ", a3);
+        println!("none  {:?} ", a4);
+        println!("status {:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
 
@@ -565,18 +607,18 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
 
         a1[7] = !a1[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        println!("after dec");
         println!(" ");
-        println!(" ");
-        println!("hea {:?} ", a1);
-        println!("pay {:?} ", a2);
-        println!("aut {:?} ", a3);
-        println!("non {:?} ", a4);
-        println!("{:?}", ret);
+        println!("head {:?} ", a1);
+        println!("paload(enc) {:?} ", a2);
+        println!("auth tag  {:?} ", a3);
+        println!("none  {:?} ", a4);
+        println!("status {:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
 
@@ -585,18 +627,18 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
 
         a2[7] = !a2[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, 0, Some(&a4)).unwrap();
+        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
         println!(" ");
         println!(" ");
-        println!("hea {:?} ", a1);
-        println!("pay {:?} ", a2);
-        println!("aut {:?} ", a3);
-        println!("non {:?} ", a4);
-        println!("{:?}", ret);
+        println!("head {:?} ", a1);
+        println!("paload(enc) {:?} ", a2);
+        println!("auth tag  {:?} ", a3);
+        println!("none  {:?} ", a4);
+        println!("status {:?}", ret);
 
         assert_eq!(StatusDecrypt::PackageDamaged, ret);
     }

@@ -6,7 +6,13 @@
 #![deny(clippy::indexing_slicing)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::as_conversions)]
-
+#![deny(clippy::arithmetic_side_effects)]
+#![deny(clippy::integer_division)]
+//#![deny(clippy::expect_used)]
+#![deny(clippy::unreachable)]
+#![deny(clippy::todo)]
+#![deny(clippy::float_cmp)]
+#![forbid(unsafe_code)]
 use std::collections::HashSet;
 
 use crate::checked_cast;
@@ -129,7 +135,9 @@ impl Codec {
             return Err("u64 value too large (more than 8 bytes)");
         }
         let mut padded = [0u8; 8];
-        let start_idx = 8 - bytes.len();
+        let start_idx = 8usize
+            .checked_sub(bytes.len())
+            .ok_or("overflow: bytes.len() > 8")?;
         let dest_slice = padded.get_mut(start_idx..).ok_or("invalid padding range")?;
         dest_slice.copy_from_slice(&bytes);
         Ok(Value::Unsigned(u64::from_be_bytes(padded)))
@@ -178,7 +186,11 @@ impl Codec {
         if !s.len().is_multiple_of(2) {
             return Err("hex string must have even length");
         }
-        let mut out = Vec::with_capacity(s.len() / 2);
+        let mut out = Vec::with_capacity(
+            s.len()
+                .checked_div(2)
+                .expect("division by zero in s.len() / 2"),
+        );
         let mut chars = s.as_bytes().iter();
         while let (Some(&hi), Some(&lo)) = (chars.next(), chars.next()) {
             let h = Self::hex_digit(hi).ok_or("invalid hex digit")?;
@@ -190,9 +202,9 @@ impl Codec {
 
     fn hex_digit(c: u8) -> Option<u8> {
         match c {
-            b'0'..=b'9' => Some(c - b'0'),
-            b'a'..=b'f' => Some(c - b'a' + 10),
-            b'A'..=b'F' => Some(c - b'A' + 10),
+            b'0'..=b'9' => c.checked_sub(b'0'),
+            b'a'..=b'f' => c.checked_sub(b'a').and_then(|val| val.checked_add(10)),
+            b'A'..=b'F' => c.checked_sub(b'A').and_then(|val| val.checked_add(10)),
             _ => None,
         }
     }
@@ -258,14 +270,20 @@ impl Codec {
             return vec![0];
         }
         let leading = checked_cast!(n.leading_zeros() => usize, expect "Leading zeros conversion to usize failed")
-            / 8;
+    .checked_div(8)
+    .expect("division by zero in leading / 8");
         let be_bytes = n.to_be_bytes();
         be_bytes.get(leading..).unwrap_or(&[]).to_vec()
     }
 
     fn hex_encode(bytes: &[u8]) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
-        let mut out = String::with_capacity(bytes.len() * 2);
+        let mut out = String::with_capacity(
+            bytes
+                .len()
+                .checked_mul(2)
+                .expect("overflow in bytes.len() * 2"),
+        );
         for &b in bytes {
             let high = HEX
                 .get(checked_cast!(b >> 4 => usize, expect "High nibble index conversion failed"))
@@ -286,6 +304,7 @@ impl Codec {
 mod tests {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    #![allow(clippy::float_cmp)]
     use super::*;
 
     #[test]
