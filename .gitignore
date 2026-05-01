@@ -4,5 +4,6 @@
 /.trunk
 /.idea
 /.continue
+/.wisdelmaintest
 private.key.asc
 rustfmt.toml

@@ -45,6 +45,230 @@ fn test_vec_enc() -> &'static Mutex<Vec<Vec<u32>>> {
     TEST_VEC_ENC.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// # Non‑standard, unverified cipher
+///
+/// **WARNING:** This `encrypt` function implements a custom, non‑standard AEAD cipher
+/// based on the internal `WIS` block algorithm. **It has not undergone any rigorous
+/// cryptanalysis** and should **never** be used in production or security‑sensitive
+/// environments. Use only for educational or research purposes.
+///
+/// ## Overview
+///
+/// The function performs **authenticated encryption with associated data** (AEAD)
+/// **in‑place** on the `plaintext` buffer. It returns a 256‑bit authentication tag.
+///
+/// ## How it works
+///
+/// ### 1. Initialisation
+/// - `state_key = wis_key_set(key, nonce)` – generates an internal key state of 16 words
+///   (64 bytes) from the 256‑bit `key` and 128‑bit `nonce`. Uses `wis_process_block` with
+///   **4 rounds**.
+/// - `state_hash = state_key` – initial hash state for authentication.
+/// - Block counter `ctr = 0`.
+///
+/// ### 2. Associated data (`head`) – authentication only
+/// - `head` is **not encrypted** but is authenticated.
+/// - Each 64‑byte chunk is converted to 16 big‑endian `u32` words.
+/// - For each chunk, `hash_progress`:
+///   - XORs the current hash with the chunk: `hash ^= chunk`.
+///   - Applies `wis_process_block` (**4 rounds**) to the hash.
+///   - Adds `state_key` (component‑wise addition modulo 2³²).
+///
+/// ### 3. Payload encryption and authentication (`plaintext`)
+/// - Data is split into 64‑byte chunks (last may be shorter).
+/// - For each chunk:
+///   - **Encryption** (`enc_progress`):
+///     - Mixes the counter `ctr` into a copy of `state_key` (XOR into words 14 and 15).
+///     - Applies `wis_process_block` with **10 rounds** to generate keystream.
+///     - Adds the original `state_key` (addition).
+///     - XORs with plaintext → produces ciphertext.
+///   - If the last chunk is incomplete, excess bytes in the final word are **zeroed**
+///     (`zero_right_bytes_be`) to avoid affecting the hash.
+///   - **Authentication** (`hash_progress`): same as for `head`, but now on the
+///     **ciphertext** chunk.
+///   - `ctr` is incremented by the number of bytes processed.
+///
+/// ### 4. Lengths are authenticated
+/// - A 64‑byte block is constructed containing the lengths of `head` and `plaintext`
+///   (each 64 bits, big‑endian).
+/// - This block is also passed through `hash_progress`.
+///
+/// ### 5. Final compression
+/// - The 16‑word hash state is split into two halves; the left half is replaced by the
+///   XOR of the left and right halves.
+/// - The resulting 8 words (256 bits) are converted to a byte array – this is the
+///   **authentication tag**.
+///
+/// ## Features & properties
+/// - **In‑place encryption** – the passed `plaintext` slice is mutated into ciphertext.
+/// - **Associated data support** – `head` is authenticated but not encrypted.
+/// - **Block size** – 64 bytes (16 × 32‑bit words). All internal operations use
+///   **big‑endian** byte order.
+/// - **Nonce** – 128 bits; affects only the initial key state; the block counter always
+///   starts at zero.
+/// - **Safe arithmetic** – the code avoids panics from indexing, division, etc., by using
+///   `checked_*` and wrapping addition.
+/// - **Test harness** – under `#[cfg(test)]` intermediate vectors are stored for
+///   verification.
+///
+/// ## Critical warnings for use
+/// - **Never reuse a `(key, nonce)` pair** – this would break security completely
+///   (keystream reuse, tag forgery).
+/// - **This is not a standard cipher** – no third‑party cryptanalysis has been done.
+/// - **Potential panics** – some operations use `EXPCP!` (expect) and may panic if
+///   invariants are violated.
+/// - **Timing side‑channels** – not hardened; conditional branches may leak information.
+/// - **Only 64‑bit total length allowed** – messages longer than `u64::MAX` bytes are
+///   rejected.
+///
+/// # Returns
+/// A 256‑bit authentication tag (`[u8; 32]`).
+pub fn encrypt(
+    head: Option<&[u8]>,
+    plaintext: &mut [u8],
+    key: &[u8; 32],
+    nonce: &[u8; 16],
+) -> Result<[u8; 32], &'static str> {
+    let mut ctr: u64 = 0;
+    let mut state_hash = [0; 16];
+
+    if plaintext.len()
+        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
+    {
+        return Err("plaintext.len() > u64::MAX as usize; len() is to big");
+    }
+
+    let state_key = wis_key_set(key, nonce);
+    state_hash.copy_from_slice(&state_key);
+
+    //hash of head  only
+    if let Some(hea) = head {
+        process_in_place_no_mut(hea, |block, _, _| {
+            hash_progress(block, &state_key, &mut state_hash);
+        });
+    }
+
+    //enc + hash payload
+    process_in_place(plaintext, |block, adder, t| {
+        //in test
+        #[cfg(test)]
+        {
+            #![allow(clippy::indexing_slicing)]
+            #![allow(clippy::unwrap_used)]
+            test_vec_hash().lock().unwrap().clear();
+            test_vec_hash_aft().lock().unwrap().clear();
+            test_vec_enc().lock().unwrap().clear();
+        }
+
+        enc_progress(block, &state_key, ctr);
+
+        if let Some(tt) = t {
+            zero_right_bytes_be(block, tt);
+        }
+
+        hash_progress(block, &state_key, &mut state_hash);
+        //
+
+        ctr = EXPCP!(
+            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
+            "counter overflow during addition, if you see this, it means the program is not \
+             working correctly, since there should have already been an overflow check in the \
+             code before this"
+        );
+    });
+
+    {
+        let mut lens = [0; 16];
+
+        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
+            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
+        );
+
+        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
+            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
+        );
+
+        hash_progress(&lens, &state_key, &mut state_hash);
+    }
+
+    let hash = hash_mid_xor::<16, 8>(&mut state_hash);
+
+    let mut hash8 = [0u8; 32];
+
+    write_words_to_bytes::<8, 32>(hash, &mut hash8);
+
+    Ok(hash8)
+    //Ok(state_hash[])
+}
+
+/// # Non‑standard, unverified cipher
+/// ## The full description is in the documentation for the [*pub fn encrypt function*].
+pub fn decrypt(
+    head: Option<&[u8]>,
+    plaintext: &mut [u8],
+    key: &[u8; 32],
+    nonce: &[u8; 16],
+) -> Result<[u8; 32], &'static str> {
+    let mut ctr: u64 = 0;
+    let mut state_hash = [0; 16];
+
+    if plaintext.len()
+        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
+    {
+        return Err("plaintext.len() > u64::MAX as usize; len() is to big");
+    }
+
+    let state_key = wis_key_set(key, nonce);
+    state_hash.copy_from_slice(&state_key);
+
+    //hash of head  only
+    if let Some(hea) = head {
+        process_in_place_no_mut(hea, |block, _, _| {
+            hash_progress(block, &state_key, &mut state_hash);
+        });
+    }
+
+    process_in_place(plaintext, |block, adder, _| {
+        //
+
+        hash_progress(block, &state_key, &mut state_hash);
+        enc_progress(block, &state_key, ctr);
+
+        //
+
+        ctr = EXPCP!(
+            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
+            "counter overflow during addition, if you see this, it means the program is not \
+             working correctly, since there should have already been an overflow check in the \
+             code before this"
+        );
+    });
+
+    //+ len head + len payloag
+    {
+        let mut lens = [0; 16];
+
+        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
+            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
+        );
+
+        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
+            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
+        );
+
+        hash_progress(&lens, &state_key, &mut state_hash);
+    }
+
+    let hash = hash_mid_xor::<16, 8>(&mut state_hash);
+
+    let mut hash8 = [0u8; 32];
+
+    write_words_to_bytes::<8, 32>(hash, &mut hash8);
+
+    Ok(hash8)
+    //Ok(state_hash[])
+}
+
 //===============================================================
 /// Splits a `u64` into two `u32` values representing the high (most significant) and low
 /// (least significant) parts.
@@ -234,10 +458,9 @@ pub fn zero_right_bytes_be(data: &mut [u32], n_bytes: usize) {
     }
 }
 
-macro_rules! wis_round {
+macro_rules! chacha_round {
     ($a:expr, $b:expr, $c:expr, $d:expr) => {
-        //$a = $a.wrapping_add($b);
-        $a = $b.wrapping_add($a.rotate_left($d & 0b11111));
+        $a = $a.wrapping_add($b);
         $d ^= $a;
         $d = $d.rotate_left(1_6);
         $c = $c.wrapping_add($d);
@@ -246,8 +469,7 @@ macro_rules! wis_round {
         $a = $a.wrapping_add($b);
         $d ^= $a;
         $d = $d.rotate_left(8);
-        //$c = $c.wrapping_add($d);
-        $c = $d.wrapping_add($c.rotate_left($b & 0b11111));
+        $c = $c.wrapping_add($d);
         $b ^= $c;
         $b = $b.rotate_left(7);
     };
@@ -255,15 +477,15 @@ macro_rules! wis_round {
 
 fn wis_process_block(state: &mut [u32; WORDS_PER_CHUNK], double_rounds: usize) {
     for _ in 0..double_rounds {
-        wis_round!(state[0], state[4], state[8], state[12]); // Column 0
-        wis_round!(state[1], state[5], state[9], state[13]); // Column 1
-        wis_round!(state[2], state[6], state[10], state[14]); // Column 2
-        wis_round!(state[3], state[7], state[11], state[15]); // Column 3
+        chacha_round!(state[0], state[4], state[8], state[12]); // Column 0
+        chacha_round!(state[1], state[5], state[9], state[13]); // Column 1
+        chacha_round!(state[2], state[6], state[10], state[14]); // Column 2
+        chacha_round!(state[3], state[7], state[11], state[15]); // Column 3
 
-        wis_round!(state[0], state[5], state[10], state[15]); // Diagonal 1 (main diagonal)
-        wis_round!(state[1], state[6], state[11], state[12]); // Diagonal 2
-        wis_round!(state[2], state[7], state[8], state[13]); // Diagonal 3
-        wis_round!(state[3], state[4], state[9], state[14]); // Diagonal 4
+        chacha_round!(state[0], state[5], state[10], state[15]); // Diagonal 1 (main diagonal)
+        chacha_round!(state[1], state[6], state[11], state[12]); // Diagonal 2
+        chacha_round!(state[2], state[7], state[8], state[13]); // Diagonal 3
+        chacha_round!(state[3], state[4], state[9], state[14]); // Diagonal 4
     }
 }
 
@@ -476,149 +698,6 @@ fn hash_progress(
         let mut vec = test_vec_hash_aft().lock().unwrap();
         vec.push(hash.to_vec());
     }
-}
-///encrypt
-pub fn encrypt(
-    head: Option<&[u8]>,
-    plaintext: &mut [u8],
-    key: &[u8; 32],
-    nonce: &[u8; 16],
-) -> Result<[u8; 32], &'static str> {
-    let mut ctr: u64 = 0;
-    let mut state_hash = [0; 16];
-
-    if plaintext.len()
-        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
-    {
-        return Err("plaintext.len() > u64::MAX as usize; len() is to big");
-    }
-
-    let state_key = wis_key_set(key, nonce);
-    state_hash.copy_from_slice(&state_key);
-
-    //hash of head  only
-    if let Some(hea) = head {
-        process_in_place_no_mut(hea, |block, _, _| {
-            hash_progress(block, &state_key, &mut state_hash);
-        });
-    }
-
-    //enc + hash payload
-    process_in_place(plaintext, |block, adder, t| {
-        #[cfg(test)]
-        {
-            #![allow(clippy::indexing_slicing)]
-            #![allow(clippy::unwrap_used)]
-            test_vec_hash().lock().unwrap().clear();
-            test_vec_hash_aft().lock().unwrap().clear();
-            test_vec_enc().lock().unwrap().clear();
-        }
-
-        enc_progress(block, &state_key, ctr);
-
-        if let Some(tt) = t {
-            zero_right_bytes_be(block, tt);
-        }
-
-        hash_progress(block, &state_key, &mut state_hash);
-        //
-
-        ctr = EXPCP!(
-            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
-            "counter overflow during addition, if you see this, it means the program is not \
-             working correctly, since there should have already been an overflow check in the \
-             code before this"
-        );
-    });
-
-    {
-        let mut lens = [0; 16];
-
-        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
-            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
-        );
-
-        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
-            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
-        );
-
-        hash_progress(&lens, &state_key, &mut state_hash);
-    }
-
-    let hash = hash_mid_xor::<16, 8>(&mut state_hash);
-
-    let mut hash8 = [0u8; 32];
-
-    write_words_to_bytes::<8, 32>(hash, &mut hash8);
-
-    Ok(hash8)
-    //Ok(state_hash[])
-}
-///decrypt
-pub fn decrypt(
-    head: Option<&[u8]>,
-    plaintext: &mut [u8],
-    key: &[u8; 32],
-    nonce: &[u8; 16],
-) -> Result<[u8; 32], &'static str> {
-    let mut ctr: u64 = 0;
-    let mut state_hash = [0; 16];
-
-    if plaintext.len()
-        > checked_cast!(u64::MAX => usize, err "u64::MAX to usize conversion failed")?
-    {
-        return Err("plaintext.len() > u64::MAX as usize; len() is to big");
-    }
-
-    let state_key = wis_key_set(key, nonce);
-    state_hash.copy_from_slice(&state_key);
-
-    //hash of head  only
-    if let Some(hea) = head {
-        process_in_place_no_mut(hea, |block, _, _| {
-            hash_progress(block, &state_key, &mut state_hash);
-        });
-    }
-
-    process_in_place(plaintext, |block, adder, _| {
-        //
-
-        hash_progress(block, &state_key, &mut state_hash);
-        enc_progress(block, &state_key, ctr);
-
-        //
-
-        ctr = EXPCP!(
-            ctr.checked_add(checked_cast!(adder => u64, expect "adder conversion to u64 failed")),
-            "counter overflow during addition, if you see this, it means the program is not \
-             working correctly, since there should have already been an overflow check in the \
-             code before this"
-        );
-    });
-
-    //+ len head + len payloag
-    {
-        let mut lens = [0; 16];
-
-        (lens[2], lens[3]) = split_u64_to_u32_be_shift(
-            checked_cast!(plaintext.len() =>u64, expect "plaintext.len() =>u64 errs"),
-        );
-
-        (lens[0], lens[1]) = split_u64_to_u32_be_shift(
-            checked_cast!(head.unwrap_or(&[]).len() =>u64, expect "head.unwrap_or(&[]).len() =>u64 errs"),
-        );
-
-        hash_progress(&lens, &state_key, &mut state_hash);
-    }
-
-    let hash = hash_mid_xor::<16, 8>(&mut state_hash);
-
-    let mut hash8 = [0u8; 32];
-
-    write_words_to_bytes::<8, 32>(hash, &mut hash8);
-
-    Ok(hash8)
-    //Ok(state_hash[])
 }
 
 #[cfg(test)]
@@ -942,28 +1021,16 @@ mod wdel {
         let k: Vec<u8> = (0..32).map(|x| x as u8).collect();
         let n: Vec<u8> = (0xF0..0xF0 + 16).map(|x| x as u8).collect();
         let te = wis_key_set(&k[..].try_into().unwrap(), &n[..].try_into().unwrap());
-
+        println!("/*MIX:*/ let te_test = [");
         for x in te.iter() {
-            print!("{:08X} ", *x);
+            print!("0x{:08X} ,", *x);
         }
+        println!("];//MIX_end:");
 
         let te_test = [
-            0x9A165F11,
-            0xB5889C74,
-            0xAC3048F0,
-            0x807ECBC4,
-            0x3B6ADFDD,
-            0x54C94AC5,
-            0xAEF81C1E,
-            0x2A935C2F,
-            0xC328886D,
-            0x272CFA84,
-            0x8413ECC4,
-            0xA9ED4B41,
-            0x53A28FD9,
-            0x7D69D533,
-            0x85010B14,
-            0xEB1435BAu32,
+            0x1ACEE879, 0xA1CE0F6C, 0x8E892B60, 0x9AE3B2CD, 0x7158920C, 0x38250ABA, 0x54C7A9C2,
+            0x63104893, 0xC32B1729, 0xF95D78E8, 0xBDF41CEE, 0xDFAA7F2A, 0x1987F682, 0x98CA9F20,
+            0x04F917D3, 0xD0CD2148,
         ];
 
         assert_eq!(te, te_test);
