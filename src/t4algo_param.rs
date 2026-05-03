@@ -22,7 +22,7 @@ pub struct WsConnectParam {
     start_ms_latency: f64,
     latency_increase_coefficient: f64,
     max_num_attempts_resend_package: usize,
-    packages_measurement_window_size_determining_latency: usize,
+    //packages_measurement_window_size_determining_latency: usize, // deprecated !
     overhead_network_latency_relative_window_coefficient: f64,
     maximum_packet_delay_fback_coefficient: f64,
     maximum_packet_delay_absolute_fback: f64,
@@ -278,12 +278,12 @@ impl WsConnectParam {
             /**/
             mtu,
             /**/                                                  //
-            max_ms_latency,                                       //
-            min_ms_latency,                                       //
-            start_ms_latency,                                     //
-            latency_increase_coefficient,                         //
-            max_num_attempts_resend_package,                      //
-            packages_measurement_window_size_determining_latency, //
+            max_ms_latency,                  //
+            min_ms_latency,                  //
+            start_ms_latency,                //
+            latency_increase_coefficient,    //
+            max_num_attempts_resend_package, //
+            //packages_measurement_window_size_determining_latency, //
             overhead_network_latency_relative_window_coefficient, //
             /**/
             maximum_packet_delay_fback_coefficient, //
@@ -357,10 +357,10 @@ impl WsConnectParam {
     pub fn max_num_attempts_resend_package(&self) -> usize {
         self.max_num_attempts_resend_package
     }
-    ///returns the corresponding value
-    pub fn packages_measurement_window_size_determining_latency(&self) -> usize {
-        self.packages_measurement_window_size_determining_latency
-    }
+    // ///returns the corresponding value
+    //pub fn packages_measurement_window_size_determining_latency(&self) -> usize {
+    //    self.packages_measurement_window_size_determining_latency
+    //}
     ///returns the corresponding value
     pub fn overhead_network_latency_relative_window_coefficient(&self) -> f64 {
         self.overhead_network_latency_relative_window_coefficient
@@ -502,6 +502,10 @@ impl WsConnectParamBuilder {
         self
     }
     //
+    ///# deprecated !
+    ///### The entire description of packages_measurement_window_size_determining_latency is correct,
+    ///### but now packages_measurement_window_size_determining_latency is always equal to 1,
+    ///###  since the Fback parcel only transmits the delay of the last packet, in order to save space and reduce the Fback packet size.
     ///The connection dynamically changes the latency time.</br>
     ///  To do this, it calculates the average latency of</br>
     ///  the last packages_measurement_window_size_determining_latency packets.</br>
@@ -509,9 +513,10 @@ impl WsConnectParamBuilder {
     ///  the faster the algorithm will respond to changes in latency.</br>
     ///not related to other parameters, the lower the value, the more the adjustment will
     /// occur while waiting for confirmation
-    pub fn packages_measurement_window_size_determining_latency(mut self, value: usize) -> Self {
-        self.packages_measurement_window_size_determining_latency = value;
-        self
+    pub fn packages1_measurement_window_size_determining_latency(self, _value: usize) -> Self {
+        panic!("packages_measurement_window_size_determining_latency # deprecated ! read  doc");
+        //self.packages_measurement_window_size_determining_latency = value;
+        //self
     }
     //
     ///After sending the packet, the sender waits for a certain amount of time X.</br>
@@ -819,7 +824,7 @@ pub fn base_builder_pub(topo: &PackTopology) -> WsConnectParamBuilder {
         .start_ms_latency(50.0)
         .latency_increase_coefficient(0.5)
         .max_num_attempts_resend_package(3)
-        .packages_measurement_window_size_determining_latency(10)
+        //.packages_measurement_window_size_determining_latency(10)
         .overhead_network_latency_relative_window_coefficient(0.2)
         .maximum_packet_delay_fback_coefficient(0.8)
         .maximum_packet_delay_absolute_fback(80.0)
@@ -895,7 +900,7 @@ mod all_test {
                 .max_len_file(None)
                 // The following fields match the defaults, but are set explicitly for readability
                 .mtu(1500)
-                .packages_measurement_window_size_determining_latency(10)
+                //.packages_measurement_window_size_determining_latency(10)
                 .max_ms_latency(100.0)
                 .min_ms_latency(10.0)
                 .start_ms_latency(50.0)
@@ -1615,7 +1620,7 @@ mod all_test {
                 .maximum_packet_delay_absolute_fback(80.0)
                 .max_len_file(None)
                 .instant_feedback_on_packet_loss(false)
-                .packages_measurement_window_size_determining_latency(10)
+            //.packages_measurement_window_size_determining_latency(10)
         }
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -1904,7 +1909,7 @@ mod all_test {
                 .start_ms_latency(50.0)
                 .latency_increase_coefficient(0.5)
                 .max_num_attempts_resend_package(3)
-                .packages_measurement_window_size_determining_latency(10)
+                // .packages_measurement_window_size_determining_latency(10)
                 .maximum_length_udp_queue_packages(100)
                 .maximum_length_fback_queue_packages(20)
                 .maximum_length_queue_unconfirmed_packages(60)
@@ -2138,7 +2143,7 @@ mod all_test {
                 .min_ms_latency(10.0)
                 .start_ms_latency(50.0)
                 .max_num_attempts_resend_package(3)
-                .packages_measurement_window_size_determining_latency(10)
+                //.packages_measurement_window_size_determining_latency(10)
                 .maximum_packet_delay_absolute_fback(80.0)
                 .maximum_length_udp_queue_packages(100)
                 .maximum_length_fback_queue_packages(20)
@@ -2288,33 +2293,33 @@ mod all_test {
                  maximum_packet_delay_fback_coefficient must be greater than zero"
             );
         }
+        /*
+                // ┌────────────────────────────────────────────────────────────────────────────┐
+                // │ packages_measurement_window_size_determining_latency – usize > 0          │
+                // └────────────────────────────────────────────────────────────────────────────┘
+                #[test]
+                fn measurement_window_accepts_positive() {
+                    let topo = get_topol(Some(2), 50, None);
 
-        // ┌────────────────────────────────────────────────────────────────────────────┐
-        // │ packages_measurement_window_size_determining_latency – usize > 0          │
-        // └────────────────────────────────────────────────────────────────────────────┘
-        #[test]
-        fn measurement_window_accepts_positive() {
-            let topo = get_topol(Some(2), 50, None);
+                    let p = base_builder(&topo)
+                        .latency_increase_coefficient(0.5)
+                        .maximum_packet_delay_fback_coefficient(0.8)
+                        .packages_measurement_window_size_determining_latency(1)
+                        .build()
+                        .unwrap();
+                    assert_eq!(p.packages_measurement_window_size_determining_latency(), 1);
 
-            let p = base_builder(&topo)
-                .latency_increase_coefficient(0.5)
-                .maximum_packet_delay_fback_coefficient(0.8)
-                .packages_measurement_window_size_determining_latency(1)
-                .build()
-                .unwrap();
-            assert_eq!(p.packages_measurement_window_size_determining_latency(), 1);
-
-            let p = base_builder(&topo)
-                .latency_increase_coefficient(0.5)
-                .maximum_packet_delay_fback_coefficient(0.8)
-                .packages_measurement_window_size_determining_latency(1000)
-                .build()
-                .unwrap();
-            assert_eq!(
-                p.packages_measurement_window_size_determining_latency(),
-                1000
-            );
-        }
+                    let p = base_builder(&topo)
+                        .latency_increase_coefficient(0.5)
+                        .maximum_packet_delay_fback_coefficient(0.8)
+                        .packages_measurement_window_size_determining_latency(1000)
+                        .build()
+                        .unwrap();
+                    assert_eq!(
+                        p.packages_measurement_window_size_determining_latency(),
+                        1000
+                    );
+                }
 
         #[test]
         fn measurement_window_rejects_zero() {
@@ -2322,11 +2327,12 @@ mod all_test {
             let err = base_builder(&topo)
                 .latency_increase_coefficient(0.5)
                 .maximum_packet_delay_fback_coefficient(0.8)
-                .packages_measurement_window_size_determining_latency(0)
+                //.packages_measurement_window_size_determining_latency(0)
                 .build()
                 .unwrap_err();
             assert_eq!(err, "all usize variables must be greater than zero");
         }
+        */
 
         // ┌────────────────────────────────────────────────────────────────────────────┐
         // │ combination tests – verify multiple coefficients together                 │
@@ -2476,7 +2482,7 @@ mod all_test {
                 .start_ms_latency(50.0)
                 .latency_increase_coefficient(0.5)
                 .max_num_attempts_resend_package(3)
-                .packages_measurement_window_size_determining_latency(10)
+                //.packages_measurement_window_size_determining_latency(10)
                 .overhead_network_latency_relative_window_coefficient(0.2)
                 .maximum_packet_delay_fback_coefficient(0.8)
                 .maximum_packet_delay_absolute_fback(80.0)

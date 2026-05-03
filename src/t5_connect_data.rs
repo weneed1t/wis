@@ -21,10 +21,10 @@ pub struct WsConnection<
     TCfcser: Crcser,
     Hmaker: HandMaker,
 > {
-    file_proc: WSFileSplitter,           //-
+    file_splitter: WSFileSplitter,       //-
     udp_queue: WSUdpLike<Tudp>,          //-
     wait_queue: WSWaitQueue<Twait, f64>, //-
-    fback_queue: WSRecvQueueCtrs,        //-
+    fback_queue: WSRecvQueueCtrs<f64>,   //-
     my_ctr_data: u64,
     my_ctr_fback: u64,
     frend_ctr_data: u64,
@@ -34,7 +34,7 @@ pub struct WsConnection<
     encrypt: Tencrypt,
     connect_param: WsConnectParam,
     enrypaaa: Hmaker,
-    is_active: bool,
+    handshake_is_end: bool,
     nonce_gener: Option<Tnoncer>, //+
 
     user_field_gener: Option<TThrasher>, //+
@@ -128,7 +128,7 @@ impl<
         }
 
         Ok(Self {
-            file_proc: WSFileSplitter::new(connect_param.max_len_file())
+            file_splitter: WSFileSplitter::new(connect_param.max_len_file())
                 .map_err(WSQueueErr::Critical)?,
             udp_queue: WSUdpLike::new(connect_param.maximum_length_udp_queue_packages())?,
             wait_queue: WSWaitQueue::new(
@@ -167,7 +167,7 @@ impl<
             encrypt: Tencrypt::new(default_enc_key).map_err(WSQueueErr::Critical)?,
             connect_param: connect_param.clone(),
             enrypaaa: Hmaker::new(my_role.clone(), handmaker_seed).map_err(WSQueueErr::Critical)?, /* in progress */
-            is_active: true,
+            handshake_is_end: false,
             intermediate_questionable_packages_queue: connect_param
                 .intermediate_questionable_packages_queue()
                 .map(|vec_q| vec![0; vec_q].into_boxed_slice()),
@@ -244,8 +244,8 @@ impl<
 {
     ///Check whether the connection is active or has received a close signal;
     ///  if it is not active, no more data will be transmitted over this connection.
-    pub fn is_active(&self) -> bool {
-        self.is_active
+    pub fn handshake_is_end(&self) -> bool {
+        self.handshake_is_end
     }
     ///the person who initiated the connection or the person who responded to the
     /// connection
@@ -379,18 +379,15 @@ mod test_new {
 
         let result = t4algo_param::base_builder_pub(&po).build().unwrap();
 
-        let te1: Result<
-            WsConnection<
-                DumpNonser,
-                DumpThrasher,
-                u32,
-                u32,
-                DumpEnc,
-                DumpRandomer,
-                DumpCrcser,
-                DumpHandMaker,
-            >,
-            WSQueueErr,
+        let te1: WsConnection<
+            DumpNonser,
+            DumpThrasher,
+            u32,
+            u32,
+            DumpEnc,
+            DumpRandomer,
+            DumpCrcser,
+            DumpHandMaker,
         > = WsConnection::new(
             &result,
             &[1, 1, 1, 1],
@@ -406,9 +403,26 @@ mod test_new {
                 id_conn: Some((999, MyRole::Initiator)),
             },
             false,
+        )
+        .unwrap();
+
+        let mut a0 = 1;
+        let mut a10000 = 100000;
+        let mut aerr = (!0u64) ^ 0b1;
+
+        assert_eq!(te1.add_two(&mut a0), Ok(()));
+        assert_eq!(te1.add_two(&mut a10000), Ok(()));
+        assert_eq!(
+            te1.add_two(&mut aerr),
+            Err(
+                "The capacity limit of the main counter u64 has been reached, so it is no longer \
+                 possible to send new messages over this connection. The connection must be \
+                 closed!"
+            )
         );
 
-        assert!(te1.is_ok());
+        assert_eq!(a0, 3);
+        assert_eq!(a10000, 100002)
     }
 
     #[test]

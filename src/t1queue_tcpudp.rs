@@ -896,16 +896,17 @@ pub mod recv_queue {
     ///WSRecvQueueCtrs structure for creating and receiving accepted counters from the
     /// protocol packet field
     #[derive(Clone)]
-    pub struct WSRecvQueueCtrs {
+    pub struct WSRecvQueueCtrs<P> {
         data: Box<[u64]>,
         ptr: usize,
         ctr_slice_len: usize,
         max: u64,
         min: u64,
         ptr_of_min: usize,
+        ctr_p: Option<P>,
     }
 
-    impl WSRecvQueueCtrs {
+    impl<P: PartialEq + PartialOrd + Clone> WSRecvQueueCtrs<P> {
         ///Find out how many counters can fit within the specified payload_mtu size (the
         /// payload_mtu specifies the size in bytes,  and counters can occupy
         /// several bytes, ranging from 1 to 8)
@@ -966,6 +967,7 @@ pub mod recv_queue {
                 max: 0,
                 min: 0,
                 ptr_of_min: 0,
+                ctr_p: None,
             })
         }
 
@@ -976,7 +978,15 @@ pub mod recv_queue {
         /// Please note that push does NOT implement SET() and uniqueness checks in order
         /// to save space,  which means that some counters in the queue may be
         /// duplicated.
-        pub fn push(&mut self, ctr_elem: u64) -> Result<(), &'static str> {
+        ///
+        /// ctr_p is the time (most likely a double) when the packet was received;
+        ///  since the packet is stored for a certain amount of time before being sent,
+        ///  the send time must be calculated at the end. RecvQueueCtrs is the time when
+        /// the Ctr was received,  RecvQueueCtrs stores only one <P> that belongs
+        /// to the packet with the largest ctr_elem;  if ctr_elem turns out to be
+        /// larger than the current one,  then when writing, the old value of <P>
+        /// will be replaced with the <P> belonging to the new ctr_elem
+        pub fn push(&mut self, ctr_elem: u64, ctr_p: P) -> Result<(), &'static str> {
             if self.ptr >= self.data.len() {
                 return Err("the queue is full");
             }
@@ -988,6 +998,7 @@ pub mod recv_queue {
             self.max = if self.max > ctr_elem && 0 < self.ptr {
                 self.max
             } else {
+                self.ctr_p = Some(ctr_p);
                 ctr_elem
             };
 
@@ -1059,7 +1070,7 @@ pub mod recv_queue {
             let mut ret_vec = vec![0; self.payload_len_in_bytes()];
 
             EXPCP!(
-                self.copy_ctrs_pack_to_slice(&mut ret_vec),
+                self.copy_ctrs_pack_to_slice(&mut ret_vec, false),
                 "algorithm error; if the code has been tested, there should be no errors "
             );
             ret_vec
@@ -1088,15 +1099,24 @@ pub mod recv_queue {
         pub fn copy_ctrs_pack_to_slice(
             &mut self,
             pack_payload_slice: &mut [u8],
-        ) -> Result<(), &'static str> {
-            if pack_payload_slice.len() < self.payload_len_in_bytes() {
-                return Err("self.payload_len() > pack_payload_slice.len()");
+            fill_tail_zeros: bool,
+        ) -> Result<usize, &'static str> {
+            let payload_len_in_bytes = self.payload_len_in_bytes();
+
+            if 0 == self.ptr && fill_tail_zeros {
+                pack_payload_slice.fill(0);
+                return Ok(0);
             }
 
-            if 0 == self.ptr {
-                pack_payload_slice.fill(0);
-                return Ok(());
-            }
+            let pack_payload_real = {
+                let temp = pack_payload_slice
+                    .split_at_mut_checked(payload_len_in_bytes)
+                    .ok_or("self.payload_len() > pack_payload_slice.len()")?;
+                if fill_tail_zeros {
+                    temp.1.fill(0); // temp1 is tail
+                }
+                temp.0 //place for payload
+            };
 
             let last_idx = self
                 .ptr
@@ -1116,12 +1136,12 @@ pub mod recv_queue {
                 *self.data.get_mut(last_idx).ok_or("invalid last index")? = min_val;
             }
 
-            let main_ctr_slice = pack_payload_slice
+            let main_ctr_slice = pack_payload_real
                 .get_mut(..U64_LEN_IN_BYTES)
                 .ok_or("invalid main counter slice")?;
             w1utils::u64_to_1_8bytes(self.min, main_ctr_slice)?;
 
-            let payload_rest = pack_payload_slice
+            let payload_rest = pack_payload_real
                 .get_mut(U64_LEN_IN_BYTES..)
                 .ok_or("invalid payload rest slice")?;
 
@@ -1139,9 +1159,11 @@ pub mod recv_queue {
             self.ptr = 0;
             self.max = 0;
             self.min = 0;
+            self.ctr_p = None;
 
-            Ok(())
+            Ok(payload_len_in_bytes)
         }
+
         fn len_check<'a>(
             payload: &'a [u8],
             len_ctr_slise: usize,
@@ -1152,7 +1174,7 @@ pub mod recv_queue {
             )?;
 
             if 0 == len_ctr_slise {
-                panic!("0 == len_ctr_slise")
+                return Err("its unreal state 0 == len_ctr_slise");
             }
 
             let main_ctr_slice = payload
@@ -1173,10 +1195,10 @@ pub mod recv_queue {
         ///receives a slice as input, i.e.
         ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec
         /// method,  and then returns an array of u64 values that are counters.
-        pub fn split_byte_ctrs_pack_to_vec(
+        pub fn split_byte_ctrs_pack_to_box_slice(
             pack: &[u8],
             len_ctr_slise: usize,
-        ) -> Result<Vec<u64>, &'static str> {
+        ) -> Result<Box<[u64]>, &'static str> {
             let pre_pross = Self::len_check(pack, len_ctr_slise)?;
 
             let mut ret = Vec::with_capacity(pre_pross.1);
@@ -1193,11 +1215,11 @@ pub mod recv_queue {
                 ret.push(r_ctr);
                 if r_ctr == pre_pross.0 {
                     //if this is the final element, then the payload is complete
-                    return Ok(ret);
+                    return Ok(ret.into_boxed_slice());
                 }
             }
 
-            Ok(ret)
+            Ok(ret.into_boxed_slice())
         }
         ///receives a slice as input, i.e.
         ///  the output from the copy_ctrs_pack_to_slice or get_ctrs_as_byte_pack_vec
@@ -1219,7 +1241,7 @@ pub mod recv_queue {
         ///  Option<minimum P of the removed element from &mut WSWaitQueue<T, P>>
         ///
         /// )
-        pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T, P>(
+        pub fn delete_ctrs_in_byte_pack_from_ws_wait_queue<T>(
             pack: &[u8],
             len_ctr_slise: usize,
             wait_queue: &mut WSWaitQueue<T, P>,
@@ -1271,8 +1293,8 @@ pub mod recv_queue {
             Ok((how_was_deleted, min_del, max_del))
         }
         ///get the maximum and minimum counters currently in the queue
-        pub fn get_min_max(&self) -> (u64, u64) {
-            (self.min, self.max)
+        pub fn get_min_max_and_max_p(&self) -> (u64, u64, Option<P>) {
+            (self.min, self.max, self.ctr_p.clone())
         }
     }
 
@@ -2076,19 +2098,26 @@ pub mod recv_queue {
                 let x = x * 26;
 
                 assert_eq!(
-                    WSRecvQueueCtrs::max_len_from_mtu(pack_topology.counter_slice().unwrap().2, x)
-                        .unwrap(),
+                    WSRecvQueueCtrs::<f64>::max_len_from_mtu(
+                        pack_topology.counter_slice().unwrap().2,
+                        x
+                    )
+                    .unwrap(),
                     (x - U64_LEN_IN_BYTES) / pack_topology.counter_slice().unwrap().2
                 );
             }
 
             assert_eq!(
-                WSRecvQueueCtrs::max_len_from_mtu(pack_topology.counter_slice().unwrap().2, 9),
+                WSRecvQueueCtrs::<f64>::max_len_from_mtu(
+                    pack_topology.counter_slice().unwrap().2,
+                    9
+                ),
                 Err("The MTU is too small to accommodate even one counter.")
             );
 
             assert!(
-                WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 39, 100).is_ok()
+                WSRecvQueueCtrs::<f64>::new(pack_topology.counter_slice().unwrap().2, 39, 100)
+                    .is_ok()
             );
         }
 
@@ -2121,9 +2150,12 @@ pub mod recv_queue {
                 println!("| {:>20} |===================================", iterata_ma);
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
                     hm.insert(x.1, x.1);
-                    test_me.push(x.1).unwrap();
+                    test_me.push(x.1, 0.2 * x.1 as f64).unwrap();
                     assert_eq!(test_me.free_space(), 500 - 1 - x.0);
-                    assert_eq!(test_me.get_min_max(), (iterata_ma, x.1));
+                    assert_eq!(
+                        test_me.get_min_max_and_max_p(),
+                        (iterata_ma, x.1, Some(0.2 * x.1 as f64))
+                    );
                     assert_eq!(test_me.len(), x.0 + 1);
                     ws_wa
                         .push(x.1, x.1 as f32 * 1.2, false, "data".to_string())
@@ -2132,7 +2164,7 @@ pub mod recv_queue {
                 assert_eq!(hm.len(), 256);
 
                 assert_eq!(
-                    test_me.push(iterata_ma + 256),
+                    test_me.push(iterata_ma + 256, 1110.21),
                     Err(
                         "The difference between the maximum and minimum counters is greater than \
                          the counter_slice field can hold."
@@ -2146,7 +2178,7 @@ pub mod recv_queue {
                 let ret_ve = test_me.get_ctrs_as_byte_pack_vec();
 
                 assert_eq!(test_me.len(), 0);
-                assert_eq!(test_me.get_min_max(), (0, 0));
+                assert_eq!(test_me.get_min_max_and_max_p(), (0, 0, None));
 
                 assert_eq!(
                     test_me_old.payload_len_in_bytes(),
@@ -2171,7 +2203,7 @@ pub mod recv_queue {
 
                 assert_eq!(ws_wa.len(), 0);
 
-                let remap_ve = WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(
+                let remap_ve = WSRecvQueueCtrs::<f64>::split_byte_ctrs_pack_to_box_slice(
                     &ret_ve[..],
                     pack_topology.counter_slice().unwrap().2,
                 )
@@ -2202,7 +2234,7 @@ pub mod recv_queue {
                 .enumerate()
                 {
                     let x = iterata_ma + x.1;
-                    test_me.push(x).unwrap();
+                    test_me.push(x, 0.32132).unwrap();
                     let _ = ws_wa.push(x, x as f32 * 1.2, true, "333".to_string());
                 }
 
@@ -2210,14 +2242,50 @@ pub mod recv_queue {
                 let mut tc2 = test_me.clone();
 
                 let mut temp_vec_sl = vec![42u8/*42 is trash */; 200];
+                let mut temp_vec_sl_c = vec![42u8/*42 is trash */; 200];
 
-                tc2.copy_ctrs_pack_to_slice(&mut temp_vec_sl).unwrap();
+                assert!(!tc2.is_empty());
+
+                let mut tc3 = tc2.clone();
+
+                let mut tc4 = tc2.clone();
+
+                let p_len_before_get = tc3.payload_len_in_bytes();
+
+                let size_payload = tc2.copy_ctrs_pack_to_slice(&mut temp_vec_sl, true).unwrap();
+
+                let mut temp_vec_sl_c_sp = vec![42u8/*42 is trash */; size_payload];
+                tc4.copy_ctrs_pack_to_slice(&mut temp_vec_sl_c_sp, true)
+                    .unwrap();
+
+                assert_eq!(p_len_before_get, size_payload);
+
+                tc3.copy_ctrs_pack_to_slice(&mut temp_vec_sl_c, false)
+                    .unwrap();
+
+                assert!(tc2.is_empty());
+                assert_eq!(temp_vec_sl[..size_payload], temp_vec_sl_c[..size_payload]);
+
+                assert_eq!(
+                    temp_vec_sl_c[size_payload..],
+                    vec![42; temp_vec_sl_c.len() - size_payload]
+                );
+                assert_eq!(
+                    temp_vec_sl[size_payload..],
+                    vec![0; temp_vec_sl.len() - size_payload]
+                );
+
                 let vec_sl = test_me.get_ctrs_as_byte_pack_vec();
 
-                let h1 =
-                    WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&temp_vec_sl, ctr_len).unwrap();
+                let h1 = WSRecvQueueCtrs::<f64>::split_byte_ctrs_pack_to_box_slice(
+                    &temp_vec_sl,
+                    ctr_len,
+                )
+                .unwrap();
 
-                let h2 = WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vec_sl, ctr_len).unwrap();
+                let h2 =
+                    WSRecvQueueCtrs::<f64>::split_byte_ctrs_pack_to_box_slice(&vec_sl, ctr_len)
+                        .unwrap();
 
                 WSRecvQueueCtrs::delete_ctrs_in_byte_pack_from_ws_wait_queue(
                     &temp_vec_sl,
@@ -2229,30 +2297,33 @@ pub mod recv_queue {
                 assert_eq!(h1, h2)
             }
 
-            test_me.push(10).unwrap(); //1
-            test_me.push(1022).unwrap(); //2
-            test_me.push(1022).unwrap(); //3
-            test_me.push(10322).unwrap(); //4
-            test_me.push(10322).unwrap(); //5
-            test_me.push(10322).unwrap(); //6
-            test_me.push(1430).unwrap(); //7
-            test_me.push(18876).unwrap(); //8
-            test_me.push(652).unwrap(); //9
-            test_me.push(11).unwrap(); //10
+            test_me.push(10, 0.11).unwrap(); //1
+            test_me.push(1022, 0.12).unwrap(); //2
+            test_me.push(1022, 0.13).unwrap(); //3
+            test_me.push(10322, 0.14).unwrap(); //4
+            test_me.push(10322, 0.15).unwrap(); //5
+            test_me.push(10322, 0.16).unwrap(); //6
+            test_me.push(1430, 0.17).unwrap(); //7
+            test_me.push(18876, 0.18).unwrap(); //8
+            test_me.push(652, 0.9).unwrap(); //9
+            test_me.push(11, 1.1).unwrap(); //10
 
             let vet = test_me.get_ctrs_as_byte_pack_vec();
 
             assert_eq!(22, vet.len());
 
             assert_eq!(
-                WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vet, ctr_len).unwrap(),
-                [11, 1022, 10322, 1430, 18876, 652, 10]
+                WSRecvQueueCtrs::<f64>::split_byte_ctrs_pack_to_box_slice(&vet, ctr_len).unwrap(),
+                vec![11, 1022, 10322, 1430, 18876, 652, 10].into_boxed_slice()
             );
 
             assert_eq!(
-                WSRecvQueueCtrs::split_byte_ctrs_pack_to_vec(&vet[..vet.len() - 3], ctr_len)
-                    .unwrap(),
-                [11, 1022, 10322, 1430, 18876] /* -2 ctr */
+                WSRecvQueueCtrs::<f64>::split_byte_ctrs_pack_to_box_slice(
+                    &vet[..vet.len() - 3],
+                    ctr_len
+                )
+                .unwrap(),
+                vec![11, 1022, 10322, 1430, 18876].into_boxed_slice() /* -2 ctr */
             );
         }
 
@@ -2268,7 +2339,7 @@ pub mod recv_queue {
 
             for x in 0..501 {
                 assert_eq!(
-                    test_me.push(x),
+                    test_me.push(x, 0.23),
                     if x < 500 {
                         assert_eq!(499 - x as usize, test_me.free_space());
                         Ok(())
@@ -2281,9 +2352,9 @@ pub mod recv_queue {
             let mut test_me1 =
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1100).unwrap();
 
-            test_me1.push(1 << ((8 * 2) + 1)).unwrap();
+            test_me1.push(1 << ((8 * 2) + 1), 0.2121).unwrap();
             assert_eq!(
-                test_me1.push(1),
+                test_me1.push(1, 0.32321),
                 Err(
                     "The difference between the maximum and minimum counters is greater than the \
                      counter_slice field can hold."
@@ -2293,9 +2364,9 @@ pub mod recv_queue {
             let mut test_me1 =
                 WSRecvQueueCtrs::new(pack_topology.counter_slice().unwrap().2, 500, 1100).unwrap();
 
-            test_me1.push(1).unwrap();
+            test_me1.push(1, 0.12).unwrap();
             assert_eq!(
-                test_me1.push(1 << ((8 * 2) + 1)),
+                test_me1.push(1 << ((8 * 2) + 1), 0.3),
                 Err(
                     "The difference between the maximum and minimum counters is greater than the \
                      counter_slice field can hold."
@@ -2452,7 +2523,7 @@ pub mod recv_queue {
                         WSQueueState::ElemIdIsBig
                     );
                     if inert_in_rcv {
-                        ctrs_que.push(*x).unwrap();
+                        ctrs_que.push(*x, 0.2).unwrap();
                     }
                     //udp wue cheak
                     for pack in udp_que.get_queue() {
@@ -2467,7 +2538,7 @@ pub mod recv_queue {
 
                     if ctrs_que.len() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
                         let mut ret = vec![0; ctrs_que.payload_len_in_bytes()];
-                        ctrs_que.copy_ctrs_pack_to_slice(&mut ret).unwrap();
+                        ctrs_que.copy_ctrs_pack_to_slice(&mut ret, false).unwrap();
                         net_steak_recv.push(ret);
                     }
                 }

@@ -10,8 +10,6 @@
 #![forbid(unsafe_code)]
 
 use crate::t0pology::PackTopology;
-#[cfg(test)]
-use crate::wisdel;
 use crate::wt1types::*;
 //#############################################################3
 ///
@@ -45,7 +43,7 @@ pub struct DumpRandomer {
 ///
 pub struct DumpEnc {
     #[cfg(test)]
-    // t: u64,
+    t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
@@ -242,7 +240,7 @@ impl EncWis for DumpEnc {
         {
             #![allow(clippy::as_conversions)]
             Ok(Self {
-                // t: _key.iter().map(|&x| x as u64).sum(),
+                t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
             })
         }
@@ -267,25 +265,17 @@ impl EncWis for DumpEnc {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
+            bpg(&mut (self.t.clone()), _enc_payload);
 
-            let mut nonce = [0; 16];
-            let mut key8 = [0; 32];
+            let mut hat = vec![];
+            hat.extend_from_slice(_non_enc_head);
+            hat.extend_from_slice(_enc_payload);
 
-            if let Some(no) = _nonce {
-                nonce.iter_mut().zip(no.iter()).for_each(|(m, n)| {
-                    *m = *n;
-                });
-            }
-            key8.iter_mut().zip(self.v.iter()).for_each(|(m, n)| {
-                *m = *n;
-            });
-
-            let tage = wisdel::encrypt(Some(_non_enc_head), _enc_payload, &key8, &nonce)?;
+            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
+            hat.extend_from_slice(xh);
 
             _auth_tag.fill(0);
-            _auth_tag.iter_mut().zip(tage.iter()).for_each(|(m, n)| {
-                *m = *n;
-            });
+            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), _auth_tag);
 
             Ok(())
         }
@@ -310,40 +300,18 @@ impl EncWis for DumpEnc {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
+            let mut hat = vec![];
+            hat.extend_from_slice(_non_enc_head);
+            hat.extend_from_slice(_enc_payload);
 
-            let mut nonce = [0; 16];
-            let mut key8 = [0; 32];
+            let xh = _nonce.unwrap_or(&[0, 1, 2, 3, 4, 5, 6, 7u8]);
+            hat.extend_from_slice(xh);
 
-            if let Some(no) = _nonce {
-                nonce.iter_mut().zip(no.iter()).for_each(|(m, n)| {
-                    *m = *n;
-                });
-            }
-            key8.iter_mut().zip(self.v.iter()).for_each(|(m, n)| {
-                *m = *n;
-            });
+            let mut hat2 = vec![0; _auth_tag.len()];
 
-            let tage = wisdel::decrypt(Some(_non_enc_head), _enc_payload, &key8, &nonce)?;
-
-            let mut is_err = false;
-
-            tage.iter().zip(_auth_tag.iter()).for_each(|(m, n)| {
-                if *m != *n {
-                    is_err = true;
-                }
-            });
-            if _auth_tag.len() > tage.len() {
-                {
-                    #![allow(clippy::indexing_slicing)]
-                    for ttage in _auth_tag[tage.len()..].iter() {
-                        if *ttage != 0 {
-                            is_err = true;
-                        }
-                    }
-                }
-            }
-
-            if !is_err {
+            bpg(&mut (hat.iter().map(|&x| x as u64).sum()), &mut hat2);
+            if hat2.iter().eq(_auth_tag.iter()) {
+                bpg(&mut (self.t.clone()), _enc_payload);
                 Ok(StatusDecrypt::DecodedCorrectly)
             } else {
                 Ok(StatusDecrypt::PackageDamaged)
