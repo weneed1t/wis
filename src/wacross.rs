@@ -160,11 +160,10 @@ mod test_wk {
         let a = 5u32;
         let b = 3u32;
 
-        // Сложение
         assert_eq!(math_wrapp!(a, b, add), 8);
-        // Вычитание
+
         assert_eq!(math_wrapp!(a, b, sub), 2);
-        // Умножение
+
         assert_eq!(math_wrapp!(a, b, mul), 15);
     }
 }
