@@ -9,7 +9,9 @@
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
 // specific imports for clarity and to avoid namespace pollution
-use crate::t0pology::{PackFields, PackTopology};
+use crate::t0pology::{PackFields as PF, PackTopology};
+
+use crate::w1types::PackTypeGroup;
 use crate::{EXPCP, checked_cast};
 
 const PRIMES: &[u16] = &[
@@ -18,25 +20,30 @@ const PRIMES: &[u16] = &[
     193, 197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 256,
 ];
 
-#[derive(Debug, Clone)]
-
+#[derive(Debug, PartialEq, Clone)]
 ///a group of distinct PackTopologies that are united solely by the identical position of
-/// the trick byte and the length of all PackFields. contains a set of PackTopologies,
+/// the trick byte and the length of all Pack Fields. contains a set of PackTopologies,
 /// where each PackTopology either has fields whose lengths match the lengths of all
 /// corresponding fields in all other groups, or has none of them,
 pub struct GroupTopology {
-    topologs: Box<[Option<PackTopology>]>,
-    max_min_len: usize,
-    min_min_len: usize,
+    topologs: Box<[Option<(PackTopology, PackTypeGroup)>]>,
+    fback_max_min_len: usize,
+    fback_min_min_len: usize,
+    data_max_min_len: usize,
+    data_min_min_len: usize,
+    all_have_len: Option<(bool, usize)>,
     //
-    all_have_len: bool,
-    all_have_crc: bool,
-    all_have_idconn: bool,
-    all_have_id_rec_send: bool,
-    all_have_ttl: bool,
-    all_have_ctr: bool,
-    all_have_nonce: bool,
+    //The "trash_content_slices" field does not have a hard size limit,
+    //so a simplified presence marker is used for it in the group,
+    any_have_thash: bool, //
+    all_have_crc: Option<(bool, usize)>,
+    all_have_idconn: Option<(bool, usize)>,
+    all_have_id_rec_send: Option<(bool, usize)>,
+    all_have_ttl: Option<(bool, usize)>,
+    all_have_ctr: Option<(bool, usize)>,
+    all_have_nonce: Option<(bool, usize)>,
     pos_tbyte: Option<usize>,
+    how_elems_in_me: usize,
 }
 
 impl GroupTopology {
@@ -54,7 +61,7 @@ impl GroupTopology {
     /// - boolean flags indicate which fields are universally present
     ///
     /// # arguments
-    /// * `input_topoler` - slice of tuples containing field definitions and u8 keys
+    /// * `input_topoler` - slice of tuples containing field definitions and PackTypeGrou(With type of fiels for pack) and u8 keys
     /// * `tag_len` - length of the authentication tag for encryption
     /// * `data_save` - whether the channel guarantees data integrity
     /// * `tcp_mode` - whether the channel is stream-oriented (requires len field)
@@ -70,16 +77,17 @@ impl GroupTopology {
     /// - field lengths are inconsistent across topologies
     /// - any individual PackTopology::new call fails
     pub fn new(
-        input_topoler: &[(Box<[PackFields]>, u8)],
+        input_topoler: &[(Box<[PF]>, PackTypeGroup, u8)],
         tag_len: usize,
         data_save: bool,
         tcp_mode: bool,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, String> {
         // reject empty input to avoid undefined behavior with min/max calculations
         if input_topoler.is_empty() {
-            return Err("input_topoler cannot be empty: at least one topology required");
+            return Err(
+                "input_topoler cannot be empty: at least one topology required".to_string(),
+            );
         }
-
         let mut all_have_len = true;
         let mut all_have_crc = true;
         let mut all_have_idconn = true;
@@ -87,9 +95,13 @@ impl GroupTopology {
         let mut all_have_ttl = true;
         let mut all_have_ctr = true;
         let mut all_have_nonce = true;
+        //
+        let mut any_have_thash = false;
+        let mut fback_max_min_len = 0;
+        let mut fback_min_min_len = usize::MAX;
 
-        let mut max_min_len = 0;
-        let mut min_min_len = usize::MAX;
+        let mut data_max_min_len = 0;
+        let mut data_min_min_len = usize::MAX;
 
         let mut pos_tbyte: Option<usize> = None;
 
@@ -106,7 +118,7 @@ impl GroupTopology {
         let mut topologs =
             vec![None; Self::find_minimal_table_size(input_topoler)?].into_boxed_slice();
 
-        for (fields, key) in input_topoler.iter() {
+        for (fields, my_type, key) in input_topoler.iter() {
             let idx = checked_cast!(*key => usize, err "Key out of range for usize")?
                 .checked_rem(topologs.len())
                 .ok_or("Modulo operation failed: divisor is zero")?;
@@ -121,13 +133,17 @@ impl GroupTopology {
                      2any issues."
                 )
             } else {
-                *temp = Some(PackTopology::new(tag_len, fields, data_save, tcp_mode)?);
+                *temp = Some((
+                    PackTopology::new(tag_len, fields, data_save, tcp_mode)?,
+                    my_type.clone(),
+                ));
                 EXPCP!(
                     &temp.as_ref(),
                     "this is an impossible state since the assignment of this element was on the \
                      line above"
                 )
             };
+            let topology = &topology.0;
 
             // update universal presence flags
             all_have_crc &= topology.head_crc_slice().is_some();
@@ -146,7 +162,8 @@ impl GroupTopology {
                     if let Some(expected_pos) = pos_tbyte {
                         if tb_pos != expected_pos {
                             return Err("in all topology variants, tricky_byte must occupy the \
-                                        same position relative to the beginning of the packet");
+                                        same position relative to the beginning of the packet"
+                                .to_string());
                         }
                     } else {
                         pos_tbyte = Some(tb_pos);
@@ -155,17 +172,22 @@ impl GroupTopology {
             } else if input_topoler.len() > 1 {
                 return Err(
                     "all packet topology variants must have tricky_byte when grouping multiple \
-                     topologies",
+                     topologies"
+                        .to_string(),
                 );
             }
 
             // validate field length uniformity across all topologies
             // counter: mandatory field, must have consistent length
             {
+                any_have_thash |= topology.trash_content_slice().is_some();
+
                 if let Some((_, _, len)) = topology.counter_slice() {
                     if let Some(expected) = counter_len {
                         if len != expected {
-                            return Err("counter field length mismatch across topologies");
+                            return Err(
+                                "counter field length mismatch across topologies".to_string()
+                            );
                         }
                     } else {
                         counter_len = Some(len);
@@ -176,7 +198,7 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.len_slice() {
                     if let Some(expected) = len_field_len {
                         if len != expected {
-                            return Err("len field length mismatch across topologies");
+                            return Err("len field length mismatch across topologies".to_string());
                         }
                     } else {
                         len_field_len = Some(len);
@@ -187,7 +209,9 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.head_crc_slice() {
                     if let Some(expected) = crc_len {
                         if len != expected {
-                            return Err("head_crc field length mismatch across topologies");
+                            return Err(
+                                "head_crc field length mismatch across topologies".to_string()
+                            );
                         }
                     } else {
                         crc_len = Some(len);
@@ -198,7 +222,7 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.nonce_slice() {
                     if let Some(expected) = nonce_len {
                         if len != expected {
-                            return Err("nonce field length mismatch across topologies");
+                            return Err("nonce field length mismatch across topologies".to_string());
                         }
                     } else {
                         nonce_len = Some(len);
@@ -209,7 +233,7 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.ttl_slice() {
                     if let Some(expected) = ttl_len {
                         if len != expected {
-                            return Err("ttl field length mismatch across topologies");
+                            return Err("ttl field length mismatch across topologies".to_string());
                         }
                     } else {
                         ttl_len = Some(len);
@@ -220,7 +244,9 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.idconn_slice() {
                     if let Some(expected) = idconn_len {
                         if len != expected {
-                            return Err("idconn field length mismatch across topologies");
+                            return Err(
+                                "idconn field length mismatch across topologies".to_string()
+                            );
                         }
                     } else {
                         idconn_len = Some(len);
@@ -231,7 +257,9 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.id_of_sender_slice() {
                     if let Some(expected) = id_sender_len {
                         if len != expected {
-                            return Err("id_sender field length mismatch across topologies");
+                            return Err(
+                                "id_sender field length mismatch across topologies".to_string()
+                            );
                         }
                     } else {
                         id_sender_len = Some(len);
@@ -242,7 +270,9 @@ impl GroupTopology {
                 if let Some((_, _, len)) = topology.id_of_receiver_slice() {
                     if let Some(expected) = id_receiver_len {
                         if len != expected {
-                            return Err("id_receiver field length mismatch across topologies");
+                            return Err(
+                                "id_receiver field length mismatch across topologies".to_string()
+                            );
                         }
                     } else {
                         id_receiver_len = Some(len);
@@ -252,7 +282,8 @@ impl GroupTopology {
                         && len != sender_len
                     {
                         return Err(
-                            "id_receiver and id_sender must have equal length within each topology",
+                            "id_receiver and id_sender must have equal length within each topology"
+                                .to_string(),
                         );
                     }
                 }
@@ -262,36 +293,95 @@ impl GroupTopology {
                     && len != receiver_len
                 {
                     return Err(
-                        "id_sender and id_receiver must have equal length within each topology",
+                        "id_sender and id_receiver must have equal length within each topology"
+                            .to_string(),
                     );
                 }
             }
             // update min/max minimal packet lengths
-            let total_min = topology.total_minimal_len();
-            if total_min > max_min_len {
-                max_min_len = total_min;
-            }
-            if total_min < min_min_len {
-                min_min_len = total_min;
+            let t_l = topology.overhead_len();
+
+            match my_type {
+                PackTypeGroup::Any => {
+                    data_max_min_len = data_max_min_len.max(t_l);
+                    data_min_min_len = data_min_min_len.min(t_l);
+                    fback_max_min_len = fback_max_min_len.max(t_l);
+                    fback_min_min_len = fback_min_min_len.min(t_l);
+                },
+                PackTypeGroup::Data => {
+                    data_max_min_len = data_max_min_len.max(t_l);
+                    data_min_min_len = data_min_min_len.min(t_l);
+                },
+                PackTypeGroup::Fback => {
+                    fback_max_min_len = fback_max_min_len.max(t_l);
+                    fback_min_min_len = fback_min_min_len.min(t_l);
+                },
             }
 
             //end for
         }
 
         // sanity check: min_min_len should have been updated (empty input already rejected)
-        if min_min_len == usize::MAX {
-            return Err("internal error: min_min_len not properly initialized");
+        if data_min_min_len == usize::MAX {
+            return Err("internal error: data_min_min_len not properly initialized".to_string());
         }
         // additional sanity: min should not exceed max
-        if min_min_len > max_min_len {
-            return Err("internal error: min_min_len > max_min_len indicates logic bug");
+        if data_min_min_len > data_max_min_len {
+            return Err(
+                "internal error: data_min_min_len > data_max_min_len indicates logic bug"
+                    .to_string(),
+            );
         }
+
+        // sanity check: min_min_len should have been updated (empty input already rejected)
+        if fback_min_min_len == usize::MAX {
+            return Err("internal error: fback_min_min_len not properly initialized".to_string());
+        }
+        // additional sanity: min should not exceed max
+        if fback_min_min_len > fback_max_min_len {
+            return Err(
+                "internal error: fback_min_min_len > fback_max_min_len indicates logic bug"
+                    .to_string(),
+            );
+        }
+
+        let all_have_len: Option<(bool, usize)> = len_field_len.map(|len| (all_have_len, len));
+        let all_have_crc: Option<(bool, usize)> = crc_len.map(|len| (all_have_crc, len));
+        let all_have_idconn: Option<(bool, usize)> = idconn_len.map(|len| (all_have_idconn, len));
+        let all_have_ttl: Option<(bool, usize)> = ttl_len.map(|len| (all_have_ttl, len));
+        let all_have_ctr: Option<(bool, usize)> = counter_len.map(|len| (all_have_ctr, len));
+        let all_have_nonce: Option<(bool, usize)> = nonce_len.map(|len| (all_have_nonce, len));
+
+        let all_have_id_rec_send: Option<(bool, usize)> = match (id_sender_len, id_receiver_len) {
+            // 1. If both fields are present, verify their lengths match
+            (Some(s_len), Some(r_len)) => {
+                if s_len != r_len {
+                    return Err(
+                        "The id_sender_len and id_receiver_len fields must have the same length"
+                            .to_string(),
+                    );
+                }
+                // If lengths are equal, store the data identically to others
+                Some((all_have_id_rec_send, s_len))
+            },
+            // 2. If only one field is present (symmetry is broken)
+            (Some(_), None) | (None, Some(_)) => {
+                return Err(
+                    "Both sender and receiver fields must be either simultaneously present or absent".to_string(),
+                );
+            },
+            // 3. If both fields are missing (None, None), the result is None
+            (None, None) => None,
+        };
 
         Ok(Self {
             topologs,
-            max_min_len,
-            min_min_len,
+            data_max_min_len,
+            data_min_min_len,
+            fback_max_min_len,
+            fback_min_min_len,
             all_have_len,
+            any_have_thash,
             all_have_crc,
             all_have_idconn,
             all_have_id_rec_send,
@@ -299,23 +389,61 @@ impl GroupTopology {
             all_have_ctr,
             all_have_nonce,
             pos_tbyte,
+            how_elems_in_me: input_topoler.len(),
         })
     }
     ///Get the PackTopology diagram by its ID (byte)
-    pub fn get_from_u8(&self, trikly_byte: u8) -> Option<&PackTopology> {
+    /// Retrieves a reference to a `PackTopology` based on a raw byte index and checks for type compatibility.
+    ///
+    /// This method maps a given `trikly_byte` to a valid cyclic index within the `topologs` collection.
+    /// It then verifies if the requested `type_conformity` matches the actual type of the stored packet.
+    ///
+    /// # Parameters
+    ///
+    /// * `trikly_byte` - A raw `u8` value used to calculate the cyclic index within the topologies collection.
+    /// * `type_conformity` - The expected packet type group filter (`Data`, `Fback`, or `Any`).
+    ///
+    /// # Returns
+    ///
+    /// * `Some(&PackTopology)` - If a topology exists at the calculated index and its type is compatible with `type_conformity`.
+    /// * `None` - If no topology is present at the index, or if there is a type mismatch.
+    ///
+    /// # Panics
+    ///
+    /// This method will panic under the following conditions:
+    /// * If the `u8` to `usize` conversion of `trikly_byte` fails.
+    /// * If the internal `topologs` collection is empty (causing a modulo by zero error).
+    /// * If the calculated index is out of bounds (which represents an impossible internal state).
+    pub fn get_from_u8(
+        &self,
+        trikly_byte: u8,
+        type_conformity: PackTypeGroup,
+    ) -> Option<&PackTopology> {
         let idx = checked_cast!(trikly_byte => usize, expect "u8 to usize conversion failed")
             .checked_rem(self.topologs.len())
             .expect("Modulo by zero: topologs is empty");
-        self.topologs
+        if let Some((topol, my_type)) = self
+            .topologs
             .get(idx)
             .expect("impossible state since here the index is taken in the length model")
             .as_ref()
+        {
+            match (type_conformity, my_type) {
+                (PackTypeGroup::Data, PackTypeGroup::Data) => Some(topol),
+                (PackTypeGroup::Fback, PackTypeGroup::Fback) => Some(topol),
+                (PackTypeGroup::Any, _) => Some(topol),
+                (_, PackTypeGroup::Any) => Some(topol),
+                _ => None,
+            }
+        } else {
+            None
+        }
     }
 
     /// finds the smallest prime table size (from a predefined list) that can accommodate
     /// all given `u8` values without collisions, using a simple modulo hash function.
     ///
-    /// the function takes a slice of `(Box<[PackFields]>, u8)` pairs, extracts the `u8`
+    /// the function takes a slice of `(Box<[Pack Fields]>, u8)` pairs, extracts the `u8`
     /// values, and attempts to assign each to a slot in a table of size `p` (where
     /// `p` is a prime number). a collision occurs if two values map to the same slot
     /// (`value % p`). the search starts from the smallest prime that is at least as
@@ -326,7 +454,7 @@ impl GroupTopology {
     ///
     /// # arguments
     /// * `input_topoler` - a slice of tuples. the first component is an owned boxed slice
-    ///   of `PackFields` (ignored by the algorithm), the second component is a `u8` key
+    ///   of `Pack Fields` (ignored by the algorithm), the second component is a `u8` key
     ///   to be hashed.
     ///
     /// # returns
@@ -339,12 +467,12 @@ impl GroupTopology {
     /// bounds, which cannot happen because the prime list is non‑empty and the input
     /// length is bounded).
     fn find_minimal_table_size(
-        input_topoler: &[(Box<[PackFields]>, u8)],
-    ) -> Result<usize, &'static str> {
+        input_topoler: &[(Box<[PF]>, PackTypeGroup, u8)],
+    ) -> Result<usize, String> {
         let target_len = input_topoler.len();
         let max_u8 = checked_cast!(u8::MAX => usize,err "u8::MAX to usize conversion failed")?;
         if target_len > max_u8 {
-            return Err("input length exceeds maximum supported prime (255)");
+            return Err("input length exceeds maximum supported prime (255)".to_string());
         }
 
         let start_idx = PRIMES.partition_point(|&p| {
@@ -358,7 +486,7 @@ impl GroupTopology {
             let mut seen =
                 vec![false; checked_cast!(size => usize, err "Size conversion to usize failed")?];
             let mut ok = true;
-            for (_, val) in input_topoler {
+            for (_, _, val) in input_topoler {
                 let numerator =
                     checked_cast!(*val => usize, err "Value conversion to usize failed")?;
                 let denominator =
@@ -382,30 +510,51 @@ impl GroupTopology {
                 return Ok(checked_cast!(size => usize, err "Size conversion to usize failed")?);
             }
         }
-        Err("no collision‑free prime size found (all have conflicts)")
+        Err("no collision‑free prime size found (all have conflicts)".to_string())
     }
 }
 
 impl GroupTopology {
-    /// returns the maximum minimal packet length among all grouped topologies.
+    /// returns the maximum minimal packet length among all grouped topologies(PackTypeGroup::Fback).
     ///
     /// this value represents the largest `total_minimal_len` across all individual
     /// `PackTopology` instances in the group. it can be used to pre-allocate buffers
     /// that are guaranteed to fit any packet from any topology in the group.
 
-    pub fn max_minimal_len(&self) -> usize {
-        self.max_min_len
+    pub fn fback_max_minimal_len(&self) -> usize {
+        self.fback_max_min_len
     }
 
-    /// returns the minimum minimal packet length among all grouped topologies.
+    /// returns the minimum minimal packet length among all grouped topologies(PackTypeGroup::Fback).
     ///
     /// this value represents the smallest `total_minimal_len` across all individual
     /// `PackTopology` instances in the group. it can be used for optimistic buffer
     /// sizing or to detect unusually small packets that may belong to a subset of
     /// topologies.
 
-    pub fn min_minimal_len(&self) -> usize {
-        self.min_min_len
+    pub fn fback_min_minimal_len(&self) -> usize {
+        self.fback_min_min_len
+    }
+
+    /// returns the maximum minimal packet length among all grouped topologies(PackTypeGroup::Data).
+    ///
+    /// this value represents the largest `total_minimal_len` across all individual
+    /// `PackTopology` instances in the group. it can be used to pre-allocate buffers
+    /// that are guaranteed to fit any packet from any topology in the group.
+
+    pub fn data_max_minimal_len(&self) -> usize {
+        self.data_max_min_len
+    }
+
+    /// returns the minimum minimal packet length among all grouped topologies(PackTypeGroup::Data).
+    ///
+    /// this value represents the smallest `total_minimal_len` across all individual
+    /// `PackTopology` instances in the group. it can be used for optimistic buffer
+    /// sizing or to detect unusually small packets that may belong to a subset of
+    /// topologies.
+
+    pub fn data_min_minimal_len(&self) -> usize {
+        self.data_min_min_len
     }
 
     /// returns `true` if every topology in the group contains a `Len` field.
@@ -413,7 +562,11 @@ impl GroupTopology {
     /// the `Len` field is required for tcp-like (stream-oriented) protocols to delimit
     /// packet boundaries. if this method returns `true`, the group can safely assume
     /// that all packets have an explicit length header.
-    pub fn all_have_len_field(&self) -> bool {
+    ///
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_len_field(&self) -> Option<(bool, usize)> {
         self.all_have_len
     }
 
@@ -422,7 +575,10 @@ impl GroupTopology {
     /// the `HeadCRC` field protects header integrity in unreliable transport channels
     /// (e.g., udp-like). if this method returns `true`, all packets in the group can
     /// be validated for header corruption before decryption.
-    pub fn all_have_crc_field(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_crc_field(&self) -> Option<(bool, usize)> {
         self.all_have_crc
     }
 
@@ -431,8 +587,10 @@ impl GroupTopology {
     /// the `IdConnect` field associates packets with a specific connection or session.
     /// if this method returns `true`, all packets in the group support connection-level
     /// multiplexing or session tracking.
-
-    pub fn all_have_idconn_field(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_idconn_field(&self) -> Option<(bool, usize)> {
         self.all_have_idconn
     }
 
@@ -445,8 +603,10 @@ impl GroupTopology {
     ///
     /// note: the presence of one without the other is rejected during
     /// `GroupTopology::new`, so this flag reflects a consistent, validated state.
-
-    pub fn all_have_id_sender_receiver_fields(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_id_sender_receiver_fields(&self) -> Option<(bool, usize)> {
         self.all_have_id_rec_send
     }
 
@@ -455,8 +615,10 @@ impl GroupTopology {
     /// the `TTL` (time-to-live) field limits packet lifetime in multi-hop networks to
     /// prevent infinite loops. if this method returns `true`, all packets in the group
     /// support hop-count expiration semantics.
-
-    pub fn all_have_ttl_field(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_ttl_field(&self) -> Option<(bool, usize)> {
         self.all_have_ttl
     }
 
@@ -466,7 +628,10 @@ impl GroupTopology {
     /// incrementing packet sequence number (1–8 bytes). this method will always return
     /// `true` for any successfully constructed `GroupTopology`, but is provided for
     /// api symmetry and future extensibility.
-    pub fn all_have_counter_field(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_counter_field(&self) -> Option<(bool, usize)> {
         self.all_have_ctr
     }
 
@@ -475,20 +640,35 @@ impl GroupTopology {
     /// the `Nonce` field provides a unique cryptographic nonce for authenticated
     /// encryption (e.g., aes-gcm, chacha20-poly1305). if this method returns `true`,
     /// all packets in the group support per-packet nonce-based encryption.
-    pub fn all_have_nonce_field(&self) -> bool {
+    ///### Update! It now returns Option<(bool, usize)>
+    ///where bool is “every topology in the group contains a (field name)”
+    ///and usize is the length of the field in bytes. Read the description of the new() function
+    pub fn all_have_nonce_field(&self) -> Option<(bool, usize)> {
         self.all_have_nonce
     }
     ///get the position of the trick byte
     pub fn tricky_position(&self) -> Option<usize> {
         self.pos_tbyte
     }
-    ///get the largest total_minimal_len() value among all PackTopologies
-    pub fn max_min_len(&self) -> usize {
-        self.max_min_len
+
+    ///get the number of different topologies contained in the structure
+    pub fn how_elems_in_me(&self) -> usize {
+        self.how_elems_in_me
     }
-    ///get the minimal total_minimal_len() value among all PackTopologies
-    pub fn min_min_len(&self) -> usize {
-        self.min_min_len
+
+    ///get the position of the trick byte
+    /// The "trash_content_slices" field has no strict size limits,
+    /// so a simplified marker of presence in the group is used.
+    /// Therefore, if this field exists somewhere in the group,
+    /// the method will return true; if it does not exist anywhere, the function will return false.
+    pub fn any_have_trash_field(&self) -> bool {
+        self.any_have_thash
+    }
+
+    /// for tesl only
+    #[cfg(test)]
+    pub fn topol_set(&mut self, topologs: Box<[Option<(PackTopology, PackTypeGroup)>]>) {
+        self.topologs = topologs;
     }
 }
 
@@ -519,20 +699,24 @@ mod tests_find_minimal_table_size {
     }
 
     // helper to create a random input vector with given length and optional forced collisions
-    fn random_input(len: usize, seed: u32, forced_collision: bool) -> Vec<(Box<[PackFields]>, u8)> {
+    fn random_input(
+        len: usize,
+        seed: u32,
+        forced_collision: bool,
+    ) -> Vec<(Box<[PF]>, PackTypeGroup, u8)> {
         let mut rng = XorShift32::new(seed);
-        let mut values: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(len);
+        let mut values: Vec<(Box<[PF]>, PackTypeGroup, u8)> = Vec::with_capacity(len);
         if forced_collision && len > 0 {
             // first value arbitrary, then all others same as first (guaranteed collision for any
             // size > 1)
             let first = rng.next_u8();
-            values.push((Box::new([]), first));
+            values.push((Box::new([]), PackTypeGroup::Any, first));
             for _ in 1..len {
-                values.push((Box::new([]), first));
+                values.push((Box::new([]), PackTypeGroup::Any, first));
             }
         } else {
             for _ in 0..len {
-                values.push((Box::new([]), rng.next_u8()));
+                values.push((Box::new([]), PackTypeGroup::Any, rng.next_u8()));
             }
         }
         values
@@ -542,7 +726,7 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn empty_input() {
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // minimal prime that is >= 0 is 2
         assert_eq!(result, Ok(1));
@@ -550,7 +734,8 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn single_element() {
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 123)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> =
+            vec![(Box::new([]), PackTypeGroup::Any, 123)];
         let result = GroupTopology::find_minimal_table_size(&data.clone());
         // any prime >= 1 works, smallest is 2
         assert_eq!(result, Ok(1));
@@ -559,7 +744,10 @@ mod tests_find_minimal_table_size {
     #[test]
     fn two_distinct_elements_collision_free_at_2() {
         // values 0 and 1: 0%2=0, 1%2=1 -> no collision
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 1)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Data, 0),
+            (Box::new([]), PackTypeGroup::Data, 1),
+        ];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(result, Ok(2));
     }
@@ -567,40 +755,46 @@ mod tests_find_minimal_table_size {
     #[test]
     fn two_distinct_elements_collision_at_2_but_3_works() {
         // values 0 and 2: 0%2=0, 2%2=0 -> collision at size 2; 0%3=0, 2%3=2 -> ok
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 2)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Any, 0),
+            (Box::new([]), PackTypeGroup::Any, 2),
+        ];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(result, Ok(3));
     }
 
     #[test]
     fn all_equal_values_always_collision() {
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 7), (Box::new([]), 7)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Any, 7),
+            (Box::new([]), PackTypeGroup::Any, 7),
+        ];
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(
             result,
-            Err("no collision‑free prime size found (all have conflicts)")
+            Err("no collision‑free prime size found (all have conflicts)".to_string())
         );
     }
 
     #[test]
     fn input_length_exceeds_max_supported() {
         // 256 elements (u8::MAX + 1)
-        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(256);
+        let mut data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = Vec::with_capacity(256);
         for i in 0..256 {
-            data.push((Box::new([]), i as u8));
+            data.push((Box::new([]), PackTypeGroup::Any, i as u8));
         }
         let result = GroupTopology::find_minimal_table_size(&data);
         assert_eq!(
             result,
-            Err("input length exceeds maximum supported prime (255)")
+            Err("input length exceeds maximum supported prime (255)".to_string())
         );
     }
 
     #[test]
     fn exact_max_length_works() {
-        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(255);
+        let mut data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = Vec::with_capacity(255);
         for i in 0..255 {
-            data.push((Box::new([]), i as u8));
+            data.push((Box::new([]), PackTypeGroup::Any, i as u8));
         }
         // with distinct values from 0..254, the smallest prime >= 255 is 255 (u8::MAX)
         // but we must check if collisions occur: modulo 255 with distinct values 0..254 gives
@@ -631,7 +825,7 @@ mod tests_find_minimal_table_size {
                 assert!(size >= len);
                 // verify no collisions for this size
                 let mut seen = vec![false; size];
-                for (_, val) in &data {
+                for (_, _, val) in &data {
                     let h = *val as usize % size;
                     assert!(
                         !seen[h],
@@ -656,7 +850,7 @@ mod tests_find_minimal_table_size {
             let result = GroupTopology::find_minimal_table_size(&data);
             assert_eq!(
                 result,
-                Err("no collision‑free prime size found (all have conflicts)")
+                Err("no collision‑free prime size found (all have conflicts)".to_string())
             );
         }
     }
@@ -664,8 +858,11 @@ mod tests_find_minimal_table_size {
     #[test]
     fn deterministic_collision_test_known_values() {
         // values that collide for size=2,3,5 but work for 7
-        let data: Vec<(Box<[PackFields]>, u8)> =
-            vec![(Box::new([]), 0), (Box::new([]), 2), (Box::new([]), 4)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Any, 0),
+            (Box::new([]), PackTypeGroup::Any, 2),
+            (Box::new([]), PackTypeGroup::Any, 4),
+        ];
         // size=2: collisions (0%2=0,2%2=0,4%2=0)
         // size=3: 0%3=0,2%3=2,4%3=1 -> no collision actually? 0,2,1 all distinct -> ok at size=3.
         // So result should be 3, not 7.
@@ -676,9 +873,9 @@ mod tests_find_minimal_table_size {
     #[test]
     fn stress_large_len_near_limit() {
         let len = 250;
-        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(len);
+        let mut data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = Vec::with_capacity(len);
         for i in 0..len {
-            data.push((Box::new([]), i as u8));
+            data.push((Box::new([]), PackTypeGroup::Any, i as u8));
         }
         let result = GroupTopology::find_minimal_table_size(&data);
         // The smallest prime >=250 is 251 (since 251 is in the list). Should work because values
@@ -694,18 +891,21 @@ mod tests_find_minimal_table_size {
         // For simplicity, use values that are multiples of all small primes? Not feasible.
         // Instead, we rely on the forced-collision test above.
         // We'll just ensure that the function returns Err for some pathological case.
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 0), (Box::new([]), 0)]; // two identical values
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Any, 0),
+            (Box::new([]), PackTypeGroup::Any, 0),
+        ]; // two identical values
         assert_eq!(
             GroupTopology::find_minimal_table_size(&data),
-            Err("no collision‑free prime size found (all have conflicts)")
+            Err("no collision‑free prime size found (all have conflicts)".to_string())
         );
     }
 
     #[test]
     fn edge_case_size_255_and_255_elements() {
-        let mut data: Vec<(Box<[PackFields]>, u8)> = Vec::with_capacity(255);
+        let mut data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = Vec::with_capacity(255);
         for i in 0..255 {
-            data.push((Box::new([]), i as u8));
+            data.push((Box::new([]), PackTypeGroup::Any, i as u8));
         }
         // all values 0..254, modulo 255 gives 0..254 -> no collisions
         let result = GroupTopology::find_minimal_table_size(&data);
@@ -714,7 +914,10 @@ mod tests_find_minimal_table_size {
 
     #[test]
     fn edge_case_size_2_with_max_u8() {
-        let data: Vec<(Box<[PackFields]>, u8)> = vec![(Box::new([]), 255), (Box::new([]), 1)];
+        let data: Vec<(Box<[PF]>, PackTypeGroup, u8)> = vec![
+            (Box::new([]), PackTypeGroup::Any, 255),
+            (Box::new([]), PackTypeGroup::Any, 1),
+        ];
         // 255%2=1, 1%2=1 -> collision at size2
         // 255%3=0, 1%3=1 -> ok, so result 3
         let result = GroupTopology::find_minimal_table_size(&data);
@@ -740,7 +943,6 @@ mod tests_new {
         MAXIMAL_NONCE_LEN,
         MAXIMAL_NUMS_USER_FIELDS,
         MAXIMAL_TTL_LEN,
-        PackFields,
     };
 
     // ========================================================================
@@ -782,13 +984,13 @@ mod tests_new {
     // helper: factory functions for test data
     // ========================================================================
     /// creates a minimal valid field list containing only a counter.
-    fn minimal_valid_fields() -> Box<[PackFields]> {
-        Box::new([PackFields::Counter(4)])
+    fn minimal_valid_fields() -> Box<[PF]> {
+        Box::new([PF::Counter(4)])
     }
 
     /// creates a valid field list with counter + tricky_byte at position 0.
-    fn minimal_with_tricky() -> Box<[PackFields]> {
-        Box::new([PackFields::TrickyByte, PackFields::Counter(4)])
+    fn minimal_with_tricky() -> Box<[PF]> {
+        Box::new([PF::TrickyByte, PF::Counter(4)])
     }
 
     // ========================================================================
@@ -811,17 +1013,30 @@ mod tests_new {
 
     #[test]
     fn t02_tag_len_zero_rejected() {
-        let result = GroupTopology::new(&[(minimal_valid_fields(), 1)], 0, true, false);
+        let result = GroupTopology::new(
+            &[(minimal_valid_fields(), PackTypeGroup::Any, 1)],
+            0,
+            true,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "!!tag_len ==0");
     }
 
     #[test]
     fn t03_tag_len_valid_minimum() {
-        let result = GroupTopology::new(&[(minimal_with_tricky(), 1)], 1, true, false);
+        let result = GroupTopology::new(
+            &[(minimal_with_tricky(), PackTypeGroup::Any, 1)],
+            1,
+            true,
+            false,
+        );
         assert!(result.is_ok());
         assert_eq!(
-            *result.unwrap().get_from_u8(1).unwrap(),
+            *result
+                .unwrap()
+                .get_from_u8(1, PackTypeGroup::Data,)
+                .unwrap(),
             PackTopology::new(1, &minimal_with_tricky()[..], true, false).unwrap()
         )
     }
@@ -829,7 +1044,12 @@ mod tests_new {
     #[test]
     fn t04_tag_len_overflow_protection() {
         // usize::MAX will cause checked_add to return none in total_minimal_len calculation
-        let result = GroupTopology::new(&[(minimal_with_tricky(), 1)], usize::MAX, true, false);
+        let result = GroupTopology::new(
+            &[(minimal_with_tricky(), PackTypeGroup::Any, 1)],
+            usize::MAX,
+            true,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -844,7 +1064,12 @@ mod tests_new {
     #[test]
     fn t05_tcp_mode_requires_len_field() {
         // tcp_mode=true but no len field provided
-        let result = GroupTopology::new(&[(minimal_with_tricky(), 1)], 16, true, true);
+        let result = GroupTopology::new(
+            &[(minimal_with_tricky(), PackTypeGroup::Any, 1)],
+            16,
+            true,
+            true,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -855,7 +1080,12 @@ mod tests_new {
     #[test]
     fn t06_unreliable_channel_requires_crc() {
         // data_save=false but no crc field provided
-        let result = GroupTopology::new(&[(minimal_with_tricky(), 1)], 16, false, false);
+        let result = GroupTopology::new(
+            &[(minimal_with_tricky(), PackTypeGroup::Any, 1)],
+            16,
+            false,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -867,13 +1097,8 @@ mod tests_new {
     #[test]
     fn t07_tcp_and_unreliable_incompatible() {
         // both tcp_mode=true and data_save=false is forbidden
-        let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::Len(4),
-            PackFields::HeadCRC(4),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, false, true);
+        let fields = Box::new([PF::Counter(4), PF::Len(4), PF::HeadCRC(4), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, false, true);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -888,8 +1113,8 @@ mod tests_new {
 
     #[test]
     fn t08_counter_field_mandatory() {
-        let fields = Box::new([PackFields::Len(4), PackFields::TrickyByte]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let fields = Box::new([PF::Len(4), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -904,12 +1129,8 @@ mod tests_new {
     #[test]
     fn t09_sender_receiver_both_or_neither() {
         // only sender, no receiver
-        let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::IdSender(4),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let fields = Box::new([PF::Counter(4), PF::IdSender(4), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -921,12 +1142,12 @@ mod tests_new {
     fn t10_sender_receiver_equal_length_required() {
         // sender=4 bytes, receiver=8 bytes -> mismatch
         let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::IdSender(4),
-            PackFields::IdReceiver(8),
-            PackFields::TrickyByte,
+            PF::Counter(4),
+            PF::IdSender(4),
+            PF::IdReceiver(8),
+            PF::TrickyByte,
         ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -942,14 +1163,18 @@ mod tests_new {
     fn t11_tricky_byte_position_mismatch_rejected() {
         // topology 1: tricky_byte at field index 0 (position 0)
         // topology 2: tricky_byte at field index 1 (position 1, after 1-byte user field)
-        let fields1 = Box::new([PackFields::TrickyByte, PackFields::Counter(4)]);
-        let fields2 = Box::new([
-            PackFields::UserField(1),
-            PackFields::TrickyByte,
-            PackFields::Counter(4),
-        ]);
+        let fields1 = Box::new([PF::TrickyByte, PF::Counter(4)]);
+        let fields2 = Box::new([PF::UserField(1), PF::TrickyByte, PF::Counter(4)]);
 
-        let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+        let result = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Fback, 1),
+                (fields2, PackTypeGroup::Data, 2),
+            ],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -964,7 +1189,15 @@ mod tests_new {
         let fields1 = minimal_with_tricky();
         let fields2 = minimal_valid_fields(); // no tricky_byte
 
-        let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+        let result = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Data, 1),
+                (fields2, PackTypeGroup::Fback, 2),
+            ],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -975,7 +1208,12 @@ mod tests_new {
     #[test]
     fn t13_tricky_byte_optional_for_single_topology() {
         // single topology without tricky_byte should succeed
-        let result = GroupTopology::new(&[(minimal_valid_fields(), 1)], 16, true, false);
+        let result = GroupTopology::new(
+            &[(minimal_valid_fields(), PackTypeGroup::Any, 1)],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_ok());
     }
 
@@ -985,8 +1223,19 @@ mod tests_new {
         let fields1 = minimal_with_tricky();
         let fields2 = minimal_with_tricky();
 
-        let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+        let result = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_ok());
+        let r = result.unwrap();
+        assert_eq!(r.how_elems_in_me(), r.how_elems_in_me);
+        assert_eq!(2, r.how_elems_in_me());
     }
 
     // ========================================================================
@@ -998,17 +1247,25 @@ mod tests_new {
             #[test]
             fn $test_name() {
                 let fields1 = {
-                    let mut v = vec![PackFields::Counter(4), PackFields::TrickyByte];
+                    let mut v = vec![PF::Counter(4), PF::TrickyByte];
                     v.push($field_ctor(4));
                     v.into_boxed_slice()
                 };
                 let fields2 = {
-                    let mut v = vec![PackFields::Counter(4), PackFields::TrickyByte];
+                    let mut v = vec![PF::Counter(4), PF::TrickyByte];
                     v.push($field_ctor(8));
                     v.into_boxed_slice()
                 };
 
-                let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+                let result = GroupTopology::new(
+                    &[
+                        (fields1, PackTypeGroup::Any, 1),
+                        (fields2, PackTypeGroup::Any, 2),
+                    ],
+                    16,
+                    true,
+                    false,
+                );
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), $expected_err);
             }
@@ -1020,17 +1277,25 @@ mod tests_new {
             #[test]
             fn $test_name() {
                 let fields1 = {
-                    let mut v = vec![PackFields::TrickyByte];
+                    let mut v = vec![PF::TrickyByte];
                     v.push($field_ctor(4));
                     v.into_boxed_slice()
                 };
                 let fields2 = {
-                    let mut v = vec![PackFields::TrickyByte];
+                    let mut v = vec![PF::TrickyByte];
                     v.push($field_ctor(8));
                     v.into_boxed_slice()
                 };
 
-                let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+                let result = GroupTopology::new(
+                    &[
+                        (fields1, PackTypeGroup::Data, 1),
+                        (fields2, PackTypeGroup::Fback, 2),
+                    ],
+                    16,
+                    true,
+                    false,
+                );
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), $expected_err);
             }
@@ -1039,43 +1304,43 @@ mod tests_new {
 
     assert_field_length_mismatch_for_ctr!(
         t15_counter_length_mismatch,
-        PackFields::Counter,
+        PF::Counter,
         "counter field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t16_len_field_length_mismatch,
-        PackFields::Len,
+        PF::Len,
         "len field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t17_crc_length_mismatch,
-        PackFields::HeadCRC,
+        PF::HeadCRC,
         "head_crc field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t18_nonce_length_mismatch,
-        PackFields::Nonce,
+        PF::Nonce,
         "nonce field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t19_ttl_length_mismatch,
-        PackFields::TTL,
+        PF::TTL,
         "ttl field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t20_idconn_length_mismatch,
-        PackFields::IdConnect,
+        PF::IdConnect,
         "idconn field length mismatch across topologies"
     );
     assert_field_length_mismatch!(
         t21_id_sender_length_mismatch,
-        PackFields::IdSender,
+        PF::IdSender,
         //"id_sender field length mismatch across topologies"
         "sender and receiver IDs must both exist or both be absent"
     );
     assert_field_length_mismatch!(
         t22_id_receiver_length_mismatch,
-        PackFields::IdReceiver,
+        PF::IdReceiver,
         //"id_receiver field length mismatch across topologies"
         "sender and receiver IDs must both exist or both be absent"
     );
@@ -1087,7 +1352,9 @@ mod tests_new {
     #[test]
     fn t23_input_exceeds_max_prime_limit() {
         // create 256 entries (exceeds u8::max = 255)
-        let entries: Vec<_> = (0..256).map(|i| (minimal_with_tricky(), i as u8)).collect();
+        let entries: Vec<_> = (0..256)
+            .map(|i| (minimal_with_tricky(), PackTypeGroup::Fback, i as u8))
+            .collect();
 
         let result = GroupTopology::new(&entries, 16, true, false);
         assert!(result.is_err());
@@ -1100,7 +1367,9 @@ mod tests_new {
     #[test]
     fn t24_forced_collision_no_solution() {
         // all entries have identical key -> guaranteed collision for any table size > 1
-        let entries: Vec<_> = (0..10).map(|_| (minimal_with_tricky(), 42u8)).collect();
+        let entries: Vec<_> = (0..10)
+            .map(|_| (minimal_with_tricky(), PackTypeGroup::Data, 42u8))
+            .collect();
 
         let result = GroupTopology::new(&entries, 16, true, false);
         assert!(result.is_err());
@@ -1119,22 +1388,16 @@ mod tests_new {
             #[test]
             fn $test_name() {
                 // zero size rejected
-                let fields = Box::new([
-                    PackFields::Counter(4),
-                    $field_ctor(0),
-                    PackFields::TrickyByte,
-                ]);
-                let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+                let fields = Box::new([PF::Counter(4), $field_ctor(0), PF::TrickyByte]);
+                let result =
+                    GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), $zero_err);
 
                 // exceeds max rejected
-                let fields = Box::new([
-                    PackFields::Counter(4),
-                    $field_ctor($max_len + 1),
-                    PackFields::TrickyByte,
-                ]);
-                let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+                let fields = Box::new([PF::Counter(4), $field_ctor($max_len + 1), PF::TrickyByte]);
+                let result =
+                    GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
                 assert!(result.is_err());
                 assert!(result.unwrap_err().contains($limit_err));
             }
@@ -1146,14 +1409,16 @@ mod tests_new {
             #[test]
             fn $test_name() {
                 // zero size rejected
-                let fields = Box::new([$field_ctor(0), PackFields::TrickyByte]);
-                let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+                let fields = Box::new([$field_ctor(0), PF::TrickyByte]);
+                let result =
+                    GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
                 assert!(result.is_err());
                 assert_eq!(result.unwrap_err(), $zero_err);
 
                 // exceeds max rejected
-                let fields = Box::new([$field_ctor($max_len + 1), PackFields::TrickyByte]);
-                let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+                let fields = Box::new([$field_ctor($max_len + 1), PF::TrickyByte]);
+                let result =
+                    GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
                 assert!(result.is_err());
                 assert!(result.unwrap_err().contains($limit_err));
             }
@@ -1162,7 +1427,7 @@ mod tests_new {
 
     assert_field_size_limit_spec_for_ctr!(
         t26_counter_size_limits,
-        PackFields::Counter,
+        PF::Counter,
         8,
         "counter value exceeds 8",
         "counter value exceeds 8"
@@ -1170,7 +1435,7 @@ mod tests_new {
 
     assert_field_size_limit!(
         t27_nonce_size_limits,
-        PackFields::Nonce,
+        PF::Nonce,
         MAXIMAL_NONCE_LEN,
         "nonce len is 0",
         "nonce"
@@ -1178,7 +1443,7 @@ mod tests_new {
 
     assert_field_size_limit!(
         t28_ttl_size_limits,
-        PackFields::TTL,
+        PF::TTL,
         MAXIMAL_TTL_LEN,
         "TTL value exceeds MAXIMAL_TTL_LEN or  == 0",
         "TTL"
@@ -1187,34 +1452,26 @@ mod tests_new {
     #[test]
     fn t29_crc_size_limits() {
         // zero crc rejected
-        let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::HeadCRC(0),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, false, false);
+        let fields = Box::new([PF::Counter(4), PF::HeadCRC(0), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("crc"));
 
         // exceeds max rejected
         let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::HeadCRC(MAXIMAL_CRC_LEN + 1),
-            PackFields::TrickyByte,
+            PF::Counter(4),
+            PF::HeadCRC(MAXIMAL_CRC_LEN + 1),
+            PF::TrickyByte,
         ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, false, false);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, false, false);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("crc"));
     }
 
     #[test]
     fn t30_user_field_zero_size_rejected() {
-        let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::UserField(0),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let fields = Box::new([PF::Counter(4), PF::UserField(0), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "userfield value is 0");
     }
@@ -1222,12 +1479,17 @@ mod tests_new {
     #[test]
     fn t31_max_user_fields_limit() {
         // create fields with maximal_nums_user_fields + 1 user fields
-        let mut fields = vec![PackFields::Counter(4), PackFields::TrickyByte];
+        let mut fields = vec![PF::Counter(4), PF::TrickyByte];
         for _ in 0..=MAXIMAL_NUMS_USER_FIELDS {
-            fields.push(PackFields::UserField(1));
+            fields.push(PF::UserField(1));
         }
 
-        let result = GroupTopology::new(&[(fields.into_boxed_slice(), 1)], 16, true, false);
+        let result = GroupTopology::new(
+            &[(fields.into_boxed_slice(), PackTypeGroup::Any, 1)],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_err());
         assert_eq!(
             result.unwrap_err(),
@@ -1241,24 +1503,16 @@ mod tests_new {
 
     #[test]
     fn t32_duplicate_counter_rejected() {
-        let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::Counter(4),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let fields = Box::new([PF::Counter(4), PF::Counter(4), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "duplicate counter");
     }
 
     #[test]
     fn t33_duplicate_tricky_byte_rejected() {
-        let fields = Box::new([
-            PackFields::TrickyByte,
-            PackFields::Counter(4),
-            PackFields::TrickyByte,
-        ]);
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let fields = Box::new([PF::TrickyByte, PF::Counter(4), PF::TrickyByte]);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "duplicate tricky_byte");
     }
@@ -1270,19 +1524,54 @@ mod tests_new {
     #[test]
     fn t34_successful_single_topology_state() {
         let fields = minimal_with_tricky();
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let result = GroupTopology::new(
+            &[
+                (fields.clone(), PackTypeGroup::Fback, 2),
+                (fields.clone(), PackTypeGroup::Data, 1),
+            ],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_ok());
 
         assert_eq!(
-            *result.as_ref().unwrap().get_from_u8(1).unwrap(),
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(1, PackTypeGroup::Data)
+                .unwrap(),
+            PackTopology::new(16, &minimal_with_tricky()[..], true, false).unwrap()
+        );
+
+        assert_eq!(
+            result.clone().unwrap().get_from_u8(2, PackTypeGroup::Data),
+            None
+        );
+
+        assert_eq!(
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(1, PackTypeGroup::Any)
+                .unwrap(),
+            PackTopology::new(16, &minimal_with_tricky()[..], true, false).unwrap()
+        );
+
+        assert_eq!(
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(2, PackTypeGroup::Any)
+                .unwrap(),
             PackTopology::new(16, &minimal_with_tricky()[..], true, false).unwrap()
         );
 
         let gt = result.unwrap();
-        assert_eq!(gt.topologs.len(), 1);
-        assert_eq!(gt.max_min_len, gt.min_min_len); // single topology -> equal
-        assert!(!gt.all_have_len);
-        assert!(!gt.all_have_crc);
+        assert_eq!(gt.topologs.len(), 2);
+        assert_eq!(gt.data_max_min_len, gt.data_min_min_len); // single topology -> equal
+        assert!(gt.all_have_len.is_none());
+        assert!(gt.all_have_crc.is_none());
         //assert!(gt.indexer >= 2); // smallest prime in list
     }
 
@@ -1291,15 +1580,18 @@ mod tests_new {
         // topology 1: counter(2) + tricky(1) = 3 header bytes
         // topology 2: counter(8) + tricky(1) = 9 header bytes
         // both: +1 head byte + 16 tag = 20 and 26 respectively
-        let fields1 = Box::new([
-            PackFields::Counter(8),
-            PackFields::TrickyByte,
-            PackFields::UserField(6),
-        ]);
-        let fields2 = Box::new([PackFields::Counter(8), PackFields::TrickyByte]);
+        let fields1 = Box::new([PF::Counter(8), PF::TrickyByte, PF::UserField(6)]);
+        let fields2 = Box::new([PF::Counter(8), PF::TrickyByte, PF::UserField(2)]);
+        let fields3 = Box::new([PF::Counter(8), PF::TrickyByte, PF::UserField(7)]);
+        let fields4 = Box::new([PF::Counter(8), PF::TrickyByte, PF::UserField(13)]);
 
         let result = GroupTopology::new(
-            &[(fields1.clone(), 1), (fields2.clone(), 2)],
+            &[
+                (fields1.clone(), PackTypeGroup::Data, 1),
+                (fields2.clone(), PackTypeGroup::Fback, 2),
+                (fields3.clone(), PackTypeGroup::Data, 5),
+                (fields4.clone(), PackTypeGroup::Fback, 6),
+            ],
             16,
             true,
             false,
@@ -1307,67 +1599,118 @@ mod tests_new {
 
         assert!(result.is_ok());
         assert_eq!(
-            *result.as_ref().unwrap().get_from_u8(1).unwrap(),
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(1, PackTypeGroup::Data,)
+                .unwrap(),
             PackTopology::new(16, &fields1[..], true, false).unwrap()
         );
 
         assert_eq!(
-            *result.as_ref().unwrap().get_from_u8(2).unwrap(),
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(2, PackTypeGroup::Fback,)
+                .unwrap(),
             PackTopology::new(16, &fields2[..], true, false).unwrap()
         );
 
+        //any
+        assert_eq!(
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(1, PackTypeGroup::Any,)
+                .unwrap(),
+            PackTopology::new(16, &fields1[..], true, false).unwrap()
+        );
+
+        assert_eq!(
+            *result
+                .as_ref()
+                .unwrap()
+                .get_from_u8(2, PackTypeGroup::Any,)
+                .unwrap(),
+            PackTopology::new(16, &fields2[..], true, false).unwrap()
+        );
+        //any
+
+        //err
+        assert_eq!(
+            result.clone().unwrap().get_from_u8(2, PackTypeGroup::Data),
+            None
+        );
+
+        assert_eq!(
+            result.clone().unwrap().get_from_u8(1, PackTypeGroup::Fback),
+            None
+        );
+        //err
+
         let gt = result.unwrap();
-        assert!(gt.min_min_len <= gt.max_min_len);
-        assert_eq!(gt.min_min_len, 26); // 2+1+1+16
-        assert_eq!(gt.max_min_len, 32); // 8+1+1+16
+        assert!(gt.data_min_min_len <= gt.data_max_min_len);
+        assert!(gt.fback_min_min_len <= gt.fback_max_min_len);
+        assert_eq!(gt.fback_max_minimal_len(), 8 + 1 + 1 + 13 + 16);
+        assert_eq!(gt.fback_min_minimal_len(), 8 + 1 + 1 + 2 + 16);
+        assert_eq!(gt.data_max_minimal_len(), 8 + 1 + 1 + 7 + 16);
+        assert_eq!(gt.data_min_minimal_len(), 8 + 1 + 1 + 6 + 16);
     }
 
     #[test]
     fn t36_universal_field_flags_all_present() {
         let fields = Box::new([
-            PackFields::Counter(4),
-            PackFields::Len(4),
-            PackFields::HeadCRC(4),
-            PackFields::Nonce(8),
-            PackFields::TTL(2),
-            PackFields::IdConnect(4),
-            PackFields::IdSender(4),
-            PackFields::IdReceiver(4),
-            PackFields::TrickyByte,
+            PF::Counter(4),
+            PF::Len(4),
+            PF::HeadCRC(4),
+            PF::Nonce(8),
+            PF::TTL(2),
+            PF::IdConnect(4),
+            PF::IdSender(4),
+            PF::IdReceiver(4),
+            PF::TrickyByte,
         ]);
 
-        let result = GroupTopology::new(&[(fields.clone(), 1), (fields, 2)], 16, true, true);
+        let result = GroupTopology::new(
+            &[
+                (fields.clone(), PackTypeGroup::Any, 1),
+                (fields, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            true,
+        );
         assert!(result.is_ok());
 
         let gt = result.unwrap();
-        assert!(gt.all_have_len);
-        assert!(gt.all_have_crc);
-        assert!(gt.all_have_nonce);
-        assert!(gt.all_have_ttl);
-        assert!(gt.all_have_ctr);
-        assert!(gt.all_have_idconn);
-        assert!(gt.all_have_id_rec_send);
+        assert!(gt.all_have_len.unwrap().0);
+        assert!(gt.all_have_crc.unwrap().0);
+        assert!(gt.all_have_nonce.unwrap().0);
+        assert!(gt.all_have_ttl.unwrap().0);
+        assert!(gt.all_have_ctr.unwrap().0);
+        assert!(gt.all_have_idconn.unwrap().0);
+        assert!(gt.all_have_id_rec_send.unwrap().0);
     }
 
     #[test]
     fn t37_universal_field_flags_partial_presence() {
         // only first topology has len field
-        let fields1 = Box::new([
-            PackFields::Counter(4),
-            PackFields::Len(4),
-            PackFields::TrickyByte,
-        ]);
-        let fields2 = Box::new([
-            PackFields::Counter(4),
-            PackFields::UserField(4),
-            PackFields::TrickyByte,
-        ]);
+        let fields1 = Box::new([PF::Counter(4), PF::Len(4), PF::TrickyByte]);
+        let fields2 = Box::new([PF::Counter(4), PF::UserField(4), PF::TrickyByte]);
 
-        let result = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false);
+        let result = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        );
         assert!(result.is_ok());
 
         let gt = result.unwrap();
-        assert!(!gt.all_have_len); // not all topologies have it
+        assert!(!gt.all_have_len.unwrap().0); // not all topologies have it
     }
 
     // ========================================================================
@@ -1381,7 +1724,7 @@ mod tests_new {
             tcp_mode: bool,
             has_len: bool,
             has_crc: bool,
-            expected: Result<(), &'static str>,
+            expected: Result<(), String>,
         }
 
         let cases = [
@@ -1405,7 +1748,8 @@ mod tests_new {
                 has_len: false,
                 has_crc: false,
                 expected: Err(
-                    "If your data channel is like TCP, you should specify the Len(usize) field.",
+                    "If your data channel is like TCP, you should specify the Len(usize) field."
+                        .to_string(),
                 ),
             },
             Case {
@@ -1422,7 +1766,8 @@ mod tests_new {
                 has_crc: false,
                 expected: Err(
                     "If you do not guarantee that the packet can be broken during \
-                     transport(!data_save), you should use HeadCRC(usize)",
+                     transport(!data_save), you should use HeadCRC(usize)"
+                        .to_string(),
                 ),
             },
             Case {
@@ -1431,21 +1776,22 @@ mod tests_new {
                 has_len: true,
                 has_crc: true,
                 expected: Err("channel cannot be both tcp_mode and have data instability \
-                               (!data_save == false && tcp_mode == true)"),
+                               (!data_save == false && tcp_mode == true)"
+                    .to_string()),
             },
         ];
 
         for (i, c) in cases.iter().enumerate() {
-            let mut fields = vec![PackFields::Counter(4), PackFields::TrickyByte];
+            let mut fields = vec![PF::Counter(4), PF::TrickyByte];
             if c.has_len {
-                fields.push(PackFields::Len(4));
+                fields.push(PF::Len(4));
             }
             if c.has_crc {
-                fields.push(PackFields::HeadCRC(4));
+                fields.push(PF::HeadCRC(4));
             }
 
             let result = GroupTopology::new(
-                &[(fields.into_boxed_slice(), 1)],
+                &[(fields.into_boxed_slice(), PackTypeGroup::Any, 1)],
                 16,
                 c.data_save,
                 c.tcp_mode,
@@ -1469,28 +1815,34 @@ mod tests_new {
         let mut rng = Lcg::new(12345);
         let mut entries = Vec::new();
 
-        for _ in 0..100 {
+        for x_d in 0..100 {
             let key = rng.next_u8();
-            let mut fields = vec![PackFields::Counter(rng.next_range(1, 8))];
+            let mut fields = vec![PF::Counter(rng.next_range(1, 8))];
 
             // randomly add optional fields with valid sizes
             if rng.next_range(0, 1) == 1 {
-                fields.push(PackFields::TrickyByte);
+                fields.push(PF::TrickyByte);
             }
             if rng.next_range(0, 1) == 1 {
-                fields.push(PackFields::Len(rng.next_range(1, 8)));
+                fields.push(PF::Len(rng.next_range(1, 8)));
             }
             if rng.next_range(0, 1) == 1 {
-                fields.push(PackFields::HeadCRC(rng.next_range(1, MAXIMAL_CRC_LEN)));
+                fields.push(PF::HeadCRC(rng.next_range(1, MAXIMAL_CRC_LEN)));
             }
             if rng.next_range(0, 1) == 1 {
-                fields.push(PackFields::Nonce(rng.next_range(1, MAXIMAL_NONCE_LEN)));
+                fields.push(PF::Nonce(rng.next_range(1, MAXIMAL_NONCE_LEN)));
             }
             if rng.next_range(0, 1) == 1 {
-                fields.push(PackFields::TTL(rng.next_range(1, MAXIMAL_TTL_LEN)));
+                fields.push(PF::TTL(rng.next_range(1, MAXIMAL_TTL_LEN)));
             }
 
-            entries.push((fields.into_boxed_slice(), key));
+            let tyy = match x_d % 3 {
+                1 => PackTypeGroup::Fback,
+                2 => PackTypeGroup::Data,
+                _ => PackTypeGroup::Any,
+            };
+
+            entries.push((fields.into_boxed_slice(), tyy, key));
         }
 
         // the function should either return ok or a valid err, never panic
@@ -1505,65 +1857,50 @@ mod tests_new {
     fn t40_duplicate_field_variants_rejected() {
         let duplicates = [
             (
-                vec![
-                    PackFields::Counter(4),
-                    PackFields::Len(4),
-                    PackFields::Len(4),
-                    PackFields::TrickyByte,
-                ],
+                vec![PF::Counter(4), PF::Len(4), PF::Len(4), PF::TrickyByte],
                 "duplicate len",
             ),
             (
                 vec![
-                    PackFields::Counter(4),
-                    PackFields::IdSender(4),
-                    PackFields::IdSender(4),
-                    PackFields::TrickyByte,
+                    PF::Counter(4),
+                    PF::IdSender(4),
+                    PF::IdSender(4),
+                    PF::TrickyByte,
                 ],
                 "duplicate IdSender",
             ),
             (
                 vec![
-                    PackFields::Counter(4),
-                    PackFields::IdReceiver(4),
-                    PackFields::IdReceiver(4),
-                    PackFields::TrickyByte,
+                    PF::Counter(4),
+                    PF::IdReceiver(4),
+                    PF::IdReceiver(4),
+                    PF::TrickyByte,
                 ],
                 "duplicate idreceiver",
             ),
             (
                 vec![
-                    PackFields::Counter(4),
-                    PackFields::HeadCRC(4),
-                    PackFields::HeadCRC(4),
-                    PackFields::TrickyByte,
+                    PF::Counter(4),
+                    PF::HeadCRC(4),
+                    PF::HeadCRC(4),
+                    PF::TrickyByte,
                 ],
                 "duplicate crc",
             ),
             (
-                vec![
-                    PackFields::Counter(4),
-                    PackFields::Nonce(4),
-                    PackFields::Nonce(4),
-                    PackFields::TrickyByte,
-                ],
+                vec![PF::Counter(4), PF::Nonce(4), PF::Nonce(4), PF::TrickyByte],
                 "duplicate nonce",
             ),
             (
-                vec![
-                    PackFields::Counter(4),
-                    PackFields::TTL(4),
-                    PackFields::TTL(4),
-                    PackFields::TrickyByte,
-                ],
+                vec![PF::Counter(4), PF::TTL(4), PF::TTL(4), PF::TrickyByte],
                 "duplicate ttl",
             ),
             (
                 vec![
-                    PackFields::Counter(4),
-                    PackFields::IdConnect(4),
-                    PackFields::IdConnect(4),
-                    PackFields::TrickyByte,
+                    PF::Counter(4),
+                    PF::IdConnect(4),
+                    PF::IdConnect(4),
+                    PF::TrickyByte,
                 ],
                 "duplicate idconn",
             ),
@@ -1574,7 +1911,7 @@ mod tests_new {
                 let v = fields_vec.clone();
                 v.into_boxed_slice()
             };
-            let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+            let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
             assert!(result.is_err(), "expected error for duplicate field");
             assert_eq!(result.unwrap_err(), *expected_err);
         }
@@ -1589,18 +1926,28 @@ mod tests_new {
         // after rejecting empty input, min_min_len should always be updated
         // this test verifies normal operation doesn't trigger internal errors
         let fields = minimal_with_tricky();
-        let result = GroupTopology::new(&[(fields, 1)], 16, true, false);
+        let result = GroupTopology::new(&[(fields, PackTypeGroup::Any, 1)], 16, true, false);
         assert!(result.is_ok());
 
         let gt = result.unwrap();
         // sanity: min should never exceed max
         assert!(
-            gt.min_min_len <= gt.max_min_len,
+            gt.data_max_min_len <= gt.data_max_min_len,
             "internal invariant violated: min > max"
         );
         // sanity: min should have been updated from usize::max
         assert!(
-            gt.min_min_len != usize::MAX,
+            gt.data_min_min_len != usize::MAX,
+            "internal invariant violated: min not initialized"
+        );
+
+        assert!(
+            gt.fback_max_min_len <= gt.fback_max_min_len,
+            "internal invariant violated: min > max"
+        );
+        // sanity: min should have been updated from usize::max
+        assert!(
+            gt.fback_min_min_len != usize::MAX,
             "internal invariant violated: min not initialized"
         );
     }
@@ -1630,12 +1977,13 @@ mod test_get {
             for incom in dicodim.1.iter() {
                 vecta.push((
                     vec![
-                        PackFields::Counter(1),
-                        PackFields::UserField(300 - *incom as usize),
-                        PackFields::UserField((*incom as usize) + 1),
-                        PackFields::TrickyByte,
+                        PF::Counter(1),
+                        PF::UserField(300 - *incom as usize),
+                        PF::UserField((*incom as usize) + 1),
+                        PF::TrickyByte,
                     ]
                     .into_boxed_slice(),
+                    PackTypeGroup::Any,
                     *incom,
                 ));
             }
@@ -1644,15 +1992,15 @@ mod test_get {
             print_len.push(tester.topologs.len());
             for incom in dicodim.1.iter() {
                 let fields_len = vec![
-                    PackFields::Counter(1),
-                    PackFields::UserField(300 - *incom as usize),
-                    PackFields::UserField((*incom as usize) + 1),
-                    PackFields::TrickyByte,
+                    PF::Counter(1),
+                    PF::UserField(300 - *incom as usize),
+                    PF::UserField((*incom as usize) + 1),
+                    PF::TrickyByte,
                 ];
 
                 let b = PackTopology::new(30, &fields_len, true, false).unwrap();
 
-                assert_eq!(*tester.get_from_u8(*incom).unwrap(), b);
+                assert_eq!(*tester.get_from_u8(*incom, PackTypeGroup::Any,).unwrap(), b);
             }
         }
 
@@ -1661,7 +2009,8 @@ mod test_get {
     #[test]
     fn test_get_no_one() {
         let vecta = [(
-            vec![PackFields::Counter(1), PackFields::TrickyByte].into_boxed_slice(),
+            vec![PF::Counter(1), PF::TrickyByte].into_boxed_slice(),
+            PackTypeGroup::Any,
             113,
         )];
 
@@ -1669,16 +2018,16 @@ mod test_get {
 
         assert_eq!(tester.topologs.len(), 1);
         assert_eq!(
-            tester.get_from_u8(1).unwrap(),
-            tester.get_from_u8(121).unwrap()
+            tester.get_from_u8(1, PackTypeGroup::Any,).unwrap(),
+            tester.get_from_u8(121, PackTypeGroup::Fback).unwrap()
         );
         assert_eq!(
-            tester.get_from_u8(121).unwrap(),
-            tester.get_from_u8(4).unwrap()
+            tester.get_from_u8(121, PackTypeGroup::Fback).unwrap(),
+            tester.get_from_u8(4, PackTypeGroup::Any).unwrap()
         );
         assert_eq!(
-            tester.get_from_u8(4).unwrap(),
-            tester.get_from_u8(255).unwrap()
+            tester.get_from_u8(4, PackTypeGroup::Fback).unwrap(),
+            tester.get_from_u8(255, PackTypeGroup::Any).unwrap()
         );
     }
 
@@ -1873,31 +2222,31 @@ mod flag_verification_tests {
         include_ttl: bool,
         include_nonce: bool,
         include_tricky: bool,
-    ) -> Box<[PackFields]> {
+    ) -> Box<[PF]> {
         let mut fields = Vec::new();
         // Counter is mandatory
-        fields.push(PackFields::Counter(4));
+        fields.push(PF::Counter(4));
         if include_tricky {
-            fields.push(PackFields::TrickyByte);
+            fields.push(PF::TrickyByte);
         }
         if include_len {
-            fields.push(PackFields::Len(4));
+            fields.push(PF::Len(4));
         }
         if include_crc {
-            fields.push(PackFields::HeadCRC(4));
+            fields.push(PF::HeadCRC(4));
         }
         if include_idconn {
-            fields.push(PackFields::IdConnect(4));
+            fields.push(PF::IdConnect(4));
         }
         if include_id_sender_receiver {
-            fields.push(PackFields::IdSender(4));
-            fields.push(PackFields::IdReceiver(4));
+            fields.push(PF::IdSender(4));
+            fields.push(PF::IdReceiver(4));
         }
         if include_ttl {
-            fields.push(PackFields::TTL(4));
+            fields.push(PF::TTL(4));
         }
         if include_nonce {
-            fields.push(PackFields::Nonce(4));
+            fields.push(PF::Nonce(4));
         }
         fields.into_boxed_slice()
     }
@@ -1916,26 +2265,28 @@ mod flag_verification_tests {
             true,  // nonce
             false, // tricky not required for single
         );
-        let group = GroupTopology::new(&[(fields, 42)], 16, true, false).unwrap();
+        let group =
+            GroupTopology::new(&[(fields, PackTypeGroup::Any, 42)], 16, true, false).unwrap();
 
-        assert!(group.all_have_len_field());
-        assert!(group.all_have_crc_field());
-        assert!(group.all_have_idconn_field());
-        assert!(group.all_have_id_sender_receiver_fields());
-        assert!(group.all_have_ttl_field());
-        assert!(group.all_have_counter_field());
-        assert!(group.all_have_nonce_field());
+        assert!(group.all_have_len_field().unwrap().0);
+        assert!(group.all_have_crc_field().unwrap().0);
+        assert!(group.all_have_idconn_field().unwrap().0);
+        assert!(group.all_have_id_sender_receiver_fields().unwrap().0);
+        assert!(group.all_have_ttl_field().unwrap().0);
+        assert!(group.all_have_counter_field().unwrap().0);
+        assert!(group.all_have_nonce_field().unwrap().0);
 
         // Now a topology with none of the optional fields (only counter)
-        let minimal = Box::new([PackFields::Counter(4)]);
-        let group2 = GroupTopology::new(&[(minimal, 42)], 16, true, false).unwrap();
-        assert!(!group2.all_have_len_field());
-        assert!(!group2.all_have_crc_field());
-        assert!(!group2.all_have_idconn_field());
-        assert!(!group2.all_have_id_sender_receiver_fields());
-        assert!(!group2.all_have_ttl_field());
-        assert!(group2.all_have_counter_field()); // always true
-        assert!(!group2.all_have_nonce_field());
+        let minimal = Box::new([PF::Counter(4)]);
+        let group2 =
+            GroupTopology::new(&[(minimal, PackTypeGroup::Any, 42)], 16, true, false).unwrap();
+        assert!(group2.all_have_len_field().is_none());
+        assert!(group2.all_have_crc_field().is_none());
+        assert!(group2.all_have_idconn_field().is_none());
+        assert!(group2.all_have_id_sender_receiver_fields().is_none());
+        assert!(group2.all_have_ttl_field().is_none());
+        assert!(group2.all_have_counter_field().unwrap().0); // always true
+        assert!(group2.all_have_nonce_field().is_none());
     }
 
     // ------------------------------------------------------------------------
@@ -1945,78 +2296,141 @@ mod flag_verification_tests {
     fn all_flags_true_when_all_topologies_have_all_fields() {
         let fields1 = make_fields(true, true, true, true, true, true, true);
         let fields2 = make_fields(true, true, true, true, true, true, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(group.all_have_len_field());
-        assert!(group.all_have_crc_field());
-        assert!(group.all_have_idconn_field());
-        assert!(group.all_have_id_sender_receiver_fields());
-        assert!(group.all_have_ttl_field());
-        assert!(group.all_have_counter_field());
-        assert!(group.all_have_nonce_field());
+        assert!(group.all_have_len_field().unwrap().0);
+        assert!(group.all_have_crc_field().unwrap().0);
+        assert!(group.all_have_idconn_field().unwrap().0);
+        assert!(group.all_have_id_sender_receiver_fields().unwrap().0);
+        assert!(group.all_have_ttl_field().unwrap().0);
+        assert!(group.all_have_counter_field().unwrap().0);
+        assert!(group.all_have_nonce_field().unwrap().0);
     }
 
     #[test]
     fn all_have_len_false_when_missing_in_one_topology() {
         let fields1 = make_fields(true, false, false, false, false, false, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_len_field());
+        assert!(!group.all_have_len_field().unwrap().0);
         // other flags remain false because no topology has them
-        assert!(!group.all_have_crc_field());
-        assert!(!group.all_have_idconn_field());
-        assert!(!group.all_have_id_sender_receiver_fields());
-        assert!(!group.all_have_ttl_field());
-        assert!(group.all_have_counter_field());
-        assert!(!group.all_have_nonce_field());
+        assert!(group.all_have_crc_field().is_none());
+        assert!(group.all_have_idconn_field().is_none());
+        assert!(group.all_have_id_sender_receiver_fields().is_none());
+        assert!(group.all_have_ttl_field().is_none());
+        assert!(group.all_have_counter_field().unwrap().0);
+        assert!(group.all_have_nonce_field().is_none());
     }
 
     #[test]
     fn all_have_crc_false_when_missing_in_one_topology() {
         let fields1 = make_fields(false, true, false, false, false, false, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_crc_field());
-        assert!(!group.all_have_len_field());
-        assert!(group.all_have_counter_field());
+        assert!(!group.all_have_crc_field().unwrap().0);
+        assert!(group.all_have_len_field().is_none());
+        assert!(group.all_have_counter_field().unwrap().0);
     }
 
     #[test]
     fn all_have_idconn_false_when_missing_in_one_topology() {
         let fields1 = make_fields(false, false, true, false, false, false, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_idconn_field());
+        assert!(!group.all_have_idconn_field().unwrap().0);
     }
 
     #[test]
     fn all_have_id_sender_receiver_false_when_missing_in_one_topology() {
         let fields1 = make_fields(false, false, false, true, false, false, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_id_sender_receiver_fields());
+        assert!(!group.all_have_id_sender_receiver_fields().unwrap().0);
     }
 
     #[test]
     fn all_have_ttl_false_when_missing_in_one_topology() {
         let fields1 = make_fields(false, false, false, false, true, false, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_ttl_field());
+        assert!(!group.all_have_ttl_field().unwrap().0);
     }
 
     #[test]
     fn all_have_nonce_false_when_missing_in_one_topology() {
         let fields1 = make_fields(false, false, false, false, false, true, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_nonce_field());
+        assert!(!group.all_have_nonce_field().unwrap().0);
     }
 
     // ------------------------------------------------------------------------
@@ -2025,15 +2439,25 @@ mod flag_verification_tests {
     #[test]
     fn all_have_counter_always_true() {
         // Minimal valid topology (only counter)
-        let minimal = Box::new([PackFields::Counter(4)]);
-        let group = GroupTopology::new(&[(minimal, 1)], 16, true, false).unwrap();
-        assert!(group.all_have_counter_field());
+        let minimal = Box::new([PF::Counter(4)]);
+        let group =
+            GroupTopology::new(&[(minimal, PackTypeGroup::Any, 1)], 16, true, false).unwrap();
+        assert!(group.all_have_counter_field().unwrap().0);
 
         // Multi‑topology with various fields
         let fields1 = make_fields(true, true, true, true, true, true, true);
         let fields2 = make_fields(false, false, false, false, false, false, true);
-        let group2 = GroupTopology::new(&[(fields1, 1), (fields2, 2)], 16, true, false).unwrap();
-        assert!(group2.all_have_counter_field());
+        let group2 = GroupTopology::new(
+            &[
+                (fields1, PackTypeGroup::Any, 1),
+                (fields2, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+        assert!(group2.all_have_counter_field().unwrap().0);
     }
 
     // ------------------------------------------------------------------------
@@ -2046,15 +2470,24 @@ mod flag_verification_tests {
         let fields_a = make_fields(true, true, false, false, true, false, true);
         let fields_b = make_fields(false, false, true, true, false, true, true);
 
-        let group = GroupTopology::new(&[(fields_a, 1), (fields_b, 2)], 16, true, false).unwrap();
+        let group = GroupTopology::new(
+            &[
+                (fields_a, PackTypeGroup::Any, 1),
+                (fields_b, PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
 
-        assert!(!group.all_have_len_field()); // only A has len
-        assert!(!group.all_have_crc_field()); // only A has crc
-        assert!(!group.all_have_idconn_field()); // only B has idconn
-        assert!(!group.all_have_id_sender_receiver_fields()); // only B has both
-        assert!(!group.all_have_ttl_field()); // only A has ttl
-        assert!(!group.all_have_nonce_field()); // only B has nonce
-        assert!(group.all_have_counter_field()); // always true
+        assert!(!group.all_have_len_field().unwrap().0); // only A has len
+        assert!(!group.all_have_crc_field().unwrap().0); // only A has crc
+        assert!(!group.all_have_idconn_field().unwrap().0); // only B has idconn
+        assert!(!group.all_have_id_sender_receiver_fields().unwrap().0); // only B has both
+        assert!(!group.all_have_ttl_field().unwrap().0); // only A has ttl
+        assert!(!group.all_have_nonce_field().unwrap().0); // only B has nonce
+        assert!(group.all_have_counter_field().unwrap().0); // always true
     }
 
     // ------------------------------------------------------------------------
@@ -2068,9 +2501,9 @@ mod flag_verification_tests {
 
         let group = GroupTopology::new(
             &[
-                (fields_all, 1),
-                (fields_missing_len, 2),
-                (fields_missing_crc, 3),
+                (fields_all, PackTypeGroup::Any, 1),
+                (fields_missing_len, PackTypeGroup::Any, 2),
+                (fields_missing_crc, PackTypeGroup::Any, 3),
             ],
             16,
             true,
@@ -2079,14 +2512,214 @@ mod flag_verification_tests {
         .unwrap();
 
         // len missing in second topology
-        assert!(!group.all_have_len_field());
+        assert!(!group.all_have_len_field().unwrap().0);
         // crc missing in third topology
-        assert!(!group.all_have_crc_field());
+        assert!(!group.all_have_crc_field().unwrap().0);
         // idconn, sender/receiver, ttl, nonce are present in all three
-        assert!(group.all_have_idconn_field());
-        assert!(group.all_have_id_sender_receiver_fields());
-        assert!(group.all_have_ttl_field());
-        assert!(group.all_have_nonce_field());
-        assert!(group.all_have_counter_field());
+        assert!(group.all_have_idconn_field().unwrap().0);
+        assert!(group.all_have_id_sender_receiver_fields().unwrap().0);
+        assert!(group.all_have_ttl_field().unwrap().0);
+        assert!(group.all_have_nonce_field().unwrap().0);
+        assert!(group.all_have_counter_field().unwrap().0);
+    }
+
+    fn ligma(a1: usize, a2: usize) -> Box<[PF]> {
+        vec![
+            PF::Len(2),
+            PF::TrickyByte,
+            PF::UserField(a1),
+            PF::Counter(8),
+            PF::UserField(a2),
+        ]
+        .into_boxed_slice()
+    }
+    #[test]
+    fn len_varibles() {
+        let mut pacr = vec![];
+        let dp1 = (ligma(1, 2), PackTypeGroup::Data, 1); //min
+        let dp2 = (ligma(2, 3), PackTypeGroup::Data, 2);
+        let dp3 = (ligma(4, 1), PackTypeGroup::Data, 7);
+        let dp4 = (ligma(6, 9), PackTypeGroup::Data, 11); //max
+
+        let fp1 = (ligma(20, 1), PackTypeGroup::Fback, 100); //min
+        let fp2 = (ligma(20, 1), PackTypeGroup::Fback, 200);
+        let fp3 = (ligma(5, 50), PackTypeGroup::Fback, 4); //max
+        let fp4 = (ligma(6, 30), PackTypeGroup::Fback, 10);
+
+        let ap_min = (ligma(1, 1), PackTypeGroup::Any, 133);
+        let ap_max = (ligma(100, 100), PackTypeGroup::Any, 122);
+
+        pacr.push(dp1);
+        pacr.push(dp2);
+        pacr.push(dp3);
+        pacr.push(dp4);
+        //
+        pacr.push(fp1);
+        pacr.push(fp2);
+        pacr.push(fp3);
+        pacr.push(fp4);
+
+        let basic_len = 2 + 1 + 8 + 1 + 16; //len + tbyte + ctr + head_byte + tag
+        let result = GroupTopology::new(&pacr[..], 16, true, false).unwrap();
+
+        assert_eq!(result.how_elems_in_me(), result.how_elems_in_me);
+        assert_eq!(pacr.len(), result.how_elems_in_me());
+
+        assert_ne!(
+            result.data_max_minimal_len(),
+            result.fback_max_minimal_len()
+        );
+        assert_ne!(
+            result.data_min_minimal_len(),
+            result.fback_min_minimal_len()
+        );
+
+        assert_eq!(result.data_max_minimal_len(), basic_len + 6 + 9);
+        assert_eq!(result.data_min_minimal_len(), basic_len + 1 + 2);
+
+        assert_eq!(result.fback_min_minimal_len(), basic_len + 20 + 1);
+        assert_eq!(result.fback_max_minimal_len(), basic_len + 5 + 50);
+
+        pacr.push(ap_min);
+
+        let result = GroupTopology::new(&pacr[..], 16, true, false).unwrap();
+
+        assert_eq!(result.data_min_minimal_len(), basic_len + 1 + 1);
+        assert_eq!(result.fback_min_minimal_len(), basic_len + 1 + 1);
+        assert_eq!(
+            result.fback_min_minimal_len(),
+            result.data_min_minimal_len()
+        );
+
+        pacr.pop();
+
+        pacr.push(ap_max);
+
+        let result = GroupTopology::new(&pacr[..], 16, true, false).unwrap();
+
+        assert_eq!(result.data_max_minimal_len(), basic_len + 100 + 100);
+        assert_eq!(result.fback_max_minimal_len(), basic_len + 100 + 100);
+        assert_eq!(
+            result.fback_max_minimal_len(),
+            result.data_max_minimal_len()
+        );
+    }
+
+    #[test]
+    fn parameter_comparability_test() {
+        fn pa_eq(
+            a1: (bool, usize),
+            a2: (bool, usize),
+            a3: (bool, usize),
+            a4: (bool, usize),
+        ) -> bool {
+            a1 == a2 && a1 == a3 && a1 == a4
+        }
+
+        let fields1 = vec![
+            PF::TrickyByte,    //
+            PF::Len(1),        //
+            PF::Counter(2),    //
+            PF::IdSender(3),   //
+            PF::IdReceiver(3), //
+            PF::IdConnect(4),  //
+            PF::HeadCRC(5),    //
+            PF::Nonce(6),      //
+            PF::TTL(7),
+            PF::UserField(10),
+        ]
+        .into_boxed_slice();
+
+        let fields2 = vec![PF::TrickyByte, PF::Counter(2)].into_boxed_slice();
+
+        let g1 = GroupTopology::new(
+            &[
+                (fields1.clone(), PackTypeGroup::Any, 1),
+                (fields2.clone(), PackTypeGroup::Any, 2),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+
+        let g2 = GroupTopology::new(
+            &[
+                (fields1.clone(), PackTypeGroup::Data, 1),
+                (fields2.clone(), PackTypeGroup::Data, 2),
+                (fields2.clone(), PackTypeGroup::Fback, 3),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+
+        let g3 = GroupTopology::new(
+            &[
+                (fields1.clone(), PackTypeGroup::Fback, 1),
+                (fields2.clone(), PackTypeGroup::Fback, 2),
+                (fields2.clone(), PackTypeGroup::Data, 3),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+        //
+        let g1_l = g1.all_have_len_field().unwrap();
+        let g2_l = g2.all_have_len_field().unwrap();
+        let g3_l = g3.all_have_len_field().unwrap();
+        assert!(pa_eq(g1_l, g2_l, g3_l, (false, 1)));
+        //
+        let g1_c = g1.all_have_counter_field().unwrap();
+        let g2_c = g2.all_have_counter_field().unwrap();
+        let g3_c = g3.all_have_counter_field().unwrap();
+        assert!(pa_eq(g1_c, g2_c, g3_c, (true, 2)));
+        //
+        let g1_d = g1.all_have_id_sender_receiver_fields().unwrap();
+        let g2_d = g2.all_have_id_sender_receiver_fields().unwrap();
+        let g3_d = g3.all_have_id_sender_receiver_fields().unwrap();
+        assert!(pa_eq(g1_d, g2_d, g3_d, (false, 3)));
+        //
+        let g1_i = g1.all_have_idconn_field().unwrap();
+        let g2_i = g2.all_have_idconn_field().unwrap();
+        let g3_i = g3.all_have_idconn.unwrap();
+        assert!(pa_eq(g1_i, g2_i, g3_i, (false, 4)));
+
+        //
+        let g1_s = g1.all_have_crc_field().unwrap();
+        let g2_s = g2.all_have_crc_field().unwrap();
+        let g3_s = g3.all_have_crc_field().unwrap();
+        assert!(pa_eq(g1_s, g2_s, g3_s, (false, 5)));
+        //
+        let g1_n = g1.all_have_nonce_field().unwrap();
+        let g2_n = g2.all_have_nonce_field().unwrap();
+        let g3_n = g3.all_have_nonce_field().unwrap();
+        assert!(pa_eq(g1_n, g2_n, g3_n, (false, 6)));
+
+        //
+        let g1_t = g1.all_have_ttl_field().unwrap();
+        let g2_t = g2.all_have_ttl_field().unwrap();
+        let g3_t = g3.all_have_ttl_field().unwrap();
+        assert!(pa_eq(g1_t, g2_t, g3_t, (false, 7)));
+        //
+        //
+        //
+        assert!(g3.any_have_trash_field()); //true
+
+        let g6 = GroupTopology::new(
+            &[
+                (fields2.clone(), PackTypeGroup::Any, 1),
+                (fields2.clone(), PackTypeGroup::Any, 2),
+                (fields2.clone(), PackTypeGroup::Any, 3),
+            ],
+            16,
+            true,
+            false,
+        )
+        .unwrap();
+
+        assert!(!g6.any_have_trash_field()); //false
     }
 }

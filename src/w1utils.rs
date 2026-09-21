@@ -8,6 +8,7 @@
 #![deny(clippy::todo)]
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
+
 use crate::{EXPCP, checked_cast};
 
 /// a fixed-size buffer that stores only the last written data.
@@ -93,9 +94,9 @@ impl SafeBuffer {
     }
 }
 ///array to be u64
-pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
+pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, String> {
     if bytes.len() > 8 || bytes.is_empty() {
-        return Err("bytes.len() must be between 1 and 8");
+        return Err("bytes.len() must be between 1 and 8".to_string());
     }
     let padding = 8usize
         .checked_sub(bytes.len())
@@ -109,9 +110,9 @@ pub fn bytes_to_u64(bytes: &[u8]) -> Result<u64, &'static str> {
     Ok(u64::from_be_bytes(buffer))
 }
 ///be u64 to array
-pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
+pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), String> {
     if bytes.len() > 8 || bytes.is_empty() {
-        return Err("bytes.len() > 8 ||bytes.len() ==0");
+        return Err("bytes.len() > 8 ||bytes.len() ==0".to_string());
     }
 
     let buffer: [u8; 8] = num.to_be_bytes();
@@ -126,20 +127,16 @@ pub fn u64_to_1_8bytes(num: u64, bytes: &mut [u8]) -> Result<(), &'static str> {
     Ok(())
 }
 /// a (+ or -) b  = u64
-pub fn add_u64_i64(
-    a: u64,
-    b: i64,
-    zero_if_in_sub_a_less_than_b: bool,
-) -> Result<u64, &'static str> {
+pub fn add_u64_i64(a: u64, b: i64, zero_if_in_sub_a_less_than_b: bool) -> Result<u64, String> {
     if b >= 0 {
         a.checked_add(checked_cast!(b.wrapping_abs() => u64, err "b.wrapping_abs() conversion to u64 failed")?)
-            .ok_or("overflow occurred adding positive")
+            .ok_or("overflow occurred adding positive".to_string())
     } else {
         a.checked_sub(checked_cast!(b.wrapping_abs() => u64, err "b.wrapping_abs() conversion to u64 failed")?).map_or(
             if zero_if_in_sub_a_less_than_b {
                 Ok(0)
             } else {
-                Err("underflow occurred subtracting absolute")
+                Err("underflow occurred subtracting absolute".to_string())
             },
             Ok,
         )
@@ -147,15 +144,15 @@ pub fn add_u64_i64(
     }
 }
 ///insert_bits
-pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static str> {
+pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, String> {
     if len == 0 || len > 32 {
-        return Err("len> 32 bits or len == 0");
+        return Err("len> 32 bits or len == 0".to_string());
     }
     let len_usize = checked_cast!(len => usize, err "len conversion to usize failed")?;
     let end_pos = pos.checked_add(len_usize).ok_or("overflow in pos + len")?;
 
     if end_pos > data.len() << 3 {
-        return Err("end_pos > output.len() * 8");
+        return Err("end_pos > output.len() * 8".to_string());
     }
 
     // init the result variable
@@ -179,15 +176,15 @@ pub fn extract_bits(data: &[u8], pos: usize, len: u8) -> Result<u32, &'static st
 ///This is a remnant from the old version of the algorithm;
 ///it inserts the first len bits into the [u8] array starting at position pos (not in
 /// bytes, but in bits!).
-pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result<(), &'static str> {
+pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result<(), String> {
     if len == 0 || len > 32 {
-        return Err("len> 32 bits or len == 0");
+        return Err("len> 32 bits or len == 0".to_string());
     }
     let len_usize = checked_cast!(len => usize, err "len conversion to usize failed")?;
     let end_pos = pos.checked_add(len_usize).ok_or("overflow in pos + len")?;
 
     if end_pos > output.len() << 3 {
-        return Err("end_pos > output.len() * 8");
+        return Err("end_pos > output.len() * 8".to_string());
     }
     // extract the lowest len bits from the input
     let mask = 0xFFFFFFFFu32
@@ -224,6 +221,115 @@ pub fn insert_bits(output: &mut [u8], pos: usize, len: u8, input: u32) -> Result
 
     Ok(())
 }
+
+/// Fills the rest of the slice starting from `pad_pos` with the bitwise NOT
+/// of the last payload byte.
+///
+/// Returns `true` on success, or `false` if indexes are invalid or no space is left.
+///
+pub fn pad_maker(arr: &mut [u8], pad_pos: usize) -> bool {
+    let last_pos = if let Some(x) = pad_pos.checked_sub(1) {
+        x
+    } else {
+        return false;
+    };
+
+    let last_byte = !if let Some(x) = arr.get(last_pos) {
+        *x
+    } else {
+        return false;
+    };
+
+    if let Some(x) = arr.get_mut(pad_pos..) {
+        if x.is_empty() {
+            return false;
+        }
+        x.fill(last_byte);
+    } else {
+        return false;
+    }
+
+    true
+}
+
+/// Trims the padding applied by `pad_maker` and returns the original payload length.
+///
+/// Scans backwards from the end. If the padding structure is broken or missing,
+/// it safely returns the full length of the input slice (`arr.len()`).
+///
+pub fn pad_trim(arr: &[u8]) -> usize {
+    let total_len = arr.len();
+
+    let target_pad_byte = match arr.last() {
+        Some(&byte) => byte,
+        None => return 0,
+    };
+
+    let expected_last_data_byte = !target_pad_byte;
+
+    for (i, &current_byte) in arr.iter().enumerate().rev().skip(1) {
+        if current_byte == expected_last_data_byte {
+            return i.saturating_add(1);
+        }
+
+        if current_byte != target_pad_byte {
+            return total_len;
+        }
+    }
+
+    total_len
+}
+
+/// Appends `pad_pos` bytes to the end of the vector, using the inversion of the last byte.
+/// If `pad_pos == 0`, no alignment is required, the function returns `false`.
+pub fn pad_maker_vec(arr: &mut Vec<u8>, pad_pos: usize) -> bool {
+    // If nothing needs to be added, return false as per condition
+    if pad_pos == 0 {
+        return false;
+    }
+
+    // Get the last byte of the current data.
+    // If the vector is empty, we cannot invert, return false.
+    let last_byte = match arr.last() {
+        Some(&byte) => !byte, // Invert bits
+        None => return false,
+    };
+
+    // Run the loop and increase the vector by exactly pad_pos elements
+    /*    for _ in 0..pad_pos {
+            arr.push(last_byte);
+        }
+    */
+    arr.resize(arr.len().saturating_add(pad_pos), last_byte);
+    true
+}
+
+/// Determines the real data size, strips the padding and truncates the vector.
+pub fn pad_trim_vec(arr: &mut Vec<u8>) {
+    // Safely get the very last padding byte
+    let target_pad_byte = match arr.last() {
+        Some(&byte) => byte,
+        None => return, // Vector is empty, nothing to truncate
+    };
+
+    let expected_last_data_byte = !target_pad_byte;
+
+    // Search for the padding boundary from the end of the array
+    for (i, &current_byte) in arr.iter().enumerate().rev().skip(1) {
+        if current_byte == expected_last_data_byte {
+            // Found the inverted byte — this is the end of real data.
+            // i.saturating_add(1) gives the exact payload length.
+            arr.truncate(i.saturating_add(1));
+            return;
+        }
+
+        if current_byte != target_pad_byte {
+            // Padding structure is corrupted, do not modify the vector
+            return;
+        }
+    }
+}
+
 ///converts a byte to a number that fits within the maximum capacity of that word
 pub fn len_byte_maximal_capacity_check(len: usize) -> (u64, usize) {
     if len > 7 {
@@ -235,22 +341,22 @@ pub fn len_byte_maximal_capacity_check(len: usize) -> (u64, usize) {
 
 /// # Examples
 /// ```
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x00), 1);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF), 1);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF), 2);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00), 2);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF), 3);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00), 3);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF), 4);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00), 4);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF), 5);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00), 5);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF), 6);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00), 6);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF), 7);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00_00), 7);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF_FF), 8);
-/// assert_eq!(wisleess2::w1utils::len_u64_as_bytes(0x10_FF_FF_FF_FF_FF_FF_FF), 8);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x00), 1);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF), 1);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF), 2);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00), 2);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF), 3);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00_00), 3);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF), 4);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00_00_00), 4);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF), 5);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00_00_00_00), 5);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF), 6);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00), 6);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF), 7);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x01_00_00_00_00_00_00), 7);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0xFF_FF_FF_FF_FF_FF_FF_FF), 8);
+/// assert_eq!(wis::w1utils::len_u64_as_bytes(0x10_FF_FF_FF_FF_FF_FF_FF), 8);
 /// ```
 pub fn len_u64_as_bytes(num: u64) -> usize {
     if 0b1u64 << (1 << 3) > num {
@@ -293,7 +399,7 @@ pub fn len_u64_as_bytes(num: u64) -> usize {
 ///
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
-/// let result = wisleess2::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
+/// let result = wis::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
 /// assert_eq!(result[0],[1,2,3,4]);
 /// assert_eq!(result[1],[5]);
 /// assert_eq!(result[2],[6,7]);
@@ -303,7 +409,7 @@ pub fn split_by_lengths<'a, T>(
     data: &'a mut [T],
     lengths: &[usize],
     absolute: bool,
-) -> Result<Vec<&'a mut [T]>, &'static str> {
+) -> Result<Vec<&'a mut [T]>, String> {
     let total: usize = data.len();
     let mut remaining_data: &'a mut [T] = data;
     let capacity = lengths
@@ -332,7 +438,7 @@ pub fn split_by_lengths<'a, T>(
             sum = sum.checked_add(len).ok_or("length overflow")?;
         }
         if sum != total {
-            return Err("total lengths != data length");
+            return Err("total lengths != data length".to_string());
         }
 
         for &len in lengths {
@@ -359,14 +465,14 @@ pub fn split_by_lengths<'a, T>(
 /// ```
 /// let mut data = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 /// let lengths = [4, 1, 2, 2];
-/// let result = wisleess2::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
+/// let result = wis::w1utils::split_by_lengths(&mut data, &lengths, false).unwrap();
 /// assert_eq!(result.len(), 4);
 /// ```
 pub fn split_by_positions<'a, T>(
     data: &'a mut [T],
     positions: &[usize],
     absolute: bool,
-) -> Result<Vec<&'a mut [T]>, &'static str> {
+) -> Result<Vec<&'a mut [T]>, String> {
     let total = data.len();
     let mut remaining_data: &'a mut [T] = data;
     let capacity = positions
@@ -378,13 +484,13 @@ pub fn split_by_positions<'a, T>(
 
     for &pos in positions {
         if pos <= last_pos {
-            return Err("positions not strictly increasing");
+            return Err("positions not strictly increasing".to_string());
         }
         if pos > total {
             if absolute {
                 break;
             } else {
-                return Err("position exceeds data length");
+                return Err("position exceeds data length".to_string());
             }
         }
         let len = pos
@@ -409,6 +515,18 @@ pub fn f32_to_bytes_be(value: f32, mass: &mut [u8; 4]) {
 /// convert 4 bytes (big endian) to f32
 pub fn bytes_to_f32_be(bytes: &[u8; 4]) -> f32 {
     f32::from_be_bytes(*bytes)
+}
+
+#[inline]
+///whether the generated random number falls within the range of successful outcomes
+pub const fn check_probability(scaled_prob: u32, random_val: u32) -> bool {
+    // 1. If the probability is 100%, then any random number returns true
+    if scaled_prob == u32::MAX {
+        return true;
+    }
+
+    // 2. For all other cases (including 0) strict comparison works perfectly
+    random_val < scaled_prob
 }
 
 /// exponential moving average (ema) state
@@ -451,6 +569,124 @@ impl Ema {
     /// returns the current average value without updating it
     pub fn get(&self) -> f64 {
         self.current_avg
+    }
+}
+
+/// Safely converts f64 from the range [0.0; 1.0] to [0; u32::MAX]
+pub fn float_to_u32_scaled(val: f32) -> Result<u32, String> {
+    // Check the incoming bounds and NaN just in case
+    if !(0.0..=1.0).contains(&val) || val.is_nan() {
+        return Err("Value out of range [0.0, 1.0] or NaN".to_string());
+    }
+
+    #[allow(clippy::as_conversions)]
+    let max_f32 = u32::MAX as f32;
+
+    // Multiply the coefficient by the maximum value u32
+    let scaled = val * max_f32;
+
+    // Round to the nearest integer and convert to u32
+    #[allow(clippy::as_conversions)]
+    let result = scaled.round() as u32;
+
+    Ok(result)
+}
+
+/// Computes a new packet length based on random adjustment and trimming policy.
+///
+/// # Arguments
+/// * `max_len` – absolute upper bound for the packet length (must be > 0).
+/// * `payload_len` – current packet length.
+/// * `rand_num` – a pseudo‑random number used to generate the adjustment.
+/// * `rand_range` – controls the maximum possible adjustment magnitude.
+/// * `no_trim` – if `true`, the length can only be increased; if `false`, it can go up or down.
+///
+/// # Returns
+/// `Ok(usize)` with the adjusted length, clamped to `[1, max_len]`.
+/// Returns an error if `max_len` is zero.
+pub fn fuck_coeff_of_rand_pack_trim(
+    max_len: &usize,
+    payload_len: &usize,
+    rand_num: &usize,
+    rand_range: &usize,
+    no_trim: bool,
+) -> Result<usize, String> {
+    // Reject zero maximum, as it would make all lengths invalid.
+    if *max_len == 0 {
+        return Err("max_len must be greater than 0".to_string());
+    }
+
+    // Effective range cannot exceed the maximum length.
+    let range = if rand_range > max_len {
+        max_len
+    } else {
+        rand_range
+    };
+
+    // Half of the range (used to lower the length when trimming is allowed).
+    // `checked_div` returns `None` only when dividing by zero, which cannot happen
+    // because `range` is zero only when `rand_range` is zero, but division by zero
+    // is still safe – we handle it with `unwrap_or(0)`.
+    let half_range = range.checked_div(2).unwrap_or(0);
+    // Random offset within the effective range.
+    let random_offset = rand_num.checked_rem(*range).unwrap_or(0);
+
+    let adjusted = if no_trim {
+        // Can only grow: add the random offset, saturating on overflow.
+        payload_len.saturating_add(random_offset)
+    } else {
+        // Can both shrink and grow.
+        if *payload_len >= half_range {
+            // Safe subtraction because payload_len >= half_range.
+            let base = payload_len.saturating_sub(half_range);
+            base.saturating_add(random_offset)
+        } else {
+            // payload_len < half_range, so we compute the deficit.
+            let deficit = half_range.saturating_sub(*payload_len);
+            if random_offset <= deficit {
+                // The resulting length would be <= 0, so we later clamp it to 1.
+                0
+            } else {
+                // Positive difference, safe with saturating_sub.
+                random_offset.saturating_sub(deficit)
+            }
+        }
+    };
+
+    // Ensure the result is at least 1.
+    let result = if adjusted == 0 { 1 } else { adjusted };
+
+    // Clamp to the absolute maximum.
+    let result = if result > *max_len { *max_len } else { result };
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests_float_to_u32_scaled {
+    use super::*;
+
+    #[test]
+    fn test_float_to_u32_scaled_edges() {
+        assert_eq!(float_to_u32_scaled(0.0), Ok(0));
+
+        assert_eq!(float_to_u32_scaled(1.0), Ok(u32::MAX));
+    }
+
+    #[test]
+    fn test_float_to_u32_scaled_middle() {
+        assert_eq!(float_to_u32_scaled(0.5), Ok(2_147_483_648));
+    }
+
+    #[test]
+    fn test_float_to_u32_scaled_out_of_bounds() {
+        assert!(float_to_u32_scaled(-0.0001).is_err());
+        assert!(float_to_u32_scaled(1.0001).is_err());
+    }
+
+    #[test]
+    fn test_float_to_u32_scaled_nan() {
+        assert!(float_to_u32_scaled(f32::NAN).is_err());
     }
 }
 
@@ -597,7 +833,7 @@ mod length_tests {
         let mut data = [1, 2, 3];
         let lengths = [1, usize::MAX];
         let result = split_by_lengths(&mut data, &lengths, false);
-        assert_eq!(result, Err("length overflow"));
+        assert_eq!(result, Err("length overflow".to_string()));
     }
 
     #[test]
@@ -605,7 +841,7 @@ mod length_tests {
         let mut data = [1, 2, 3];
         let lengths = [1, 1]; // Sum < data.len()
         let result = split_by_lengths(&mut data, &lengths, false);
-        assert_eq!(result, Err("total lengths != data length"));
+        assert_eq!(result, Err("total lengths != data length".to_string()));
     }
 
     #[test]
@@ -656,7 +892,7 @@ mod position_tests {
         let mut data = [1, 2, 3];
         let positions = [2, 1]; // Not increasing
         let result = split_by_positions(&mut data, &positions, false);
-        assert_eq!(result, Err("positions not strictly increasing"));
+        assert_eq!(result, Err("positions not strictly increasing".to_string()));
     }
 
     #[test]
@@ -664,7 +900,7 @@ mod position_tests {
         let mut data = [1, 2, 3];
         let positions = [1, 5]; // 5 is out of bounds
         let result = split_by_positions(&mut data, &positions, false);
-        assert_eq!(result, Err("position exceeds data length"));
+        assert_eq!(result, Err("position exceeds data length".to_string()));
     }
 
     #[test]
@@ -687,26 +923,6 @@ mod position_tests {
         assert_eq!(slices[0], &mut [1, 2]);
         assert_eq!(slices[1], &mut [3, 4]);
     }
-
-    /*
-    use std::time;
-    #[test]
-    fn test_a_time() {
-        let ts = time::Instant::now();
-
-        let mut x: f64 = 0.0;
-
-        for _ in 0..100_000_000 {
-            x += ts.elapsed().as_secs_f64();
-        }
-
-        println!(
-            "{}                   {}",
-            100_000_000.0 / ts.elapsed().as_micros() as f64,
-            x
-        );
-        assert!(false);
-    }*/
 }
 
 #[cfg(test)]
@@ -1096,9 +1312,11 @@ mod tests_safe_buffer {
         assert_eq!(buf.capacity(), 5);
         buf.write(b"abc");
         assert_eq!(buf.len(), 3);
+        assert!(!buf.is_empty());
         buf.write(b"");
         assert_eq!(buf.get(), b"");
         assert_eq!(buf.len(), 0);
+        assert!(buf.is_empty());
         // next write after empty works
         buf.write(b"de");
         assert_eq!(buf.get(), b"de");
@@ -1708,5 +1926,579 @@ mod test_mod_insert {
         insert_bits(&mut data, 0, 16, input).unwrap();
         let extracted = extract_bits_from_output(&data, 0, 16);
         assert_eq!(extracted, input & 0xFFFF);
+    }
+}
+
+#[cfg(test)]
+mod tests_check_probability {
+    use super::*;
+
+    #[test]
+    fn test_check_probability_zero() {
+        assert!(!check_probability(0, 0));
+        assert!(!check_probability(0, 1));
+        assert!(!check_probability(0, u32::MAX));
+    }
+
+    #[test]
+    fn test_check_probability_max() {
+        assert!(check_probability(u32::MAX, 0));
+        assert!(check_probability(u32::MAX, 2_147_483_648));
+        assert!(check_probability(u32::MAX, u32::MAX));
+    }
+
+    #[test]
+    fn test_check_probability_half() {
+        let half = 2_147_483_648;
+        assert!(check_probability(half, 0));
+        assert!(check_probability(half, 2_147_483_647));
+        assert!(!check_probability(half, 2_147_483_648));
+        assert!(!check_probability(half, u32::MAX));
+    }
+
+    #[test]
+    fn test_check_probability_distribution() {
+        #![allow(clippy::as_conversions)]
+        #![allow(clippy::integer_division)]
+        let scaled_prob = 3_006_477_107;
+        let mut true_count = 0;
+        let total_iterations = 10_000;
+
+        for i in 0..total_iterations {
+            #[allow(clippy::arithmetic_side_effects)]
+            let fake_random = (i as u64 * (u32::MAX as u64 / total_iterations as u64)) as u32;
+
+            if check_probability(scaled_prob, fake_random) {
+                #[allow(clippy::arithmetic_side_effects)]
+                {
+                    true_count += 1;
+                }
+            }
+        }
+
+        let percentage = (true_count * 100) / total_iterations;
+        //assert!()
+        assert!((69..=71).contains(&percentage));
+    }
+}
+
+#[cfg(test)]
+mod tests_fuck_coeff_of_rand_pack_trim {
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+
+    // Helper to check that the result is always within [1, max_len] when Ok.
+    fn assert_valid_result(result: Result<usize, String>, max_len: usize) {
+        if max_len == 0 {
+            assert_eq!(result, Err("max_len must be greater than 0".to_string()));
+        } else {
+            let val = result.unwrap();
+            assert!(
+                val >= 1 && val <= max_len,
+                "value {} out of range [1, {}]",
+                val,
+                max_len
+            );
+        }
+    }
+
+    #[test]
+    fn test_edge_cases() {
+        // max_len == 0 always errors
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&0, &10, &50, &100, false),
+            Err("max_len must be greater than 0".to_string())
+        );
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&0, &0, &0, &0, true),
+            Err("max_len must be greater than 0".to_string())
+        );
+
+        // rand_range == 0 -> no adjustment
+        for no_trim in [false, true] {
+            let result = fuck_coeff_of_rand_pack_trim(&200, &100, &123, &0, no_trim).unwrap();
+            // Since half_range=0 and random_offset=0, result should be payload_len clamped.
+            assert_eq!(result, 100); // 100 <= 200
+            let result = fuck_coeff_of_rand_pack_trim(&200, &250, &123, &0, no_trim).unwrap();
+            assert_eq!(result, 200); // clamped to max
+        }
+
+        // payload_len == 0 (should become at least 1)
+        for no_trim in [false, true] {
+            let result = fuck_coeff_of_rand_pack_trim(&200, &0, &50, &100, no_trim).unwrap();
+            assert!((1..=200).contains(&result));
+        }
+
+        // rand_num == 0 -> random_offset = 0, so only subtraction may occur (if no_trim=false)
+        let result = fuck_coeff_of_rand_pack_trim(&200, &100, &0, &100, false).unwrap();
+        // half_range=50, random_offset=0, base=100-50=50, result=50
+        assert_eq!(result, 50);
+        let result = fuck_coeff_of_rand_pack_trim(&200, &10, &0, &100, false).unwrap();
+        // half_range=50, payload_len<50 => deficit=40, random_offset=0 <= deficit => adjusted=0 => clamp to 1
+        assert_eq!(result, 1);
+        let result = fuck_coeff_of_rand_pack_trim(&200, &100, &0, &100, true).unwrap();
+        // no_trim=true => payload_len + 0 = 100
+        assert_eq!(result, 100);
+
+        // rand_range > max_len -> capped to max_len
+        let result = fuck_coeff_of_rand_pack_trim(&10, &5, &999, &1000, false).unwrap();
+        // range = 10, half_range=5, random_offset = 999%10 = 9, base = 5-5 =0 => adjusted=0+9=9 => result=9 (<=10)
+        assert!((1..=10).contains(&result));
+    }
+
+    #[test]
+    fn test_invariants_with_loops() {
+        // Fixed parameters for exhaustive check
+        let max_len_values = [1, 5, 10, 100, 1000];
+        let payload_values = [0, 1, 5, 50, 100, 500, 999, 1000];
+        let rand_num_values = [0, 1, 5, 10, 50, 100, 200, 500, 999, 1000];
+        let rand_range_values = [0, 1, 5, 10, 50, 100, 200, 500, 1000, 2000];
+        let no_trim_values = [false, true];
+
+        for &max_len in &max_len_values {
+            for &payload_len in &payload_values {
+                for &rand_num in &rand_num_values {
+                    for &rand_range in &rand_range_values {
+                        for &no_trim in &no_trim_values {
+                            let result = fuck_coeff_of_rand_pack_trim(
+                                &max_len,
+                                &payload_len,
+                                &rand_num,
+                                &rand_range,
+                                no_trim,
+                            );
+                            assert_valid_result(result, max_len);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_no_trim_never_decreases() {
+        // For no_trim=true, result must be >= payload_len (unless payload_len > max_len, then clamped)
+        for max_len in [10, 50, 100] {
+            for payload_len in 0..=max_len {
+                for rand_num in 0..=20 {
+                    for rand_range in 0..=10 {
+                        let result = fuck_coeff_of_rand_pack_trim(
+                            &max_len,
+                            &payload_len,
+                            &rand_num,
+                            &rand_range,
+                            true,
+                        )
+                        .unwrap();
+                        // Since no_trim=true, result can only increase (or stay same) up to max_len.
+                        // But if payload_len > max_len? We never pass that, but if we do, it clamps.
+                        // Here we have payload_len <= max_len, so result >= payload_len.
+                        assert!(
+                            result >= payload_len,
+                            "result {} < payload_len {}",
+                            result,
+                            payload_len
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_trim_allows_decrease() {
+        // For no_trim=false, result can be less than payload_len, but never below 1.
+        for max_len in [10, 50, 100] {
+            for payload_len in 1..=max_len {
+                for rand_num in 0..=20 {
+                    for rand_range in 1..=10 {
+                        let result = fuck_coeff_of_rand_pack_trim(
+                            &max_len,
+                            &payload_len,
+                            &rand_num,
+                            &rand_range,
+                            false,
+                        )
+                        .unwrap();
+                        // No specific lower bound except 1, but we can check that it's within range.
+                        assert!(result >= 1 && result <= max_len);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_max_len_clamping() {
+        // When payload_len is huge, result should be clamped to max_len.
+        let huge = usize::MAX;
+        for no_trim in [false, true] {
+            let result = fuck_coeff_of_rand_pack_trim(&100, &huge, &123, &50, no_trim).unwrap();
+            assert_eq!(result, 100); // clamped
+        }
+        // When payload_len + random_offset overflows, saturating_add prevents overflow.
+        let result = fuck_coeff_of_rand_pack_trim(&100, &huge, &huge, &10, true).unwrap();
+        assert_eq!(result, 100); // saturated to max
+    }
+
+    #[test]
+    fn test_original_examples() {
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&200, &100, &50, &100, false),
+            Ok(100)
+        );
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&200, &10, &50, &100, false),
+            Ok(10)
+        );
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&200, &10, &60, &100, false),
+            Ok(20)
+        );
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&200, &10, &50, &100, true),
+            Ok(60)
+        );
+        assert_eq!(
+            fuck_coeff_of_rand_pack_trim(&0, &10, &50, &100, false),
+            Err("max_len must be greater than 0".to_string())
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests_trimm {
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+
+    use super::*;
+
+    #[test]
+    fn test_pad_round_trip_matrix() {
+        struct TestCase {
+            name: &'static str,
+            initial_data: Vec<u8>,
+            pad_pos: usize,
+            expected_maker_success: bool,
+            expected_trim_len: usize,
+        }
+
+        let cases = [
+            TestCase {
+                name: "Normal padding with zeros (inversion to 0xFF)",
+                initial_data: vec![0x01, 0x02, 0x00, 0xAA, 0xBB, 0xCC],
+                pad_pos: 3,
+                expected_maker_success: true,
+                expected_trim_len: 3,
+            },
+            TestCase {
+                name: "Padding with 0xFF byte (inversion to 0x00)",
+                initial_data: vec![0x55, 0x66, 0xFF, 0x11, 0x22],
+                pad_pos: 3,
+                expected_maker_success: true,
+                expected_trim_len: 3,
+            },
+            TestCase {
+                name: "Minimum working array (length 2, pad_pos 1)",
+                initial_data: vec![0xAA, 0x00],
+                pad_pos: 1,
+                expected_maker_success: true,
+                expected_trim_len: 1,
+            },
+            TestCase {
+                name: "Padding on the very last byte",
+                initial_data: vec![0x01, 0x02, 0x03, 0x04],
+                pad_pos: 3,
+                expected_maker_success: true,
+                expected_trim_len: 3,
+            },
+            // --- EXTREME BYTE VALUES ---
+            TestCase {
+                name: "Alternating bits 0xAA (10101010) -> inversion to 0x55 (01010101)",
+                initial_data: vec![0xAA, 0x00, 0x00],
+                pad_pos: 1,
+                expected_maker_success: true,
+                expected_trim_len: 1,
+            },
+            // --- ERRORS AND FAILURES (Invalid pad_pos) ---
+            TestCase {
+                name: "Error: pad_pos is 0 (no useful byte behind)",
+                initial_data: vec![0x01, 0x02, 0x03],
+                pad_pos: 0,
+                expected_maker_success: false,
+                expected_trim_len: 3, // Trim will return full length because the structure marker was not created
+            },
+            TestCase {
+                name: "Error: pad_pos out of array bounds",
+                initial_data: vec![0x01, 0x02],
+                pad_pos: 5,
+                expected_maker_success: false,
+                expected_trim_len: 2,
+            },
+            TestCase {
+                name: "Error: pad_pos equals exactly array length (no room for padding)",
+                initial_data: vec![0x01, 0x02, 0x03],
+                pad_pos: 3,
+                expected_maker_success: false,
+                expected_trim_len: 3,
+            },
+            // --- MONOTONIC AND UNIFORM ARRAYS ---
+            TestCase {
+                name: "Array entirely of 0x00",
+                initial_data: vec![0x00, 0x00, 0x00, 0x00],
+                pad_pos: 2,
+                expected_maker_success: true,
+                expected_trim_len: 2,
+            },
+            TestCase {
+                name: "Array entirely of 0xFF",
+                initial_data: vec![0xFF, 0xFF, 0xFF, 0xFF],
+                pad_pos: 2,
+                expected_maker_success: true,
+                expected_trim_len: 2,
+            },
+        ];
+
+        // One loop performs verification of the entire data matrix
+        for case in cases {
+            let mut buffer = case.initial_data.clone();
+
+            // 1. Test pad_maker
+            let maker_res = pad_maker(&mut buffer, case.pad_pos);
+            assert_eq!(
+                maker_res, case.expected_maker_success,
+                "FAIL [pad_maker]: {}",
+                case.name
+            );
+
+            if case.expected_maker_success {
+                let last_data_byte = case.initial_data[case.pad_pos - 1];
+                let expected_pad_byte = !last_data_byte;
+
+                for &byte in &buffer[case.pad_pos..] {
+                    assert_eq!(
+                        byte, expected_pad_byte,
+                        "FAIL [padding content]: {} (byte is {:#X?}, expected {:#X?})",
+                        case.name, byte, expected_pad_byte
+                    );
+                }
+            }
+
+            let trimmed_len = pad_trim(&buffer);
+            assert_eq!(
+                trimmed_len, case.expected_trim_len,
+                "FAIL [pad_trim]: {}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_pad_trim_on_corrupted_data() {
+        struct CorruptedCase {
+            name: &'static str,
+            data: Vec<u8>,
+            expected_len: usize,
+        }
+
+        let cases = [
+            CorruptedCase {
+                name: "Empty array",
+                data: vec![],
+                expected_len: 0,
+            },
+            CorruptedCase {
+                name: "Array of 1 byte (incomplete structure)",
+                data: vec![0x01],
+                expected_len: 1,
+            },
+            CorruptedCase {
+                name: "Corrupted padding tail (last byte modified)",
+                data: vec![0x01, 0x02, 0x00, 0xFF, 0xFF, 0xEE], // Expected pure 0xFF at the end
+                expected_len: 6, // Should return full_len because structure is broken
+            },
+            CorruptedCase {
+                name: "Padding exists but no inverted boundary byte",
+                data: vec![0x55, 0x55, 0x55, 0xFF, 0xFF, 0xFF], // Expected boundary 0x00 before 0xFF
+                expected_len: 6,
+            },
+        ];
+
+        for case in cases {
+            assert_eq!(
+                pad_trim(&case.data),
+                case.expected_len,
+                "FAIL [corrupted]: {}",
+                case.name
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests_vec_padd {
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    use super::*;
+
+    #[test]
+    fn test_vec_padding_matrix() {
+        struct TestCase {
+            name: &'static str,
+            initial_data: Vec<u8>,
+            pad_count: usize,
+            expected_maker_success: bool,
+            expected_final_len: usize,
+        }
+
+        let cases = [
+            // --- Standard Scenarios ---
+            TestCase {
+                name: "Standard zero byte inversion (0x00 -> 0xFF padding)",
+                initial_data: vec![0x01, 0x02, 0x00],
+                pad_count: 3,
+                expected_maker_success: true,
+                expected_final_len: 3,
+            },
+            TestCase {
+                name: "Standard max byte inversion (0xFF -> 0x00 padding)",
+                initial_data: vec![0x55, 0x66, 0xFF],
+                pad_count: 2,
+                expected_maker_success: true,
+                expected_final_len: 3,
+            },
+            // --- Constraint Limits (0 pad_count) ---
+            TestCase {
+                name: "Error constraint: pad_count is 0",
+                initial_data: vec![0x01, 0x02, 0x03],
+                pad_count: 0,
+                expected_maker_success: false,
+                expected_final_len: 3, // Remains unmodified
+            },
+            // --- Edge Cases for Empty State ---
+            TestCase {
+                name: "Error constraint: empty vector with valid pad_count",
+                initial_data: vec![],
+                pad_count: 5,
+                expected_maker_success: false,
+                expected_final_len: 0,
+            },
+            // --- Alternating Bit Extremes ---
+            TestCase {
+                name: "Bit pattern 0xAA (10101010) -> inverts to 0x55 (01010101)",
+                initial_data: vec![0xAA],
+                pad_count: 4,
+                expected_maker_success: true,
+                expected_final_len: 1,
+            },
+            // --- Monolithic/Uniform Arrays ---
+            TestCase {
+                name: "Vector completely consisting of 0x00",
+                initial_data: vec![0x00, 0x00, 0x00],
+                pad_count: 3,
+                expected_maker_success: true,
+                expected_final_len: 3,
+            },
+            TestCase {
+                name: "Vector completely consisting of 0xFF",
+                initial_data: vec![0xFF, 0xFF, 0xFF],
+                pad_count: 1,
+                expected_maker_success: true,
+                expected_final_len: 3,
+            },
+        ];
+
+        for case in cases {
+            let mut buffer = case.initial_data.clone();
+
+            // 1. Verify pad_maker_vec execution status
+            let maker_res = pad_maker_vec(&mut buffer, case.pad_count);
+            assert_eq!(
+                maker_res, case.expected_maker_success,
+                "FAIL [pad_maker_vec]: {}",
+                case.name
+            );
+
+            // If maker was successful, explicitly check the pushed content
+            if case.expected_maker_success {
+                let original_len = case.initial_data.len();
+                let expected_total_len = original_len + case.pad_count;
+
+                assert_eq!(
+                    buffer.len(),
+                    expected_total_len,
+                    "FAIL [total length match]: {}",
+                    case.name
+                );
+
+                let last_payload_byte = case.initial_data[original_len - 1];
+                let expected_pad_byte = !last_payload_byte;
+
+                for &pushed_byte in &buffer[original_len..] {
+                    assert_eq!(
+                        pushed_byte, expected_pad_byte,
+                        "FAIL [padding byte corruption]: {} (got {:#X?}, expected {:#X?})",
+                        case.name, pushed_byte, expected_pad_byte
+                    );
+                }
+            }
+
+            // 2. Verify pad_trim_vec recovery capability (Round-trip check)
+            pad_trim_vec(&mut buffer);
+            assert_eq!(
+                buffer.len(),
+                case.expected_final_len,
+                "FAIL [pad_trim_vec recovery]: {}",
+                case.name
+            );
+        }
+    }
+
+    #[test]
+    fn test_vec_trim_corrupted_data() {
+        struct CorruptedCase {
+            name: &'static str,
+            data: Vec<u8>,
+            expected_len: usize,
+        }
+
+        let cases = [
+            CorruptedCase {
+                name: "Completely empty vector handling",
+                data: vec![],
+                expected_len: 0,
+            },
+            CorruptedCase {
+                name: "Single byte vector handling",
+                data: vec![0x01],
+                expected_len: 1,
+            },
+            CorruptedCase {
+                name: "Corrupted padding tail (last byte mutated)",
+                data: vec![0x01, 0x02, 0x00, 0xFF, 0xFF, 0xEE], // Expected pure 0xFF
+                expected_len: 6, // Aborts truncation, keeps full size
+            },
+            CorruptedCase {
+                name: "Valid tail padding but missing the inversion boundary marker",
+                data: vec![0x55, 0x55, 0x55, 0xFF, 0xFF, 0xFF], // Missing 0x00 boundary
+                expected_len: 6,                                // Aborts truncation
+            },
+        ];
+
+        for mut case in cases {
+            pad_trim_vec(&mut case.data);
+            assert_eq!(
+                case.data.len(),
+                case.expected_len,
+                "FAIL [corrupted validation]: {}",
+                case.name
+            );
+        }
     }
 }

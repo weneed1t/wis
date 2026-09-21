@@ -1,59 +1,14 @@
-#![deny(clippy::indexing_slicing)]
-#![deny(clippy::unwrap_used)]
-#![deny(clippy::as_conversions)]
-#![deny(clippy::arithmetic_side_effects)]
-#![deny(clippy::integer_division)]
+//#![deny(clippy::indexing_slicing)]
+//#![deny(clippy::unwrap_used)]
+//#![deny(clippy::as_conversions)]
+//#![deny(clippy::arithmetic_side_effects)]
+//#![deny(clippy::integer_division)]
 //#![deny(clippy::expect_used)]
-#![deny(clippy::unreachable)]
-#![deny(clippy::todo)]
-#![deny(clippy::float_cmp)]
-#![forbid(unsafe_code)]
+//#![deny(clippy::unreachable)]
+//#![deny(clippy::todo)]
+//#![deny(clippy::float_cmp)]
+//#![forbid(unsafe_code)]
 
-///wrapping_add
-#[macro_export]
-macro_rules! addw {
-    ($a:expr, $b:expr) => {
-        $a.wrapping_add($b)
-    };
-}
-///wrapping_sub
-#[macro_export]
-macro_rules! subw {
-    ($a:expr, $b:expr) => {
-        $a.wrapping_sub($b)
-    };
-}
-///wrapping_mul
-#[macro_export]
-macro_rules! mulw {
-    ($a:expr, $b:expr) => {
-        $a.wrapping_mul($b)
-    };
-}
-
-//==================================================================
-
-///checked_sub
-#[macro_export]
-macro_rules! subex {
-    ($lhs:expr, $rhs:expr, $msg:expr) => {
-        $lhs.checked_sub($rhs).EXPCP!($msg)
-    };
-}
-///checked_mul
-#[macro_export]
-macro_rules! mulex {
-    ($lhs:expr, $rhs:expr, $msg:expr) => {
-        $lhs.checked_mul($rhs).EXPCP!($msg)
-    };
-}
-///checked_add
-#[macro_export]
-macro_rules! addex {
-    ($lhs:expr, $rhs:expr, $msg:expr) => {
-        $lhs.checked_add($rhs).EXPCP!($msg)
-    };
-}
 ///exept
 #[macro_export]
 macro_rules! EXPCP {
@@ -68,7 +23,7 @@ macro_rules! EXPCP {
 /// preventing silent truncation or data loss.
 ///
 /// STRATEGIES:
-/// 1. Result: Returns Result<T, &'static str> for use with the '?' operator.
+/// 1. Result: Returns Result<T, String> for use with the '?' operator.
 /// 2. Panic: Uses 'unwrap' or 'expect' for cases where failure is a bug.
 /// 3. Custom Error: Allows attaching a specific message to the error.
 ///
@@ -128,4 +83,88 @@ macro_rules! checked_cast {
             "`"
         ))
     }};
+}
+#[macro_export]
+///math_safe calls expect on overflow in the release build and in test scenarios
+macro_rules! math_safe {
+    ($a:expr, $b:expr, add) => {
+        $a.checked_add($b).expect("overflow")
+    };
+    ($a:expr, $b:expr, sub) => {
+        $a.checked_sub($b).expect("underflow")
+    };
+    ($a:expr, $b:expr, mul) => {
+        $a.checked_mul($b).expect("overflow")
+    }; //    ($a:expr, $b:expr, ss) => {
+       //        $a.checked_sub($b).expect("underflow")
+       //    };
+}
+#[macro_export]
+/// wrapp math
+macro_rules! math_wrapp {
+    ($a:expr, $b:expr, add) => {
+        $a.wrapping_add($b)
+    };
+    ($a:expr, $b:expr, sub) => {
+        $a.wrapping_sub($b)
+    };
+    ($a:expr, $b:expr, mul) => {
+        $a.wrapping_mul($b)
+    }; //    ($a:expr, $b:expr, ss) => {
+       //        $a.checked_sub($b).expect("underflow")
+       //    };
+}
+
+//
+//
+#[cfg(test)]
+mod test_wk {
+    #[test]
+    #[should_panic(expected = "overflow")]
+    fn test_add_overflow() {
+        let _ = math_safe!(0xFF_FF_FF_FF_u32, 10_u32, add);
+    }
+
+    #[test]
+    #[should_panic(expected = "overflow")]
+    fn test_mul_overflow() {
+        let _ = math_safe!(0xFF_FF_FF_FF_u32, 10_u32, mul);
+    }
+
+    #[test]
+    #[should_panic(expected = "underflow")] // например
+    fn test_sub_underflow() {
+        let _ = math_safe!(0_u32, 1_u32, sub);
+    }
+
+    #[test]
+    fn test_add_() {
+        let r = math_safe!(0xFF_FF_FF_F0_u32, 10_u32, add);
+        assert_eq!(r, 0xFF_FF_FF_FA_u32)
+    }
+
+    #[test]
+    fn test_mul_() {
+        let r = math_safe!(0xFF_FF_FF_u32, 0x10_u32, mul);
+        assert_eq!(r, 0xF_FF_FF_F0u32)
+    }
+
+    #[test]
+    fn test_sub_() {
+        let r = math_safe!(3_u32, 1_u32, sub);
+        assert_eq!(r, 2)
+    }
+
+    #[test]
+    fn test_math_wrapp_operations() {
+        let a = 5u32;
+        let b = 3u32;
+
+        // Сложение
+        assert_eq!(math_wrapp!(a, b, add), 8);
+        // Вычитание
+        assert_eq!(math_wrapp!(a, b, sub), 2);
+        // Умножение
+        assert_eq!(math_wrapp!(a, b, mul), 15);
+    }
 }

@@ -56,25 +56,25 @@
 #![allow(clippy::empty_line_after_doc_comments)]
 
 pub mod t0pology;
-pub mod t1dumps_struct;
+pub mod t1dumb_srct;
 pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 //pub mod __t2proc_fields;
 pub mod wacross;
 
-mod t1queue_tcpudp;
-pub mod t3poc_files;
-pub mod t4algo_param;
-pub mod t5_2_connect_data;
-pub mod t5_connect_data;
-pub mod t5_preparing_pack_fields;
-pub mod w1utils;
-pub mod wt1types; //utils //topology
+mod t1queues;
+pub mod t3files_m;
+pub mod t4param;
+pub mod t5con_d2;
+pub mod t5newcon_d1;
+pub mod t5pack_flds;
+pub mod w1types;
+pub mod w1utils; //utils //topology
 
-pub mod t0_grouper;
-pub mod t0_parsel;
+pub mod t0grouper;
+pub mod t0parsel;
 
-pub use crate::t1queue_tcpudp::recv_queue::{
-    WSRecvQueueCtrs, WSTcpLike as TcpPackageSplitter, WSUdpLike,
+pub use crate::t1queues::{
+    WSFbackQueue, WSTcpLike as TcpPackageSplitter, WSUdpLike,
     WSWaitQueue as UnconfirmedQueuePackets,
 };
 

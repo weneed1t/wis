@@ -4,14 +4,14 @@
 
 
 [package]
-name = "wisleess2"
+name = "wis"
 version = "0.1.0"
 edition = "2024"
 
 [features]
 #default = ["wisdel"]
-wisdel = []
-questionable_algo = ["wisdel"]
+#wisdel = []
+#questionable_algo = ["wisdel"]
 
 
 [lints.rust]

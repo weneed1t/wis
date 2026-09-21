@@ -22,7 +22,7 @@ The crate is:
 - **Intelligent queues**:
   - `WSUdpLike` – reorder out‑of‑order packets and detect gaps.
   - `WSWaitQueue` – track unconfirmed packets with configurable timeouts and resend logic.
-  - `WSRecvQueueCtrs` – batch acknowledgements (fback) to minimise overhead.
+  - `WSFbackQueue` – batch acknowledgements (fback) to minimise overhead.
   - `WSTcpLike` – reconstruct packet boundaries from a continuous byte stream (TCP‑style).
 - **Traffic obfuscation**:
   - Insert randomised “trash” (user) fields at fixed positions.

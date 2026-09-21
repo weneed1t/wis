@@ -8,7 +8,7 @@
 #![deny(clippy::todo)]
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
-use crate::wt1types::InFile;
+use crate::w1types::Rcc;
 use crate::{checked_cast, w1utils};
 
 const FILE_HEAD_LEN: usize = 9;
@@ -33,7 +33,7 @@ struct DataDrain {
 #[derive(Debug, PartialEq, Clone)]
 pub struct WSFileSplitter {
     max_len_of_file: Option<usize>,
-    send_file: Option<(DataDrain, InFile<u8>)>,
+    send_file: Option<(DataDrain, Rcc<Box<[u8]>>)>,
     recv_data: Option<(DataDrain, Option<Vec<u8>>)>,
 }
 
@@ -42,11 +42,11 @@ impl WSFileSplitter {
     /// outgoing files.  This is necessary to prevent systems with
     ///  limited resources from allocating memory for very large files.
     ///  If the limitation is not needed, leave the value as None.
-    pub fn new(max_len_of_file: Option<usize>) -> Result<Self, &'static str> {
+    pub fn new(max_len_of_file: Option<usize>) -> Result<Self, String> {
         if let Some(x) = max_len_of_file
             && x == 0
         {
-            return Err("max_len_of_recv must be greater than zero");
+            return Err("max_len_of_recv must be greater than zero".to_string());
         }
 
         Ok(Self {
@@ -59,17 +59,17 @@ impl WSFileSplitter {
     ///  copying data to a new vector. Only one file can be in the WSFileSplitter
     /// structure  at a time. To find out if a file is in the structure, call
     /// remaining_len_of_rc_file(&self).
-    pub fn write_new_rc_file(&mut self, rc_file: InFile<u8>) -> Result<(), &'static str> {
+    pub fn write_new_rc_file(&mut self, rc_file: Rcc<Box<[u8]>>) -> Result<(), String> {
         if self.send_file.is_some() {
-            return Err("WSFileSplitter already has an unprocessed file ");
+            return Err("WSFileSplitter already has an unprocessed file ".to_string());
         }
         if let Some(x) = self.max_len_of_file
             && rc_file.len() > x
         {
-            return Err("rc_file length greater than max_len_of_recv");
+            return Err("rc_file length greater than max_len_of_recv".to_string());
         }
         if rc_file.is_empty() {
-            return Err("rc_file must be greater than zero");
+            return Err("rc_file must be greater than zero".to_string());
         }
 
         //Calculates how many bytes the file size will fit into
@@ -222,7 +222,7 @@ impl WSFileSplitter {
         Some(how_much_left)
     }
 
-    fn start_proc_file<'a>(&mut self, slice: &'a [u8]) -> Result<Option<&'a [u8]>, &'static str> {
+    fn start_proc_file<'a>(&mut self, slice: &'a [u8]) -> Result<Option<&'a [u8]>, String> {
         /*It's difficult to explain, but I'll try.
         This method is mainly needed when a new file is created,
         since it is assumed that files are transferred in a stream,
@@ -243,7 +243,8 @@ impl WSFileSplitter {
                 if first_nonzero > 8 {
                     return Err(
                         "error, the first non-zero byte of the file is greater than 8, the length \
-                         of u64 must be greater than 0 and less than 9 bytes  ",
+                         of u64 must be greater than 0 and less than 9 bytes  "
+                            .to_string(),
                     );
                 }
                 slice
@@ -288,7 +289,7 @@ impl WSFileSplitter {
     ///  the word "file" refers to a continuous byte array that can be divided
     ///  into any number of chunks of arbitrary length); the method concatenates
     ///  the files from a set of slices and returns them in Ok(files)
-    pub fn slices_to_files(&mut self, slice: &[u8]) -> Result<Box<[Box<[u8]>]>, &'static str> {
+    pub fn slices_to_files(&mut self, slice: &[u8]) -> Result<Box<[Box<[u8]>]>, String> {
         let mut slice = slice;
         let mut old_slice_len = slice.len();
 
@@ -381,7 +382,8 @@ impl WSFileSplitter {
                     if 0 == len_vec {
                         return Err(
                             "An error occurred, the file size == 0 which is impossible, it's \
-                             likely the file has been corrupted",
+                             likely the file has been corrupted"
+                                .to_string(),
                         );
                     }
                     if let Some(m_len) = self.max_len_of_file
@@ -389,7 +391,8 @@ impl WSFileSplitter {
                             > m_len
                     {
                         return Err(
-                            "The size of the received file exceeds the maximum max_len_of_file.",
+                            "The size of the received file exceeds the maximum max_len_of_file."
+                                .to_string(),
                         );
                     }
 
@@ -558,7 +561,10 @@ mod tests_file {
         let tw_s_z = WSFileSplitter::new(Some(0));
         let _tw_s = WSFileSplitter::new(Some(100)).unwrap();
 
-        assert_eq!(tw_s_z, Err("max_len_of_recv must be greater than zero"));
+        assert_eq!(
+            tw_s_z,
+            Err("max_len_of_recv must be greater than zero".to_string())
+        );
 
         let _tw_n = WSFileSplitter::new(None).unwrap();
     }
@@ -572,6 +578,7 @@ mod tests_file {
             Err(
                 "error, the first non-zero byte of the file is greater than 8, the length of u64 \
                  must be greater than 0 and less than 9 bytes  "
+                    .to_string()
             )
         );
 
@@ -580,16 +587,17 @@ mod tests_file {
             Err(
                 "An error occurred, the file size == 0 which is impossible, it's likely the file \
                  has been corrupted"
+                    .to_string()
             )
         );
     }
     #[test]
     fn test_file_splitt() {
         let mut etw_s = WSFileSplitter::new(Some(50)).unwrap();
-        let rc_err = InFile::new((0..51).collect());
+        let rc_err = Rcc::new((0..51).collect());
         assert_eq!(
             etw_s.write_new_rc_file(rc_err),
-            Err("rc_file length greater than max_len_of_recv")
+            Err("rc_file length greater than max_len_of_recv".to_string())
         );
 
         let lens_file = [
@@ -605,13 +613,13 @@ mod tests_file {
         for curent_file_len in lens_file {
             let mut tw_s = WSFileSplitter::new(Some(*lens_file.iter().max().unwrap())).unwrap();
 
-            let rc = InFile::new((0..curent_file_len).map(|x| x as u8).collect());
+            let rc = Rcc::new((0..curent_file_len).map(|x| x as u8).collect::<Box<[u8]>>());
             all_vecs_slices_sourse_files.push(rc.clone());
 
             if curent_file_len == 0 {
                 assert_eq!(
                     tw_s.write_new_rc_file(rc.clone()),
-                    Err("rc_file must be greater than zero")
+                    Err("rc_file must be greater than zero".to_string())
                 );
                 was_zero = true;
                 continue;
@@ -621,7 +629,7 @@ mod tests_file {
 
             assert_eq!(
                 tw_s.write_new_rc_file(rc),
-                Err("WSFileSplitter already has an unprocessed file ")
+                Err("WSFileSplitter already has an unprocessed file ".to_string())
             );
 
             let mut temp_remianing = None;
@@ -692,7 +700,8 @@ mod tests_file {
                 Err(
                     "This line appears only if `tets_lens_of_nums_files.is_err()` 
             == TRUE, to indicate a specific issue there. DO NOT EDIT THIS LINE—IT IS A \
-                     PLACEHOLDER!!ы"
+                     PLACEHOLDER!!"
+                        .to_string()
                 )
             );
         }
@@ -730,18 +739,18 @@ mod tests_file {
     fn test_file_splitt_old() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc = InFile::new((0..50).collect());
-        let rc_err = InFile::new((0..51).collect());
+        let rc = Rcc::new((0..50).collect::<Box<[u8]>>());
+        let rc_err = Rcc::new((0..51).collect());
         assert_eq!(
             tw_s.write_new_rc_file(rc_err),
-            Err("rc_file length greater than max_len_of_recv")
+            Err("rc_file length greater than max_len_of_recv".to_string())
         );
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
         assert_eq!(
             tw_s.write_new_rc_file(rc),
-            Err("WSFileSplitter already has an unprocessed file ")
+            Err("WSFileSplitter already has an unprocessed file ".to_string())
         );
 
         let mut reta1 = vec![1; 20];
@@ -825,9 +834,9 @@ mod tests_file {
     fn test_spkit_to_file() {
         let mut tw_s = WSFileSplitter::new(Some(50)).unwrap();
 
-        let rc = InFile::new((0..50).collect());
+        let rc = Rcc::new((0..50).collect::<Box<[u8]>>());
 
-        let rc2 = InFile::new((0..20).map(|x| 20 - x).collect());
+        let rc2 = Rcc::new((0..20).map(|x| 20 - x).collect::<Box<[u8]>>());
 
         assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 
@@ -858,7 +867,11 @@ mod tests_file {
         let mut ctr_temp_len_have = 0;
 
         for file_size_in_iter in fs_vec {
-            let rc = InFile::new((0..file_size_in_iter).map(|x| x as u8).collect());
+            let rc = Rcc::new(
+                (0..file_size_in_iter)
+                    .map(|x| x as u8)
+                    .collect::<Box<[u8]>>(),
+            );
 
             assert_eq!(tw_s.write_new_rc_file(rc.clone()), Ok(()));
 

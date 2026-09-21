@@ -34,31 +34,35 @@ pub const MAXIMAL_NUMS_USER_FIELDS: usize = 16 & (u8::MAX as usize);
 pub const MAX_BUF_SIZE: usize = maxval(MAXIMAL_CRC_LEN, maxval(MAXIMAL_TTL_LEN, MAXIMAL_NONCE_LEN));
 
 #[derive(Debug, Clone)]
-// public packet fields enumeration contains mandatory and optional fields
-// the only mandatory field is the counter, which must always be present and can be 1 to 8
-// bytes in size user id and receiver id, if present, must have the same size — from 0 to
-// 8 bytes (0 means absent, 8 means 64-bit) used in mesh networks where intermediate nodes
-// handle traffic routing length field indicates total packet length including headers and
-// data, used in reliable stream protocols for integrity and ordering counter field is
-// mandatory, 1–8 bytes, holds a unique packet number that increments by one for each new
-// packet if counter size is limited, special mechanisms restore the full counter value on
-// client and server user data field is optional and can be of arbitrary size; absence
-// means zero length used to obscure packet structure and prevent traffic filtering or
-// blocking in networks header crc is optional, up to 32 bytes (256 bits), used to verify
-// integrity of header data in unreliable protocols ttl (time to live) field is 1–8 bytes,
-// used in multi-hop networks to limit packet lifetime and prevent infinite loops
-// nonce field is optional, up to 32 bytes, used for cryptographic operations and secure
-// communication idconnect field is used to associate packets with a specific connection
-// or session all size constants are defined to support maximum required lengths for
-// secure and flexible packet handling
+/// public packet fields enumeration contains mandatory and optional fields<br>
+/// the only mandatory field is the counter, which must always be present and can be 1 to 8<br>
+/// bytes in size user id and receiver id, if present, must have the same size — from 0 to<br>
+/// 8 bytes (0 means absent, 8 means 64-bit) used in mesh networks where intermediate nodes<br>
+/// handle traffic routing length field indicates total packet length including headers and<br>
+/// data, used in reliable stream protocols for integrity and ordering counter field is<br>
+/// mandatory, 1–8 bytes, holds a unique packet number that increments by one for each new<br>
+/// packet if counter size is limited, special mechanisms restore the full counter value on<br>
+/// client and server user data field is optional and can be of arbitrary size; absence<br>
+/// means zero length used to obscure packet structure and prevent traffic filtering or<br>
+/// blocking in networks header crc is optional, up to 32 bytes (256 bits), used to verify<br>
+/// integrity of header data in unreliable protocols ttl (time to live) field is 1–8 bytes,<br>
+/// used in multi-hop networks to limit packet lifetime and prevent infinite loops<br>
+/// nonce field is optional, up to 32 bytes, used for cryptographic operations and secure<br>
+/// communication idconnect field is used to associate packets with a specific connection<br>
+/// or session all size constants are defined to support maximum required lengths for<br>
+/// secure and flexible packet handling<br>
 ///PackFields
+/// # (for developers) IF YOU ADD A NEW FIELD HERE, YOU MUST ADD PROCESSING to pub fn GroupTopology::new()
 pub enum PackFields {
     ///id of sender
     IdSender(usize),
     ///id of receiver
     IdReceiver(usize),
+
     ///id of connect
     IdConnect(usize),
+
+    ///id of connect
     ///len
     Len(usize),
     ///Counter
@@ -156,7 +160,7 @@ impl PackTopology {
         fields: &[PackFields],
         data_save: bool,
         tcp_mode: bool,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, String> {
         let mut id_of_sender_slice: Fld = None;
         let mut id_of_receiver_slice: Fld = None;
         let mut len_slice: Fld = None;
@@ -178,12 +182,12 @@ impl PackTopology {
                             "overwlow err"
                         ) > MAXIMAL_NUMS_USER_FIELDS
                         {
-                            return Err("userfield nums > MAXIMAL_NUMS_USER_FIELDS");
+                            return Err("userfield nums > MAXIMAL_NUMS_USER_FIELDS".to_string());
                         }
 
                         if le == 0 || le > (usize::MAX >> 1) {
                             //done just in case, maximum length limit
-                            return Err("userfield value is 0");
+                            return Err("userfield value is 0".to_string());
                         }
                         trash_content_slices_vec.push((
                             shift,
@@ -195,10 +199,10 @@ impl PackTopology {
 
                     PackFields::IdConnect(le) => {
                         if idconn_slice.is_some() {
-                            return Err("duplicate idconn");
+                            return Err("duplicate idconn".to_string());
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("idconn value exceeds 8");
+                            return Err("idconn value exceeds 8".to_string());
                         }
                         idconn_slice =
                             Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
@@ -207,7 +211,7 @@ impl PackTopology {
 
                     PackFields::TrickyByte => {
                         if tricky_byte.is_some() {
-                            return Err("duplicate tricky_byte");
+                            return Err("duplicate tricky_byte".to_string());
                         }
 
                         tricky_byte = Some(shift);
@@ -216,10 +220,10 @@ impl PackTopology {
 
                     PackFields::Len(le) => {
                         if len_slice.is_some() {
-                            return Err("duplicate len");
+                            return Err("duplicate len".to_string());
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("len value exceeds 8");
+                            return Err("len value exceeds 8".to_string());
                         }
 
                         len_slice =
@@ -228,10 +232,10 @@ impl PackTopology {
                     },
                     PackFields::Counter(le) => {
                         if counter_slice.is_some() {
-                            return Err("duplicate counter");
+                            return Err("duplicate counter".to_string());
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("counter value exceeds 8");
+                            return Err("counter value exceeds 8".to_string());
                         }
                         counter_slice =
                             Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
@@ -239,10 +243,10 @@ impl PackTopology {
                     },
                     PackFields::IdSender(le) => {
                         if id_of_sender_slice.is_some() {
-                            return Err("duplicate IdSender");
+                            return Err("duplicate IdSender".to_string());
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("IdSender value exceeds 8");
+                            return Err("IdSender value exceeds 8".to_string());
                         }
                         id_of_sender_slice =
                             Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
@@ -250,10 +254,10 @@ impl PackTopology {
                     },
                     PackFields::IdReceiver(le) => {
                         if id_of_receiver_slice.is_some() {
-                            return Err("duplicate idreceiver");
+                            return Err("duplicate idreceiver".to_string());
                         }
                         if matches!(le, 0 | 9..) {
-                            return Err("idreceiver value exceeds 8");
+                            return Err("idreceiver value exceeds 8".to_string());
                         }
                         id_of_receiver_slice =
                             Some((shift, shift.checked_add(le).ok_or("shift+le overflow")?, le));
@@ -261,11 +265,13 @@ impl PackTopology {
                     },
                     PackFields::HeadCRC(le) => {
                         if crc_slice.is_some() {
-                            return Err("duplicate crc");
+                            return Err("duplicate crc".to_string());
                         }
 
                         if le > MAXIMAL_CRC_LEN || le == 0 {
-                            return Err("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0");
+                            return Err(
+                                "crc len is  le > MAXIMAL_CRC_LEN or crc len is 0".to_string()
+                            );
                         }
 
                         crc_slice =
@@ -274,11 +280,11 @@ impl PackTopology {
                     },
                     PackFields::Nonce(le) => {
                         if le == 0 || le > MAXIMAL_NONCE_LEN {
-                            return Err("nonce len is 0");
+                            return Err("nonce len is 0".to_string());
                         }
 
                         if nonce_slice.is_some() {
-                            return Err("duplicate nonce");
+                            return Err("duplicate nonce".to_string());
                         }
 
                         nonce_slice =
@@ -288,10 +294,10 @@ impl PackTopology {
 
                     PackFields::TTL(le) => {
                         if ttl_slice.is_some() {
-                            return Err("duplicate ttl");
+                            return Err("duplicate ttl".to_string());
                         }
                         if le > MAXIMAL_TTL_LEN || le == 0 {
-                            return Err("TTL value exceeds MAXIMAL_TTL_LEN or  == 0");
+                            return Err("TTL value exceeds MAXIMAL_TTL_LEN or  == 0".to_string());
                         }
 
                         ttl_slice =
@@ -305,34 +311,37 @@ impl PackTopology {
         if !data_save && tcp_mode {
             return Err(
                 "channel cannot be both tcp_mode and have data instability (!data_save == false \
-                 && tcp_mode == true)",
+                 && tcp_mode == true)"
+                    .to_string(),
             );
         }
 
         if tag_len == 0 {
-            return Err("!!tag_len ==0");
+            return Err("!!tag_len ==0".to_string());
         }
 
         if counter_slice.is_none() {
-            return Err("the structure must have either a Counter field");
+            return Err("the structure must have either a Counter field".to_string());
         }
 
         if !data_save && (crc_slice.is_none()) {
             return Err(
                 "If you do not guarantee that the packet can be broken during \
-                 transport(!data_save), you should use HeadCRC(usize)",
+                 transport(!data_save), you should use HeadCRC(usize)"
+                    .to_string(),
             );
         }
 
         if tcp_mode && (len_slice.is_none()) {
             return Err(
-                "If your data channel is like TCP, you should specify the Len(usize) field.",
+                "If your data channel is like TCP, you should specify the Len(usize) field."
+                    .to_string(),
             );
         }
 
         match (id_of_sender_slice, id_of_receiver_slice) {
             (Some(_), None) | (None, Some(_)) => {
-                return Err("sender and receiver IDs must both exist or both be absent");
+                return Err("sender and receiver IDs must both exist or both be absent".to_string());
             },
             _ => (),
         }
@@ -340,7 +349,9 @@ impl PackTopology {
         if let (Some(re), Some(se)) = (id_of_receiver_slice, id_of_sender_slice)
             && re.2 != se.2
         {
-            return Err("id_of_receiver_slice and id_of_sender_slice must be the same length");
+            return Err(
+                "id_of_receiver_slice and id_of_sender_slice must be the same length".to_string(),
+            );
         }
 
         let content_start_pos = shift
@@ -446,7 +457,7 @@ impl PackTopology {
         self.nonce_slice
     }
     /// head fields len + 1 byte HEAL ken + tag len
-    pub fn total_minimal_len(&self) -> usize {
+    pub fn overhead_len(&self) -> usize {
         self.total_minimal_len
     }
     /// head fields len
@@ -638,8 +649,8 @@ impl PackTopology {
     ///
     /// # examples
     /// ```
-    /// # use wisleess2::t0pology::PackTopology;
-    /// # use wisleess2::t0pology::PackFields;
+    /// # use wis::t0pology::PackTopology;
+    /// # use wis::t0pology::PackFields;
     /// let topo1 = PackTopology::new(16, &[PackFields::Len(4),PackFields::UserField(32),PackFields::Counter(8),PackFields::IdSender(6),PackFields::IdReceiver(6),PackFields::UserField(10),PackFields::HeadCRC(4),PackFields::UserField(1),PackFields::Nonce(8),PackFields::TTL(3),PackFields::UserField(3),PackFields::IdConnect(7)], true, false).unwrap();
     /// let topo2 = PackTopology::new(16, &[PackFields::IdConnect(7),PackFields::Counter(8),PackFields::UserField(100),PackFields::HeadCRC(4),PackFields::IdReceiver(6),PackFields::TTL(3),PackFields::Len(4),PackFields::Nonce(8),PackFields::IdSender(6),], true, false).unwrap();
     /// assert!(topo1.is_proto_equal(&topo2));
@@ -715,7 +726,7 @@ mod tests {
         let fields_duplicate_len = vec![PackFields::Len(4), PackFields::Len(4)];
         assert_eq!(
             PackTopology::new(5, &fields_duplicate_len, false, false).err(),
-            Some("duplicate len"),
+            Some("duplicate len".to_string()),
             "expected 'duplicate len' error"
         );
 
@@ -723,7 +734,7 @@ mod tests {
         let fields_invalid_len = vec![PackFields::Len(9)];
         assert_eq!(
             PackTopology::new(5, &fields_invalid_len, false, false).err(),
-            Some("len value exceeds 8"),
+            Some("len value exceeds 8".to_string()),
             "expected 'len value exceeds 8' error"
         );
 
@@ -731,7 +742,7 @@ mod tests {
         let fields_zero_crc = vec![PackFields::HeadCRC(0)];
         assert_eq!(
             PackTopology::new(5, &fields_zero_crc, false, false).err(),
-            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0"),
+            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0".to_string()),
             "expected 'crc len is 0' error"
         );
 
@@ -739,7 +750,7 @@ mod tests {
         let fields_no_counter_or_nonce = vec![PackFields::Len(4)];
         assert_eq!(
             PackTopology::new(5, &fields_no_counter_or_nonce, false, false).err(),
-            Some("the structure must have either a Counter field"),
+            Some("the structure must have either a Counter field".to_string()),
             "expected 'the structure must have either a Counter field or a Nonce' error"
         );
     }
@@ -753,6 +764,7 @@ mod tests {
             Some(
                 "If you do not guarantee that the packet can be broken during \
                  transport(!data_save), you should use HeadCRC(usize)"
+                    .to_string()
             ),
             "expected 'missing HeadCRC' error"
         );
@@ -763,6 +775,7 @@ mod tests {
             Some(
                 "channel cannot be both tcp_mode and have data instability (!data_save == false \
                  && tcp_mode == true)"
+                    .to_string()
             ),
             "expected 'missing Len' error"
         );
@@ -797,11 +810,17 @@ mod tests {
             Some((0, 1, 1)),
             "len_slice should match"
         );
-        assert_eq!(
-            topology.total_minimal_len(),
-            4,
-            "total_minimal_len should be 5"
-        );
+        assert_eq!(topology.overhead_len(), 4, "total_minimal_len should be 4");
+    }
+
+    #[test]
+    fn test_edge_cases2() {
+        // Minimal valid input
+        let fields_minimal_valid = vec![PackFields::Counter(1)];
+        let result = PackTopology::new(1, &fields_minimal_valid, true, false);
+
+        let topology = result.unwrap();
+        assert_eq!(topology.overhead_len(), 3, "total_minimal_len should be 3");
     }
 
     #[test]
@@ -916,7 +935,7 @@ mod tests {
         // Verify total_minimal_len
         let total_minimal_len = expected_shift + tag_len + 1; // +1 for mandatory data byte
         assert_eq!(
-            topology.total_minimal_len(),
+            topology.overhead_len(),
             total_minimal_len,
             "total_minimal_len mismatch"
         );
@@ -937,7 +956,7 @@ mod tests {
             let result = PackTopology::new(5, &fields_len, true, true);
             assert_eq!(
                 result.err(),
-                Some("len value exceeds 8"),
+                Some("len value exceeds 8".to_string()),
                 "expected 'len value exceeds 8' error for Len({})",
                 invalid_value
             );
@@ -947,7 +966,7 @@ mod tests {
             let result = PackTopology::new(5, &fields_counter, true, true);
             assert_eq!(
                 result.err(),
-                Some("counter value exceeds 8"),
+                Some("counter value exceeds 8".to_string()),
                 "expected 'counter value exceeds 8' error for Counter({})",
                 invalid_value
             );
@@ -958,7 +977,7 @@ mod tests {
             let result = PackTopology::new(5, &fields_id_sender, true, true);
             assert_eq!(
                 result.err(),
-                Some("IdSender value exceeds 8"),
+                Some("IdSender value exceeds 8".to_string()),
                 "expected 'IdSender value exceeds 8' error for IdSender({})",
                 invalid_value
             );
@@ -971,7 +990,7 @@ mod tests {
             let result = PackTopology::new(5, &fields_id_receiver, true, true);
             assert_eq!(
                 result.err(),
-                Some("idreceiver value exceeds 8"),
+                Some("idreceiver value exceeds 8".to_string()),
                 "expected 'idreceiver value exceeds 8' error for IdReceiver({})",
                 invalid_value
             );
@@ -986,7 +1005,7 @@ mod tests {
             if invalid_value == 0 {
                 assert_eq!(
                     result.err(),
-                    Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0"),
+                    Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0".to_string()),
                     "expected 'crc len is 0' error for HeadCRC({})",
                     invalid_value
                 );
@@ -1005,7 +1024,7 @@ mod tests {
             if invalid_value == 0 {
                 assert_eq!(
                     result.err(),
-                    Some("nonce len is 0"),
+                    Some("nonce len is 0".to_string()),
                     "expected 'nonce len is 0' error for Nonce({})",
                     invalid_value
                 );
@@ -1023,7 +1042,7 @@ mod tests {
             let result = PackTopology::new(5, &fields_ttl, false, false);
             assert_eq!(
                 result.err(),
-                Some("TTL value exceeds MAXIMAL_TTL_LEN or  == 0"),
+                Some("TTL value exceeds MAXIMAL_TTL_LEN or  == 0".to_string()),
                 "expected 'TTL value exceeds 8' error for TTL({})",
                 invalid_value
             );
@@ -1038,7 +1057,7 @@ mod tests {
         let fields_len = vec![PackFields::IdConnect(9), PackFields::Counter(4)];
         assert_eq!(
             PackTopology::new(5, &fields_len, true, true).err(),
-            Some("idconn value exceeds 8")
+            Some("idconn value exceeds 8".to_string())
         );
 
         // Duplicate
@@ -1049,7 +1068,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields_dup, true, true).err(),
-            Some("duplicate idconn")
+            Some("duplicate idconn".to_string())
         );
     }
 
@@ -1077,7 +1096,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields_dup, true, false).err(),
-            Some("duplicate tricky_byte")
+            Some("duplicate tricky_byte".to_string())
         );
     }
 
@@ -1124,7 +1143,7 @@ mod tests {
 
         assert_eq!(
             PackTopology::new(5, &fields_len, true, false),
-            Err("userfield nums > MAXIMAL_NUMS_USER_FIELDS")
+            Err("userfield nums > MAXIMAL_NUMS_USER_FIELDS".to_string())
         );
     }
 
@@ -1132,7 +1151,7 @@ mod tests {
     fn test_header_only_config() {
         let fields = vec![PackFields::Counter(4)];
         let result = PackTopology::new(0, &fields, true, false);
-        assert_eq!(result.err(), Some("!!tag_len ==0"));
+        assert_eq!(result.err(), Some("!!tag_len ==0".to_string()));
     }
 
     #[test]
@@ -1154,7 +1173,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields_invalid, true, true).err(),
-            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0")
+            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0".to_string())
         );
     }
 
@@ -1169,14 +1188,17 @@ mod tests {
         let result = PackTopology::new(5, &fields, true, true);
         assert_eq!(
             result.err(),
-            Some("id_of_receiver_slice and id_of_sender_slice must be the same length")
+            Some("id_of_receiver_slice and id_of_sender_slice must be the same length".to_string())
         );
 
         let fields = vec![PackFields::Counter(4)];
         let result = PackTopology::new(5, &fields, true, true);
         assert_eq!(
             result.err(),
-            Some("If your data channel is like TCP, you should specify the Len(usize) field.")
+            Some(
+                "If your data channel is like TCP, you should specify the Len(usize) field."
+                    .to_string()
+            )
         );
     }
 
@@ -1233,7 +1255,7 @@ mod tests {
         assert_eq!(topology.encrypt_start_pos(), 93);
         assert_eq!(topology.head_byte_pos(), 93);
         assert_eq!(topology.content_start_pos(), 94);
-        assert_eq!(topology.total_minimal_len(), 99);
+        assert_eq!(topology.overhead_len(), 99);
     }
 
     // ============================================================================
@@ -1253,7 +1275,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate idconn")
+            Some("duplicate idconn".to_string())
         );
     }
 
@@ -1280,7 +1302,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields_dup, true, false).err(),
-            Some("duplicate tricky_byte")
+            Some("duplicate tricky_byte".to_string())
         );
     }
 
@@ -1305,7 +1327,7 @@ mod tests {
         }
         assert_eq!(
             PackTopology::new(5, &fields_over, true, false).err(),
-            Some("userfield nums > MAXIMAL_NUMS_USER_FIELDS")
+            Some("userfield nums > MAXIMAL_NUMS_USER_FIELDS".to_string())
         );
     }
 
@@ -1321,7 +1343,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0")
+            Some("crc len is  le > MAXIMAL_CRC_LEN or crc len is 0".to_string())
         );
     }
 
@@ -1353,7 +1375,7 @@ mod tests {
         let fields_zero = vec![PackFields::UserField(0), PackFields::Counter(4)];
         assert_eq!(
             PackTopology::new(5, &fields_zero, true, true).err(),
-            Some("userfield value is 0")
+            Some("userfield value is 0".to_string())
         );
 
         // Zero-length in middle of list — also invalid
@@ -1364,7 +1386,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields_zero_mid, true, true).err(),
-            Some("userfield value is 0")
+            Some("userfield value is 0".to_string())
         );
     }
 
@@ -1381,7 +1403,7 @@ mod tests {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("id_of_receiver_slice and id_of_sender_slice must be the same length")
+            Some("id_of_receiver_slice and id_of_sender_slice must be the same length".to_string())
         );
     }
 
@@ -1390,7 +1412,10 @@ mod tests {
         let fields = vec![PackFields::Counter(4)];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("If your data channel is like TCP, you should specify the Len(usize) field.")
+            Some(
+                "If your data channel is like TCP, you should specify the Len(usize) field."
+                    .to_string()
+            )
         );
     }
 }
@@ -1417,7 +1442,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate counter")
+            Some("duplicate counter".to_string())
         );
     }
 
@@ -1431,7 +1456,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate IdSender")
+            Some("duplicate IdSender".to_string())
         );
     }
 
@@ -1445,7 +1470,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate idreceiver")
+            Some("duplicate idreceiver".to_string())
         );
     }
 
@@ -1459,7 +1484,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate crc")
+            Some("duplicate crc".to_string())
         );
     }
 
@@ -1473,7 +1498,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate nonce")
+            Some("duplicate nonce".to_string())
         );
     }
 
@@ -1487,7 +1512,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("duplicate ttl")
+            Some("duplicate ttl".to_string())
         );
     }
 
@@ -1504,7 +1529,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("sender and receiver IDs must both exist or both be absent")
+            Some("sender and receiver IDs must both exist or both be absent".to_string())
         );
     }
 
@@ -1517,7 +1542,7 @@ mod tests_coverage_gaps {
         ];
         assert_eq!(
             PackTopology::new(5, &fields, true, true).err(),
-            Some("sender and receiver IDs must both exist or both be absent")
+            Some("sender and receiver IDs must both exist or both be absent".to_string())
         );
     }
 
@@ -1649,7 +1674,7 @@ mod tests_coverage_gaps {
         // Should fail
         assert_eq!(
             PackTopology::new(5, &fields, true, false).err(),
-            Some("userfield value is 0")
+            Some("userfield value is 0".to_string())
         );
     }
 
@@ -1727,6 +1752,7 @@ mod tests_coverage_gaps {
             Some(
                 "If you do not guarantee that the packet can be broken during \
                  transport(!data_save), you should use HeadCRC(usize)"
+                    .to_string()
             )
         );
     }
@@ -1743,6 +1769,7 @@ mod tests_coverage_gaps {
             Some(
                 "channel cannot be both tcp_mode and have data instability (!data_save == false \
                  && tcp_mode == true)"
+                    .to_string()
             )
         );
     }
@@ -1786,7 +1813,7 @@ mod tests_coverage_gaps {
 
         topo.__warning_test_only_force_total_minimum_len_edit(999);
 
-        assert_eq!(topo.total_minimal_len(), 999);
+        assert_eq!(topo.overhead_len(), 999);
     }
 
     #[test]
@@ -1899,7 +1926,7 @@ mod tests_coverage_gaps {
         let _ = topo.nonce_slice();
         let _ = topo.ttl_slice();
         let _ = topo.total_head_slice();
-        let _ = topo.total_minimal_len();
+        let _ = topo.overhead_len();
         //let _ = topo.is_tcp();
         //let _ = topo.data_save();
         let _ = topo.tricky_byte();

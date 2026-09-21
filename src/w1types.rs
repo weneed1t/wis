@@ -11,13 +11,14 @@
 //use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::t0grouper::GroupTopology;
 use crate::t0pology::PackTopology;
 ///
 ///You can switch from Rc to Arc
-pub type InFile<T> = Arc<Box<[T]>>;
+pub type Rcc<T> = Arc<T>;
 //pub type InFile<T> = Arc<Vec<T>>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 ///all id
 pub struct Identified {
     ///The identifier of a specific device—it doesn't really matter what this value is,
@@ -30,7 +31,120 @@ pub struct Identified {
     pub id_conn: Option<(u64, MyRole)>,
 }
 
-#[derive(Clone, Debug)]
+/// defines the packet type for `grouptopology`.
+///
+/// each set of fields has three options for usage:
+/// * `fback` — for packets that return an acknowledgment.
+/// * `data` — for data packets.
+/// * `any` — for both `data` and `fback` packets.
+///
+/// # why is this necessary?
+///
+/// `grouptopology` has methods for obtaining the minimum packet length:
+/// `fback_max_minimal_len` and `data_max_minimal_len`.
+///
+/// these values are required for the following context:
+///
+/// warning: the information below describes another package and may be outdated.
+///
+/// in `pub struct wsrecvqueuectrs::new`, the maximum capacity is strictly limited
+/// by `payload_mtu`. this parameter is defined as:
+/// `network mtu - packtopology::total_minimal_len()`.
+///
+/// since packets for `fback` and `data` may contain different fields (for example,
+/// `fback` packets do not have a `crc` or `nonce` field), the payload length
+/// will be greater.
+///
+/// # network constraints
+///
+/// * **internet networks (mtu ~1400–1500 bytes):** this functionality is redundant.
+/// * **mesh or iot networks (e.g., bluetooth ble with 26-byte payload):** saving
+///   a few extra bytes of free space provides a significant benefit.
+#[derive(Debug, PartialEq, Clone)]
+pub enum PackTypeGroup {
+    /// packets that return an acknowledgment.
+    Fback,
+    /// data packets.
+    Data,
+    /// both data and fback packets.
+    Any,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+///PackaddedStatus displays the status of adding a package to the queue.
+pub enum PackAddedStatus {
+    ///The package was added to both queues as expected, everything is fine.
+    WasAdded,
+    ///The packet wasn't added because WSFbackQueue is full.
+    ///To clear it, an fback packet must be sent.
+    FbackQueueIsfull,
+    ///The package wasn't added because the package counter is too high to be added to WSUdpLike.
+    UdpQueueCtrIsBig,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+///WSQueueState is needed to inform the user whether a packet has been added to the queue or not.<br>
+/// In this context, "added" logically means that a packet with such a counter was,<br>
+/// once in this queue and should not be added, as the queue is responsible for restoring the packet<br>
+/// order and ensuring that there are no missed packets or duplicates.<br>
+/// This is necessary for determining whether a packet should be placed in Fback.<br>
+/// If the packet's status is NOT ElemIdIsBig,<br>
+/// then its counter should be placed in the Fback queue.<br>
+/// If the status is ElemIdIsBig, then such a packet should not be placed in Fback,<br>
+/// as it cannot be processed at the current state of the algorithm.<br>
+pub enum WSQueueState {
+    /// this means that the packet counter is too<br>
+    ///  large and the packet was not added physically and logically<br>
+    ElemIdIsBig,
+    ///ElemIdIsSmall means that the packet counter is too small to be added,<br>
+    ///and the queue has been moved forward.Since the queue cannot skip packets,<br>
+    ///this means that the packet is a duplicate of an old packet that was present in the past,<br>
+    ///and can be considered logically added.<br>
+    ElemIdIsSmall,
+    ///This means that a packet with such a counter is already in the queue,<br>
+    ///  that is, it is a duplicate, logically added but not physically<br>
+    ElemIsAlreadyIn,
+    ///This means that there is no package with such a counter, and it was successfully added.
+    SuccessfulInsertion,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+///It is used to select a mode:
+///a single topology for all connections,
+///or a mix of different topologies for different connections.
+///Actually, I could have used GroupTopology everywhere,
+///which would have had only one topology.
+/// But I decided to make things a little more complicated
+///  for myself so that the code would run just a tiny bit faster.
+pub enum PackScheme {
+    ///OnePack is needed when it is necessary to use only when there is only one package topology,
+    ///and all packages have the same field parameters
+    OnePack(PackTopology),
+    ///GroupPack is needed when different packet topologies are used in the same network,
+    ///and different packets have different fields in different packets.
+    GroupPack(GroupTopology),
+}
+
+impl PackScheme {
+    ///get topol If `OnePack` is passed as an argument,
+    ///it will return `PackTopology` regardless of the value of `tbyte`.
+    pub fn get_topol(&self, tbyte: u8, group_pack_type: PackTypeGroup) -> Option<&PackTopology> {
+        match self {
+            Self::GroupPack(x) => x.get_from_u8(tbyte, group_pack_type),
+            Self::OnePack(x) => Some(x),
+        }
+    }
+    /// if i am GroupPack retutn true
+    pub fn is_group(&self) -> bool {
+        matches!(self, Self::GroupPack(_))
+    }
+    /// if i am OnePack retutn true
+    pub fn is_one(&self) -> bool {
+        matches!(self, Self::OnePack(_))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 ///id sender and recv
 pub struct Ids {
     ///
@@ -39,21 +153,64 @@ pub struct Ids {
     pub id_receiver: u64,
 }
 /// ttl max, ttl start, ttl edit
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Copy)]
 pub struct Ttl {
     /// ttl max
-    pub ttl_max: u64,
+    max: u64,
     /// ttl add or sub
-    pub ttl_edit: i64,
+    edit: i64,
     ///start ttl num
-    pub ttl_start: u64,
+    start: u64,
     /// true pruning if ttl from pack + ttl_edit > ttl max
     /// false -> generate err
-    pub forced_pruning: bool,
+    forced_pruning: bool,
+}
+
+impl Ttl {
+    /// true pruning if ttl from pack + ttl_edit > ttl max
+    /// max >0 , start >0 , edit !=0, max > start
+    pub fn new(max: u64, edit: i64, start: u64, forced_pruning: bool) -> Result<Self, String> {
+        if max == 0 {
+            return Err("max == 0".to_string());
+        }
+
+        if max <= start {
+            return Err("max <= start".to_string());
+        }
+        if edit == 0 {
+            return Err("ttl_edit == 0".to_string());
+        }
+        if start == 0 {
+            return Err("start == 0".to_string());
+        }
+
+        Ok(Self {
+            max,
+            edit,
+            start,
+            forced_pruning,
+        })
+    }
+    ///get max ttl
+    pub fn max(&self) -> u64 {
+        self.max
+    }
+    ///get edil num
+    pub fn edit(&self) -> i64 {
+        self.edit
+    }
+    ///get statrt
+    pub fn start(&self) -> u64 {
+        self.start
+    }
+    /// if orced_pruning == true ret true
+    pub fn forced_pruning(&self) -> bool {
+        self.forced_pruning
+    }
 }
 
 ///use in handmaker
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum AtomHandFile {
     ///the file size generated by the session initiator and received by the passive
     /// participant
@@ -82,103 +239,209 @@ impl AtomHandFile {
     }
 }
 
-impl PartialEq for AtomHandFile {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::InitiatorFileSize(a), Self::InitiatorFileSize(b)) => a == b,
-            (Self::PassiveFileSize(a), Self::PassiveFileSize(b)) => a == b,
-            _ => false,
+/// A compact bit‑field structure that stores 8 boolean flags in a single byte.
+///
+/// Each flag occupies a fixed bit position:
+/// - bit 0 → `is_fake`
+/// - bit 1 → `is_kill`
+/// - bits 2..=7 → reserved fields `reserve_2` … `reserve_7`
+///
+/// This representation minimises memory footprint and enables fast bitwise operations.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HeadByteStruct {
+    state: u8,
+}
+
+// Bit masks for each field (used internally)
+impl HeadByteStruct {
+    const MASK_FAKE: u8 = 0b0000_0001;
+    const MASK_NEDT: u8 = 0b0000_0010; //need triim
+    const MASK_KILL: u8 = 0b0000_0100;
+    const MASK_RES3: u8 = 0b0000_1000;
+    const MASK_RES4: u8 = 0b0001_0000;
+    const MASK_RES5: u8 = 0b0010_0000;
+    const MASK_RES6: u8 = 0b0100_0000;
+    const MASK_RES7: u8 = 0b1000_0000;
+
+    /// Creates a new instance with all bits cleared to `false`.
+    pub fn new() -> Self {
+        Self { state: 0 }
+    }
+
+    /// Initialises the structure from a raw byte.
+    pub fn from_byte(byte: u8) -> Self {
+        Self { state: byte }
+    }
+
+    /// Returns the raw byte representation.
+    pub fn to_byte(&self) -> u8 {
+        self.state
+    }
+
+    // ─── Getters and setters ───
+
+    /// Returns the `is_fake` flag (bit 0).
+    pub fn is_fake(&self) -> bool {
+        (self.state & Self::MASK_FAKE) != 0
+    }
+
+    /// Sets the `is_fake` flag (bit 0).
+    pub fn set_is_fake(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_FAKE;
+        } else {
+            self.state &= !Self::MASK_FAKE;
+        }
+    }
+
+    /// Returns the `is_kill` flag (bit 1).
+    pub fn is_kill(&self) -> bool {
+        (self.state & Self::MASK_KILL) != 0
+    }
+
+    /// Sets the `is_kill` flag (bit 1).
+    pub fn set_is_kill(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_KILL;
+        } else {
+            self.state &= !Self::MASK_KILL;
+        }
+    }
+
+    /// Returns the reserved bit 2.
+    pub fn need_trim(&self) -> bool {
+        (self.state & Self::MASK_NEDT) != 0
+    }
+
+    /// Sets the reserved bit 2.
+    pub fn set_need_trim_is_pad(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_NEDT;
+        } else {
+            self.state &= !Self::MASK_NEDT;
+        }
+    }
+
+    /// Returns the reserved bit 3.
+    pub fn reserve_3(&self) -> bool {
+        (self.state & Self::MASK_RES3) != 0
+    }
+
+    /// Sets the reserved bit 3.
+    pub fn set_reserve_3(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_RES3;
+        } else {
+            self.state &= !Self::MASK_RES3;
+        }
+    }
+
+    /// Returns the reserved bit 4.
+    pub fn reserve_4(&self) -> bool {
+        (self.state & Self::MASK_RES4) != 0
+    }
+
+    /// Sets the reserved bit 4.
+    pub fn set_reserve_4(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_RES4;
+        } else {
+            self.state &= !Self::MASK_RES4;
+        }
+    }
+
+    /// Returns the reserved bit 5.
+    pub fn reserve_5(&self) -> bool {
+        (self.state & Self::MASK_RES5) != 0
+    }
+
+    /// Sets the reserved bit 5.
+    pub fn set_reserve_5(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_RES5;
+        } else {
+            self.state &= !Self::MASK_RES5;
+        }
+    }
+
+    /// Returns the reserved bit 6.
+    pub fn reserve_6(&self) -> bool {
+        (self.state & Self::MASK_RES6) != 0
+    }
+
+    /// Sets the reserved bit 6.
+    pub fn set_reserve_6(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_RES6;
+        } else {
+            self.state &= !Self::MASK_RES6;
+        }
+    }
+
+    /// Returns the reserved bit 7.
+    pub fn reserve_7(&self) -> bool {
+        (self.state & Self::MASK_RES7) != 0
+    }
+
+    /// Sets the reserved bit 7.
+    pub fn set_reserve_7(&mut self, value: bool) {
+        if value {
+            self.state |= Self::MASK_RES7;
+        } else {
+            self.state &= !Self::MASK_RES7;
         }
     }
 }
 
-/*
+///error type
+#[derive(Debug, Clone)]
 
-#[derive(Debug, Clone)]
-///list of errors
-pub enum PackErr {
-    ///
-    IdConnErr(&'static str),
-    ///
-    IdSendRecvErr(&'static str),
-    ///
-    CrcErr(&'static str),
-    ///
-    TagErr(&'static str),
-    ///
-    LenErr(&'static str),
-    ///
-    UndefinedErr(&'static str),
-    ///
-    TTLErr(&'static str),
-}
-*/
-#[derive(Debug, Clone)]
-///
 pub enum WTypeErr {
-    ///
-    LenSizeErr(&'static str),
-    ///
-    CompileFieldsErr(&'static str),
-    ///
-    PackageDamaged(&'static str),
+    ///A problem with the length—either an array index out of bounds or a length mismatch
+    LenSizeErr(String),
+    ///Inconsistency regarding the presence of fields:
+    ///in one place it is stated that a field exists, while in another it is stated that it does not.
+    CompileFieldsErr(String),
+    ///The packet data is corrupted
+    PackageDamaged(String),
     ///WorkTimeErr: various types of errors for which there is no solution
-    WorkTimeErr(&'static str),
+    WorkTimeErr(String),
 }
 
 #[cfg_attr(test, derive(Debug))]
 ///
-pub enum WSQueueErr {
-    ///
-    NonCritical(&'static str),
-    ///
-    Critical(&'static str),
+pub enum WisErr<WarT, CritT> {
+    ///#### An error that does not lead to irreparable situations and is mitigated by the program's
+    ///#### algorithms; the program can continue to operate.
+    Warning(WarT),
+    ///## Critical Error. The program received data or a condition that cannot be resolved normally.
+    ///## Further operation of the module that returned Critical is unsafe and unstable.
+    ///## The instance of the crash or the data that resulted in this error must be cleared.
+    Critical(CritT),
 }
 
-impl WSQueueErr {
+impl<WarT, CritT> WisErr<WarT, CritT> {
     ///
     pub fn is_critical(&self) -> bool {
         match self {
             Self::Critical(_) => true,
-            Self::NonCritical(_) => false,
+            Self::Warning(_) => false,
         }
     }
     ///
-    pub fn is_non_critical(&self) -> bool {
-        match self {
-            Self::Critical(_) => false,
-            Self::NonCritical(_) => true,
-        }
+    pub fn is_warning(&self) -> bool {
+        !self.is_critical()
     }
 }
-
-impl PartialEq for WSQueueErr {
+impl<WarT: PartialEq, CritT: PartialEq> PartialEq for WisErr<WarT, CritT> {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::NonCritical(x), Self::NonCritical(y)) => x == y,
+            (Self::Warning(x), Self::Warning(y)) => x == y,
             (Self::Critical(x), Self::Critical(y)) => x == y,
             _ => false,
         }
     }
 }
-
-/*
-
-impl PartialEq for PackErr {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::IdConnErr(_), Self::IdConnErr(_))
-                | (Self::IdSendRecvErr(_), Self::IdSendRecvErr(_))
-                | (Self::CrcErr(_), Self::CrcErr(_))
-                | (Self::TagErr(_), Self::TagErr(_))
-                | (Self::LenErr(_), Self::LenErr(_))
-                | (Self::UndefinedErr(_), Self::UndefinedErr(_))
-                | (Self::TTLErr(_), Self::TTLErr(_))
-        )
-    }
-}
-*/
 
 impl WTypeErr {
     ///
@@ -198,13 +461,14 @@ impl WTypeErr {
     //    matches!(self, Self::WorkTimeErr(_))
     //}
     ///
-    pub fn err_to_str(&self) -> &'static str {
+    pub fn err_to_str(&self) -> String {
         match self {
             Self::LenSizeErr(x) => x,
             Self::CompileFieldsErr(x) => x,
             Self::PackageDamaged(x) => x,
             Self::WorkTimeErr(x) => x,
         }
+        .clone()
     }
 }
 
@@ -220,7 +484,7 @@ impl PartialEq for WTypeErr {
     }
 }
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum MyRole {
     ///
     Initiator,
@@ -253,21 +517,15 @@ impl MyRole {
     }
 }
 
-impl PartialEq for MyRole {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Initiator, Self::Initiator) | (Self::Passive, Self::Passive)
-        )
-    }
-}
-
-#[derive(Debug, Clone)]
-///
+#[derive(Debug, Clone, PartialEq)]
+///PackType is used when setting the counter bit.
+/// It is needed to separate packets into acknowledgement packets and data packets.
 pub enum PackType {
-    ///
-    FBack,
-    ///
+    ///packet tick in which the confirmation counters of received packets are transmitted
+    Fback,
+    ///a packet type that is fake, indistinguishable from Data,
+    ///also requires confirmation, but it is filled with garbage,
+    ///its head_byte has fake_bit = 1, so the packet data is not used in any way.
     Data,
 }
 impl PackType {
@@ -277,43 +535,34 @@ impl PackType {
     }
     ///
     pub fn is_fback(&self) -> bool {
-        matches!(self, Self::FBack)
+        matches!(self, Self::Fback)
     }
     ///
     pub fn sate_to_bit(&self) -> u8 {
         match self {
-            Self::FBack => 1,
+            Self::Fback => 1,
             Self::Data => 0,
         }
     }
     ///
     pub fn bit_to_state(bit: u8) -> Self {
         match bit & 1 {
-            1 => Self::FBack,
+            1 => Self::Fback,
             0 => Self::Data,
-            _ => Self::FBack,
+            _ => Self::Fback,
         }
-    }
-}
-
-impl PartialEq for PackType {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::Data, Self::Data) | (Self::FBack, Self::FBack)
-        )
     }
 }
 
 //======================================================================================================
 
-/*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), &'static str>
+/*type1 fn(&[u8], &mut [u8], &mut [u8],u64, Option<&[u8]>) -> Result<(), String>
 where &[u8] is the head, the data that is not encrypted,
 the first &mut [u8] is the body, the data that is encrypted
 the second &mut [u8] is the place where the authentication tag from head + body should be placed
 Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
 
-type 2 fn(&mut[u8],usize,usize, u64, Option<&[u8]>) -> Result<(), &'static str>
+type 2 fn(&mut[u8],usize,usize, u64, Option<&[u8]>) -> Result<(), String>
 &mut[u8] is the full mutable packet
 the first usize is the index of the start of the body, so [0..(first usize)] is the head
 the second usize is the index of the start of tag, so [(first usize)..(second usize)] is the body
@@ -321,7 +570,7 @@ the tag field, it is [(second usize)..] is the place for the tag
 Option<&[u8]> is a Nonce if is a init in topology: &t2page::PackTopology,
 
 this enum is needed for maximum compatibility with the encryption libraries that are on the rust
-they both return -> Result<(), &'static str>
+they both return -> Result<(), String>
 ok() means that the data was encrypted successfully
 and there were no errors, &'static str reports some error,
  when it is called, the preparation of the packet for sending
@@ -331,12 +580,12 @@ and there were no errors, &'static str reports some error,
 pub enum TypeGetMode {
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
     Type1SplitMutSlices(
-        fn(&[u8], &mut [u8], &mut [u8], u64, Option<&[u8]>) -> Result<(), &'static str>,
+        fn(&[u8], &mut [u8], &mut [u8], u64, Option<&[u8]>) -> Result<(), String>,
     ),
     /// (FULLDATA),  (HEAD non enc)[0..usize1],(PAYLOAD
     /// enc)[usize1..usize2],(TAG)[usize2..],(countr(nonce)), (NONCE)[start..end]
     Type2FullArrAndIndexes(
-        fn(&mut [u8], usize, usize, u64, Option<(usize, usize)>) -> Result<(), &'static str>,
+        fn(&mut [u8], usize, usize, u64, Option<(usize, usize)>) -> Result<(), String>,
     ),
 }
     */
@@ -349,7 +598,7 @@ pub enum Cryptlag {
     ///
     Decrypt,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 ///
 pub enum StatusDecrypt {
     ///
@@ -370,21 +619,12 @@ impl StatusDecrypt {
     }
 }
 
-impl PartialEq for StatusDecrypt {
-    fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Self::DecodedCorrectly, Self::DecodedCorrectly)
-                | (Self::PackageDamaged, Self::PackageDamaged)
-        )
-    }
-}
-
 //#############################################################3
 ///
+
 pub trait EncWis: Sized {
     ///
-    fn new(key: &[u8]) -> Result<Self, &'static str>;
+    fn new(key: &[u8]) -> Result<Self, String>;
 
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
     fn encrypt(
@@ -394,7 +634,7 @@ pub trait EncWis: Sized {
         auth_tag: &mut [u8],
         nonce_countr: &u64,
         nonce: Option<&[u8]>,
-    ) -> Result<(), &'static str>;
+    ) -> Result<(), String>;
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
     fn decrypt(
         &self,
@@ -403,44 +643,45 @@ pub trait EncWis: Sized {
         auth_tag: &mut [u8],
         nonce_countr: &u64,
         nonce: Option<&[u8]>,
-    ) -> Result<StatusDecrypt, &'static str>;
+    ) -> Result<StatusDecrypt, String>;
 }
 ///
 pub trait Noncer: Sized {
     ///
-    fn new(seed: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, String>;
     ///
 
-    fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), &'static str>;
+    fn set_nonce(&mut self, nonce_gener: &mut [u8]) -> Result<(), String>;
 }
 ///
-pub trait Thrasher: Sized {
+pub trait Thrasher<FuserLogicBuf>: Sized {
     ///
-    fn new(seed: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, String>;
     ///
 
     fn set_user_field(
         &mut self,
         user_field: &mut [u8],
-        counter_pack: &u64,
-        len_pack: &usize,
+        counter_of_pack: &u64,
+        len_of_pack: &usize,
         counter_field_in_pack: &usize,
         topoligy: &PackTopology,
-    ) -> Result<(), &'static str>;
+        user_logic_buffer: Option<&mut FuserLogicBuf>,
+    ) -> Result<(), String>;
 }
 ///
 pub trait Crcser: Sized {
     ///
-    fn new(seed: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, String>;
     ///
-    fn gen_crc(&mut self, payload: &[u8], crc_field: &mut [u8]) -> Result<(), &'static str>;
+    fn gen_crc(&mut self, payload: &[u8], crc_field: &mut [u8]) -> Result<(), String>;
 }
 ///
 pub trait Randomer: Sized {
     ///
-    fn new(seed: &[u8]) -> Result<Self, &'static str>;
+    fn new(seed: &[u8]) -> Result<Self, String>;
     ///
-    fn gen_rand_u64(&mut self) -> u64;
+    fn gen_rand_usize(&mut self) -> usize;
     ///
     fn gen_rand_u32(&mut self) -> u32;
 }
@@ -448,19 +689,34 @@ pub trait Randomer: Sized {
 /// clarity.
 pub trait HandMaker: Sized {
     ///
-    fn new(my_role: MyRole, seed: &[u8]) -> Result<Self, &'static str>;
+    fn new(my_role: MyRole, seed: &[u8]) -> Result<Self, String>;
     ///
     fn file_sheme(&self) -> &[AtomHandFile];
     ///
-    fn send(&mut self) -> Result<InFile<u8>, &'static str>;
+    fn send(&mut self) -> Result<Rcc<Box<[u8]>>, String>;
     ///
-    fn recv(&mut self, file: InFile<u8>) -> Result<(), &'static str>;
+    fn recv(&mut self, file: Rcc<Box<[u8]>>) -> Result<(), String>;
     ///
-    fn get_private_key(&mut self) -> Result<Box<[u8]>, &'static str>;
+    fn get_private_key(&mut self) -> Result<Box<[u8]>, String>;
 }
+
+///It's too complicated to explain. I hope I don't forget to add this as an example for
+/// clarity.
+pub trait TrickyBMaker<FuserLogicBuf>: Sized {
+    ///
+    fn new(seed: &[u8], pack_sheme: PackScheme) -> Result<Self, String>;
+    ///
+    fn get_tricky_byte(
+        &self,
+        pack_type: PackType,
+        ctr: &u64,
+        user_logic_buffer: Option<&mut FuserLogicBuf>,
+    ) -> u8;
+}
+
 ///Be sure to use it in production once before configuring your algorithm to verify that
 /// HandMaker is working properly.
-pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
+pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), String> {
     for k_len in [0, 17, 80] {
         for gamma in [0, 77, 255] {
             let mut intua = Thm::new(MyRole::Initiator, &vec![gamma; k_len])?;
@@ -478,7 +734,8 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                     println!("Initiator:   {:?}", intua.file_sheme());
                 }
                 return Err(
-                    "error in initiator in file_sheme()[0], initiator must always send data first!",
+                    "error in initiator in file_sheme()[0], initiator must always send data first!"
+                        .to_string(),
                 );
             }
             if !passve
@@ -492,7 +749,8 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                     println!("Passive:   {:?}", passve.file_sheme());
                 }
                 return Err(
-                    "error in passive in file_sheme()[0], initiator must always send data first!",
+                    "error in passive in file_sheme()[0], initiator must always send data first!"
+                        .to_string(),
                 );
             }
 
@@ -506,7 +764,8 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                     println!("Passive:   {:?}", p_s);
                 }
                 return Err(
-                    "file_sheme() of the initiator differs from file_sheme() of the passive",
+                    "file_sheme() of the initiator differs from file_sheme() of the passive"
+                        .to_string(),
                 );
             }
 
@@ -525,7 +784,8 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                     //ivverse test
                     if temp_passive.send().is_ok() {
                         return Err("Passive send() returned the correct value when the \
-                                    Initiator send() was in the queue at that moment");
+                                    Initiator send() was in the queue at that moment"
+                            .to_string());
                     }
                 } else {
                     let mut temp_init = intua.clone();
@@ -535,7 +795,8 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
 
                     if temp_init.send().is_ok() {
                         return Err("Initiator send() returned the correct value when the \
-                                    Passive send() was in the queue at that moment");
+                                    Passive send() was in the queue at that moment"
+                            .to_string());
                     }
                 }
             }
@@ -551,44 +812,13 @@ pub fn hand_maker_tester<Thm: HandMaker + Clone>() -> Result<(), &'static str> {
                 }
                 return Err("At the end of the exchange of all files, 
                 when generating the final private key,
-                the initiator and passive keys do not match");
+                the initiator and passive keys do not match"
+                    .to_string());
             }
         }
     }
 
     Ok(())
-}
-
-///(array(head fields len + headbyte len + payload len+ tag len),(payload start pos,
-/// payload endpos) )
-pub fn pre_alloc(
-    topology: &PackTopology,
-    mtu: usize,
-    payloadlen: usize,
-    fill: u8,
-) -> Result<(Box<[u8]>, (usize, usize)), WTypeErr> {
-    let len_pack = topology
-        .total_minimal_len()
-        .checked_add(payloadlen)
-        .ok_or(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))?;
-
-    let remaining = len_pack
-        .checked_sub(topology.tag_len())
-        .ok_or(WTypeErr::WorkTimeErr(
-            "subtraction underflow: len_pack < topology.tag_len()",
-        ))?;
-    Ok((
-        vec![
-            fill;
-            if len_pack > mtu {
-                return Err(WTypeErr::LenSizeErr("len_pack > mtu"));
-            } else {
-                len_pack
-            }
-        ]
-        .into_boxed_slice(),
-        (topology.content_start_pos(), remaining),
-    ))
 }
 
 #[cfg(test)]
@@ -670,37 +900,37 @@ mod tests_my_type {
     #[test]
     fn test_is_data() {
         assert!(PackType::Data.is_data());
-        assert!(!PackType::FBack.is_data());
+        assert!(!PackType::Fback.is_data());
     }
 
     #[test]
     fn test_is_fback() {
-        assert!(PackType::FBack.is_fback());
+        assert!(PackType::Fback.is_fback());
         assert!(!PackType::Data.is_fback());
     }
 
     #[test]
     fn test_sate_to_bit() {
-        assert_eq!(PackType::FBack.sate_to_bit(), 1);
+        assert_eq!(PackType::Fback.sate_to_bit(), 1);
         assert_eq!(PackType::Data.sate_to_bit(), 0);
     }
 
     #[test]
     fn test_bit_to_state() {
         assert!(matches!(PackType::bit_to_state(0), PackType::Data));
-        assert!(matches!(PackType::bit_to_state(1), PackType::FBack));
+        assert!(matches!(PackType::bit_to_state(1), PackType::Fback));
         // Test with higher bits (only LSB should matter)
         assert!(matches!(PackType::bit_to_state(2), PackType::Data)); // 2 & 1 = 0
-        assert!(matches!(PackType::bit_to_state(3), PackType::FBack)); // 3 & 1 = 1
-        assert!(matches!(PackType::bit_to_state(255), PackType::FBack)); // 255 & 1 = 1
+        assert!(matches!(PackType::bit_to_state(3), PackType::Fback)); // 3 & 1 = 1
+        assert!(matches!(PackType::bit_to_state(255), PackType::Fback)); // 255 & 1 = 1
     }
 
     #[test]
     fn test_partial_eq() {
         assert_eq!(PackType::Data, PackType::Data);
-        assert_eq!(PackType::FBack, PackType::FBack);
-        assert_ne!(PackType::Data, PackType::FBack);
-        assert_ne!(PackType::FBack, PackType::Data);
+        assert_eq!(PackType::Fback, PackType::Fback);
+        assert_ne!(PackType::Data, PackType::Fback);
+        assert_ne!(PackType::Fback, PackType::Data);
     }
 
     #[test]
@@ -709,83 +939,9 @@ mod tests_my_type {
         let cloned = data.clone();
         assert_eq!(data, cloned);
 
-        let fback = PackType::FBack;
+        let fback = PackType::Fback;
         let cloned_fback = fback.clone();
         assert_eq!(fback, cloned_fback);
-    }
-}
-
-#[cfg(test)]
-mod tests_prealocc {
-    #![allow(clippy::as_conversions)]
-    #![allow(clippy::indexing_slicing)]
-    #![allow(clippy::unwrap_used)]
-    use super::*;
-    use crate::t0pology::PackFields;
-    #[test]
-    fn test_prealoc() {
-        let mkd = [13, 7, 6, 8];
-        let fields = vec![
-            //t2page::PackFields::HeadByte,
-            PackFields::UserField(mkd[0]),
-            PackFields::Counter(mkd[1]),
-            PackFields::IdConnect(mkd[2]),
-            PackFields::HeadCRC(mkd[3]),
-        ];
-
-        let result = PackTopology::new(19, &fields, true, false).unwrap();
-
-        //let mut temp = pre_alloc(&result, 1000, 500).unwrap();
-        let total: usize = mkd.iter().sum();
-
-        assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 50, 0),
-            Err(WTypeErr::LenSizeErr("len_pack > mtu"))
-        );
-        assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 49, 0),
-            Ok((
-                vec![
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
-                ]
-                .into_boxed_slice(),
-                (35usize, 84usize)
-            ))
-        );
-
-        assert_eq!(
-            pre_alloc(&result, total + 50 + 19, 49, 99),
-            Ok((
-                vec![
-                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-                    99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99, 99,
-                    99, 99, 99
-                ]
-                .into_boxed_slice(),
-                (35usize, 84usize)
-            ))
-        );
-
-        assert_eq!(
-            pre_alloc(&result, !0_usize, (!0_usize) - 1, 0),
-            Err(WTypeErr::LenSizeErr("overflow payloadlen + minimal_len()"))
-        );
-
-        let mut t = pre_alloc(&result, 100000, 43, 0).unwrap();
-        t.0[t.1.0..t.1.1].fill(1);
-        let count = t.0.iter().filter(|&&element| element == 1).count();
-        let count0 = t.0.iter().take_while(|&&x| x == 0).count();
-
-        assert_eq!(count, 43);
-        assert_eq!(count0, result.total_head_slice().2 + 1);
-
-        println!("{:?}   /n{} /n {}", t.0, count, count0);
     }
 }
 
@@ -964,9 +1120,9 @@ impl RsaTest {
     /// The public exponent `e` is fixed to 65537.
     /// Returns `Err` if the provided primes are invalid (e.g., equal, or (p-1)*(q-1) not
     /// coprime with e).
-    pub fn new(p: u64, q: u64) -> Result<Self, &'static str> {
+    pub fn new(p: u64, q: u64) -> Result<Self, String> {
         if p == q {
-            return Err("p and q must be different");
+            return Err("p and q must be different".to_string());
         }
         let n = p * q;
         let phi = (p - 1) * (q - 1); // Euler's totient
@@ -976,13 +1132,13 @@ impl RsaTest {
 
         // Ensure e is coprime with phi
         if Self::gcd(phi, e) != 1 {
-            return Err("e and φ(n) are not coprime");
+            return Err("e and φ(n) are not coprime".to_string());
         }
 
         // Compute private exponent d = e⁻¹ mod φ(n)
         let d = match Self::mod_inv(e, phi) {
             Some(val) => val,
-            None => return Err("modular inverse not found"),
+            None => return Err("modular inverse not found".to_string()),
         };
 
         Ok(Self { n, e, d })
@@ -1095,7 +1251,7 @@ mod tests_rsa {
 #[cfg(test)]
 mod test_for_hand_maker_tester {
     use super::*;
-    use crate::t1dumps_struct::DumpHandMaker;
+    use crate::t1dumb_srct::DumpHandMaker;
     #[test]
     fn t1_() {
         assert_eq!(hand_maker_tester::<DumpHandMaker>(), Ok(()));
@@ -1139,5 +1295,200 @@ mod tests_atomic_files {
         assert_ne!(a, c);
         assert_ne!(a, d);
         assert_ne!(c, d);
+    }
+}
+
+#[cfg(test)]
+mod tests_headbytestruct {
+    use super::*;
+
+    #[test]
+    fn test_combinations() {
+        let mut h = HeadByteStruct::new();
+
+        for i in 0..255 {
+            h.set_reserve_7(i & (1 << 7) > 0);
+            h.set_reserve_6(i & (1 << 6) > 0);
+            h.set_reserve_5(i & (1 << 5) > 0);
+            h.set_reserve_4(i & (1 << 4) > 0);
+            h.set_reserve_3(i & (1 << 3) > 0);
+            h.set_is_kill(i & (1 << 2) > 0);
+            h.set_need_trim_is_pad(i & (1 << 1) > 0);
+            h.set_is_fake(i & (1 << 0) > 0);
+
+            assert_eq!(h.to_byte(), i);
+
+            assert_eq!(h.reserve_7(), (i & (1 << 7) > 0));
+            assert_eq!(h.reserve_6(), (i & (1 << 6) > 0));
+            assert_eq!(h.reserve_5(), (i & (1 << 5) > 0));
+            assert_eq!(h.reserve_4(), (i & (1 << 4) > 0));
+            assert_eq!(h.reserve_3(), (i & (1 << 3) > 0));
+            assert_eq!(h.is_kill(), (i & (1 << 2) > 0));
+            assert_eq!(h.need_trim(), (i & (1 << 1) > 0));
+            assert_eq!(h.is_fake(), (i & (1 << 0) > 0));
+
+            assert_eq!(h, HeadByteStruct::from_byte(i))
+        }
+    }
+}
+#[cfg(test)]
+mod tests_wis_err {
+    use super::*;
+
+    #[test]
+    fn test_is_critical() {
+        let warning: WisErr<&str, i32> = WisErr::Warning("Low disk space");
+        let critical: WisErr<&str, i32> = WisErr::Critical(500);
+
+        assert!(!warning.is_critical());
+        assert!(critical.is_critical());
+    }
+
+    #[test]
+    fn test_is_warning() {
+        let warning: WisErr<&str, i32> = WisErr::Warning("Low disk space");
+        let critical: WisErr<&str, i32> = WisErr::Critical(500);
+
+        assert!(warning.is_warning());
+        assert!(!critical.is_warning());
+    }
+
+    #[test]
+    fn test_partial_eq_same_variants() {
+        let warn1: WisErr<&str, i32> = WisErr::Warning("Timeout");
+        let warn2: WisErr<&str, i32> = WisErr::Warning("Timeout");
+        let warn3: WisErr<&str, i32> = WisErr::Warning("Connection lost");
+
+        let crit1: WisErr<&str, i32> = WisErr::Critical(404);
+        let crit2: WisErr<&str, i32> = WisErr::Critical(404);
+        let crit3: WisErr<&str, i32> = WisErr::Critical(500);
+
+        assert_eq!(warn1, warn2);
+        assert_eq!(crit1, crit2);
+
+        assert_ne!(warn1, warn3);
+        assert_ne!(crit1, crit3);
+    }
+
+    #[test]
+    fn test_partial_eq_different_variants() {
+        let warning: WisErr<&str, i32> = WisErr::Warning("Database error");
+        let critical: WisErr<&str, i32> = WisErr::Critical(101);
+        assert_ne!(warning, critical);
+    }
+}
+
+#[cfg(test)]
+mod test_ttl {
+    use super::*;
+
+    #[test]
+
+    fn test_ttl_initialization_and_getters() {
+        #![allow(clippy::unwrap_used)]
+        let ttl = Ttl::new(64, -2, 128, true);
+
+        assert_eq!(ttl, Err("max <= start".to_string()));
+
+        let ttl = Ttl::new(64, -2, 64, true);
+        assert_eq!(ttl, Err("max <= start".to_string()));
+
+        let ttl = Ttl::new(1000, -1, 0, true);
+        assert_eq!(ttl, Err("start == 0".to_string()));
+
+        let ttl = Ttl::new(0, -1, 1, true);
+        assert_eq!(ttl, Err("max == 0".to_string()));
+
+        let ttl = Ttl::new(65, 0, 64, true);
+        assert_eq!(ttl, Err("ttl_edit == 0".to_string()));
+
+        let ttl = Ttl::new(65, -2, 64, true).unwrap();
+
+        assert_eq!(ttl.max(), 65);
+        assert_eq!(ttl.edit(), -2);
+        assert_eq!(ttl.start(), 64);
+        assert!(ttl.forced_pruning());
+        //
+        let ttl = Ttl::new(65, -2, 64, false).unwrap();
+        assert!(!ttl.forced_pruning());
+    }
+}
+
+#[cfg(test)]
+mod test_pack_sheme {
+
+    use super::*;
+    use crate::t0pology::*;
+    use crate::w1types::PackTypeGroup as PF;
+
+    #[test]
+    fn main() {
+        #![allow(clippy::unwrap_used)]
+        let f1 = [
+            PackFields::TrickyByte,
+            PackFields::Counter(1),
+            PackFields::UserField(1),
+        ];
+        let f2 = [
+            PackFields::TrickyByte,
+            PackFields::Counter(1),
+            PackFields::UserField(2),
+        ];
+        let f3 = [
+            PackFields::TrickyByte,
+            PackFields::Counter(1),
+            PackFields::UserField(3),
+        ];
+
+        let bx: [(Box<[PackFields]>, PF, u8); 3] = [
+            (Box::new(f1.clone()), PF::Any, 1_u8),
+            (Box::new(f2), PF::Any, 2_u8),
+            (Box::new(f3), PF::Any, 3_u8),
+        ];
+
+        let p1 = PackTopology::new(10, &f1, true, false).unwrap();
+
+        let mo = PackScheme::OnePack(p1.clone());
+
+        let mg = PackScheme::GroupPack(GroupTopology::new(&bx, 10, true, false).unwrap());
+
+        assert!(mo.is_one());
+        assert!(!mo.is_group());
+        assert!(mg.is_group());
+        assert!(!mg.is_one());
+
+        for i in 0..10 {
+            assert_eq!(*mo.get_topol(i, PF::Any).unwrap(), p1);
+        }
+
+        let t1 = mg
+            .get_topol(1, PF::Any)
+            .unwrap()
+            .trash_content_slice()
+            .unwrap()
+            .first()
+            .unwrap()
+            .2;
+
+        let t2 = mg
+            .get_topol(2, PF::Any)
+            .unwrap()
+            .trash_content_slice()
+            .unwrap()
+            .first()
+            .unwrap()
+            .2;
+
+        let t3 = mg
+            .get_topol(3, PF::Any)
+            .unwrap()
+            .trash_content_slice()
+            .unwrap()
+            .first()
+            .unwrap()
+            .2;
+        assert_eq!(t1, 1);
+        assert_eq!(t2, 2);
+        assert_eq!(t3, 3);
     }
 }

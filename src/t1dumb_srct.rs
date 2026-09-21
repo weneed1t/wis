@@ -8,39 +8,55 @@
 #![deny(clippy::todo)]
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
-
 use crate::t0pology::PackTopology;
-use crate::wt1types::*;
+use crate::w1types::*;
+use std::cell::RefCell;
 //#############################################################3
-///
+#[derive(Debug, Clone, PartialEq)]
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
 pub struct DumpNonser {
     #[cfg(test)]
     t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
-///
+#[derive(Debug, Clone, PartialEq)]
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
+pub struct DumpTricker<FuserLogicBuf: Clone> {
+    user_logic_buffer_clone: RefCell<Option<FuserLogicBuf>>, // Обернули в Option, так как буфер может быть None
+    ctr_test: RefCell<u64>,
+    pack_type_test: RefCell<PackType>,
+    what_i_set: RefCell<u8>,
+}
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
+#[derive(Debug, Clone, PartialEq)]
 pub struct DumpCrcser {
     ///
     pub t: u64,
     /// only in test
     pub v: Vec<u8>,
+    //
 }
-///
-pub struct DumpThrasher {
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
+#[derive(Debug, Clone, PartialEq)]
+pub struct DumpThrasher<FuserLogicBuf> {
     #[cfg(test)]
     _t: u64,
     /// only in test
     pub v: Vec<u8>,
+    user_logic_buffer_clone: RefCell<FuserLogicBuf>,
+    counter_pack: RefCell<u64>,
 }
-///
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
+#[derive(Debug, Clone, PartialEq)]
 pub struct DumpRandomer {
     #[cfg(test)]
     t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
-///
+///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
+#[derive(Debug, Clone, PartialEq)]
 pub struct DumpEnc {
     #[cfg(test)]
     t: u64,
@@ -50,7 +66,7 @@ pub struct DumpEnc {
 //#############################################################3
 
 impl Noncer for DumpNonser {
-    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+    fn new(_key: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         panic!(
             "This panic is called from DumpNonser because it is a stub class,
@@ -66,7 +82,7 @@ impl Noncer for DumpNonser {
             })
         }
     }
-    fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), &'static str> {
+    fn set_nonce(&mut self, _nonce_gener: &mut [u8]) -> Result<(), String> {
         #[cfg(not(test))]
         panic!(
             "This panic is called from DumpNonser because it is a stub class,
@@ -80,8 +96,114 @@ impl Noncer for DumpNonser {
     }
 }
 
+impl<FuserLogicBuf: Default + Clone> TrickyBMaker<FuserLogicBuf> for DumpTricker<FuserLogicBuf> {
+    fn new(_key: &[u8], _pack_sheme: PackScheme) -> Result<Self, String> {
+        #[cfg(not(test))]
+        panic!(
+            "This panic is called from  TrickyBMaker<FuserLogicBuf>  because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option< TrickyBMaker<FuserLogicBuf> > = None;"
+        );
+        #[cfg(test)]
+        {
+            #![allow(clippy::as_conversions)]
+
+            Ok(Self {
+                ctr_test: RefCell::new(0),
+                // Исправлено: добавлена закрывающая скобка для RefCell::new
+                user_logic_buffer_clone: RefCell::new(Some(FuserLogicBuf::default())),
+                pack_type_test: RefCell::new(PackType::Data),
+                what_i_set: RefCell::new(0),
+            })
+        }
+    }
+    fn get_tricky_byte(
+        &self,
+        _pack_type: PackType,
+        _ctr: &u64,
+        _user_logic_buffer: Option<&mut FuserLogicBuf>,
+    ) -> u8 {
+        #[cfg(not(test))]
+        panic!(
+            "This panic is called from  TrickyBMaker<FuserLogicBuf>  because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option< TrickyBMaker<FuserLogicBuf> > = None;"
+        );
+        #[cfg(test)]
+        {
+            *self
+                .ctr_test
+                .try_borrow_mut()
+                .expect("unreal state in test code self.ctr_test") = *_ctr;
+
+            //*self.user_logic_buffer_clone.try_borrow_mut() = _user_logic_buffer.clone();
+            *self
+                .user_logic_buffer_clone
+                .try_borrow_mut()
+                .expect("unreal state in test code self.user_logic_buffer_clone") =
+                _user_logic_buffer.map(|b| b.clone());
+
+            *self
+                .pack_type_test
+                .try_borrow_mut()
+                .expect("unreal state in test code self.pack_type_test") = _pack_type;
+        }
+
+        #[cfg(test)]
+        *self
+            .what_i_set
+            .try_borrow()
+            .expect("unreal state in test code  *self.what_i_set.")
+    }
+}
+#[cfg(test)]
+impl<FuserLogicBuf: Default + Clone> DumpTricker<FuserLogicBuf> {
+    /// for test only
+    pub fn get_state(&self) -> (PackType, u64, FuserLogicBuf) {
+        #[cfg(not(test))]
+        panic!(
+            "This panic is called from  TrickyBMaker<FuserLogicBuf>  because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option< TrickyBMaker<FuserLogicBuf> > = None;"
+        );
+        #[cfg(test)]
+        (
+            self.pack_type_test
+                .try_borrow()
+                .expect("unreal state in test code  self.pack_type_test")
+                .clone(),
+            *self
+                .ctr_test
+                .try_borrow()
+                .expect("unreal state in test code  .ctr_test"),
+            self.user_logic_buffer_clone
+                .try_borrow()
+                .expect("unreal state in test code  .ser_logic_buffer_clone")
+                .clone()
+                .unwrap_or_default(),
+        )
+    }
+    #[cfg(test)]
+    /// for test only
+    pub fn set_byte(&self, _b: u8) {
+        #[cfg(not(test))]
+        panic!(
+            "This panic is called from  TrickyBMaker<FuserLogicBuf>  because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option< TrickyBMaker<FuserLogicBuf> > = None;"
+        );
+        #[cfg(test)]
+        {
+            *self
+                .what_i_set
+                .try_borrow_mut()
+                .expect("unreal state in test code self.what_i_set") = _b;
+        }
+    }
+}
+
 impl Crcser for DumpCrcser {
-    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+    fn new(_key: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -93,6 +215,7 @@ impl Crcser for DumpCrcser {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
+
             Ok(Self {
                 t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
@@ -100,7 +223,7 @@ impl Crcser for DumpCrcser {
         }
         //Ok(Self {})
     }
-    fn gen_crc(&mut self, _payload: &[u8], _crc_field: &mut [u8]) -> Result<(), &'static str> {
+    fn gen_crc(&mut self, _payload: &[u8], _crc_field: &mut [u8]) -> Result<(), String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -123,8 +246,8 @@ impl Crcser for DumpCrcser {
     }
 }
 
-impl Thrasher for DumpThrasher {
-    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+impl<FuserLogicBuf: Clone + Default> Thrasher<FuserLogicBuf> for DumpThrasher<FuserLogicBuf> {
+    fn new(_key: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -139,6 +262,8 @@ impl Thrasher for DumpThrasher {
             Ok(Self {
                 _t: _key.iter().map(|&x| x as u64).sum(),
                 v: _key.to_vec(),
+                user_logic_buffer_clone: RefCell::new(FuserLogicBuf::default()),
+                counter_pack: RefCell::new(0),
             })
         }
     }
@@ -149,7 +274,8 @@ impl Thrasher for DumpThrasher {
         _len_pack: &usize,
         _counter_of_field: &usize,
         _topoligy: &PackTopology,
-    ) -> Result<(), &'static str> {
+        _user_logic_buffer: Option<&mut FuserLogicBuf>,
+    ) -> Result<(), String> {
         #[cfg(not(test))]
         panic!(
             "This panic is called from Thrasher because it is a stub class,
@@ -168,13 +294,47 @@ impl Thrasher for DumpThrasher {
                 *x = *t;
             }
 
+            *self
+                .counter_pack
+                .try_borrow_mut()
+                .expect("unreal state in test code self.counter_pack") = *_counter_pack;
+            if let Some(x) = _user_logic_buffer {
+                *self
+                    .user_logic_buffer_clone
+                    .try_borrow_mut()
+                    .expect("unreal state in test code user_logic_buffer_clone") = x.clone();
+            }
             Ok(())
         }
     }
 }
 
+impl<FuserLogicBuf: Default + Clone> DumpThrasher<FuserLogicBuf> {
+    #[cfg(test)]
+    /// for test only
+    pub fn get_state(&self) -> (u64, FuserLogicBuf) {
+        #[cfg(not(test))]
+        panic!(
+            "This panic is called from  TrickyBMaker<FuserLogicBuf>  because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option< TrickyBMaker<FuserLogicBuf> > = None;"
+        );
+        #[cfg(test)]
+        (
+            *self
+                .counter_pack
+                .try_borrow()
+                .expect("unreal state in test code self.counter_pack"),
+            self.user_logic_buffer_clone
+                .try_borrow()
+                .expect("unreal state in test code self.user_logic_buffer_clone")
+                .clone(),
+        )
+    }
+}
+
 impl Randomer for DumpRandomer {
-    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+    fn new(_key: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -204,11 +364,13 @@ impl Randomer for DumpRandomer {
         #[cfg(test)]
         {
             #![allow(clippy::as_conversions)]
-            self.gen_rand_u64() as u32
+            let mut x = [0];
+            bpg(&mut self.t, &mut x);
+            self.t as u32
         }
     }
 
-    fn gen_rand_u64(&mut self) -> u64 {
+    fn gen_rand_usize(&mut self) -> usize {
         #[cfg(not(test))]
         {
             panic!(
@@ -219,15 +381,16 @@ impl Randomer for DumpRandomer {
         }
         #[cfg(test)]
         {
+            #![allow(clippy::as_conversions)]
             let mut x = [0];
             bpg(&mut self.t, &mut x);
-            self.t
+            self.t as usize
         }
     }
 }
 
 impl EncWis for DumpEnc {
-    fn new(_key: &[u8]) -> Result<Self, &'static str> {
+    fn new(_key: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -253,7 +416,7 @@ impl EncWis for DumpEnc {
         _auth_tag: &mut [u8],
         _nonce_countr: &u64,
         _nonce: Option<&[u8]>,
-    ) -> Result<(), &'static str> {
+    ) -> Result<(), String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -288,7 +451,7 @@ impl EncWis for DumpEnc {
         _auth_tag: &mut [u8],
         _nonce_countr: &u64,
         _nonce: Option<&[u8]>,
-    ) -> Result<StatusDecrypt, &'static str> {
+    ) -> Result<StatusDecrypt, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -336,12 +499,14 @@ pub struct DumpHandMaker {
     _ptr_in_state: usize,
     _role: MyRole,
     _private_key: u64,
+    ///for test
+    pub _private_seed: Box<[u8]>,
 }
 
 /*  */
 
 impl HandMaker for DumpHandMaker {
-    fn new(_my_role: MyRole, _seed: &[u8]) -> Result<Self, &'static str> {
+    fn new(_my_role: MyRole, _seed: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -372,11 +537,12 @@ impl HandMaker for DumpHandMaker {
                 _ptr_in_state: 0,
                 _role: _my_role,
                 _private_key: staka,
+                _private_seed: _seed.into(),
             })
         }
     }
 
-    fn send(&mut self) -> Result<InFile<u8>, &'static str> {
+    fn send(&mut self) -> Result<Rcc<Box<[u8]>>, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -410,10 +576,13 @@ impl HandMaker for DumpHandMaker {
                 self._ptr_in_state += 1;
 
                 return match curent_step.size() {
-                    2 => Ok(InFile::new([t1, t2].to_vec().into_boxed_slice())),
+                    2 => Ok(Rcc::new([t1, t2].to_vec().into_boxed_slice())),
                     3 => {
                         self._private_key = self._private_key.wrapping_add(t3 as u64);
-                        Ok(InFile::new([t1, t2, t3].to_vec().into_boxed_slice()))
+
+                        let ret_box = [t1, t2, t3].to_vec().into_boxed_slice();
+
+                        Ok(Rcc::new(ret_box))
                     },
                     _ => {
                         panic!("its unreal state")
@@ -425,12 +594,13 @@ impl HandMaker for DumpHandMaker {
                 "Send order error: The initiator cannot accept files from the initiator, 
         and the passive cannot accept files from the passive!
         The correct order is for the initiator to accept files from the passive,
-        or for the passive to send files to the initiator!",
+        or for the passive to send files to the initiator!"
+                    .to_string(),
             )
         }
     }
 
-    fn recv(&mut self, _file: InFile<u8>) -> Result<(), &'static str> {
+    fn recv(&mut self, _file: Rcc<Box<[u8]>>) -> Result<(), String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -476,7 +646,8 @@ impl HandMaker for DumpHandMaker {
                 "Recv order error: The initiator cannot accept files from the initiator, 
         and the passive cannot accept files from the passive!
         The correct order is for the initiator to accept files from the passive,
-        or for the passive to send files to the initiator!",
+        or for the passive to send files to the initiator!"
+                    .to_string(),
             )
         }
     }
@@ -495,7 +666,7 @@ impl HandMaker for DumpHandMaker {
             &self._in_state[..]
         }
     }
-    fn get_private_key(&mut self) -> Result<Box<[u8]>, &'static str> {
+    fn get_private_key(&mut self) -> Result<Box<[u8]>, String> {
         #[cfg(not(test))]
         {
             panic!(
@@ -509,7 +680,7 @@ impl HandMaker for DumpHandMaker {
             if self._ptr_in_state == self._in_state.len() {
                 Ok(self._private_key.to_be_bytes().to_vec().into_boxed_slice())
             } else {
-                Err("The key installation process is still not complete!")
+                Err("The key installation process is still not complete!".to_string())
             }
         }
     }
@@ -616,6 +787,8 @@ mod tests_enca {
 mod tests_dumps_nonser_cfcser {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
+    //use std::marker::PhantomData;
+
     use super::*;
 
     // ┌────────────────────────────────────────────────────────────────────────────┐
@@ -645,16 +818,15 @@ mod tests_dumps_nonser_cfcser {
     // ┌────────────────────────────────────────────────────────────────────────────┐
     // │ dumpcfcser tests – every method must panic with the documented message    │
     // └────────────────────────────────────────────────────────────────────────────┘
-    #[test]
+    // #[test]
     //#[should_panic(expected = "This panic is called from DumpCfcser")]
-    fn dumpcfcser_new_panics() {
-        let _ = DumpCrcser::new(&[]);
-    }
-
+    //fn dumpcfcser_new_panics() {
+    //   let _ = DumpCrcser::new(&[]);
+    // }
     #[test]
     //#[should_panic(expected = "This panic is called from DumpCfcser")]
     fn dumpcfcser_gen_crc_panics() {
-        let mut stub = DumpCrcser { t: 10, v: vec![] };
+        let mut stub: DumpCrcser = DumpCrcser { t: 10, v: vec![] };
         let mut crc_field = [0u8; 4];
         let payload = [1, 2, 3];
         stub.gen_crc(&payload, &mut crc_field).unwrap();
