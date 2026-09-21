@@ -562,18 +562,15 @@ mod test_get_queque_process {
     use super::*;
     use std::rc::Rc;
 
-    //
-    //
     #[test]
-    fn test_one_queque() {
+    fn test_get_queque_process() {
         let mut tw = fast_wconn_maker();
 
-        let mut vv = Vec::with_capacity(90);
+        let mut vv: Vec<(usize, f32, Rc<[u8]>)> = Vec::with_capacity(90);
 
         for x in 0..vv.capacity() {
-            vv.push((x, x as f32 * 1.234, Rc::new([1; 10])));
+            vv.push((x, x as f32 * 1.234, Rc::from(vec![1; 10])));
         }
-
         for len_f in [7, 17, 30] {
             for len_u in [7, 17, 30] {
                 let fb = WSFbackQueue::<f32>::new(3, len_f, 1000).unwrap();
@@ -587,29 +584,38 @@ mod test_get_queque_process {
 
                     let test = tw.get_queque_process(d.0 as u64, d.1, d.2.clone()).unwrap();
 
-                    println!("{:?}, i {}  lf {}   lu {}", test.clone(), i, len_f, len_u);
-
-                    if test == PackAddedStatus::WasAdded && i > 1 {
+                    // println!("{:?}, i {}  lf {}   lu {}", test.clone(), i, len_f, len_u);
+                    let min = std::cmp::min(len_f, len_u);
+                    if test == PackAddedStatus::WasAdded {
                         need_clean = false;
-                        //  assert_ne!(i % cmp::min(len_f, len_u), 1)
+
+                        //println!("{}", i % (min + 1));
+                        assert_ne!(i % (min + 1), min)
+                    } else {
+                        assert_ne!(i % std::cmp::min(len_f, len_u), min);
+                        assert_eq!(i % (min + 1), min);
+                        // println!(" =========== qq {}", min);
+                        if len_f <= len_u {
+                            assert_eq!(test, PackAddedStatus::FbackQueueIsfull);
+                        } else if len_f > len_u {
+                            assert_eq!(test, PackAddedStatus::UdpQueueCtrIsBig);
+                        } else {
+                            panic!("inreal test state!");
+                        }
                     }
-                    /*
-                                        if 1 == (i % cmp::min(len_f, len_u)) && i > 2 {
-                                            need_clean = false;
-                                            assert_eq!(test, PackAddedStatus::WasAdded);
-                                        } else if len_f < len_u {
-                                            assert_eq!(test, PackAddedStatus::FbackQueueIsfull);
-                                        } else if len_f > len_u {
-                                            assert_eq!(test, PackAddedStatus::UdpQueueCtrIsBig);
-                                        }
-                    */
+
                     if need_clean {
                         {
                             let ffb = tw.test_get_fback();
                             let _ = ffb.get_ctrs_as_byte_pack_vec();
                         }
+
                         let uud = tw.test_get_udp();
+
+                        let _ = uud.insert(d.0 as u64, &d.2.clone());
                         let _ = uud.get_queue(None);
+                        let _ = uud.insert(d.0 as u64, &d.2.clone()); //double add double dell
+                        let _ = uud.get_queue(None); // double dell
                     }
                     // println!("{:?}", test);
                 }
@@ -647,13 +653,13 @@ mod test_get_queque_process {
         }
     }
 
-    fn shuffle_with_limited_displacement<T>(vec: &mut [T], M: usize) {
+    fn shuffle_with_limited_displacement<T>(vec: &mut [T], mm: usize) {
         let n = vec.len();
-        if n == 0 || M == 0 {
+        if n == 0 || mm == 0 {
             return;
         }
 
-        let block_size = M + 1;
+        let block_size = mm + 1;
         let mut seed = 123456789u64; //seed
 
         let mut start = 0;
