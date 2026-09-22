@@ -89,7 +89,8 @@ pub struct WsConnection<
     udp_queue: WSUdpLike<Rc<[u8]>>, //-
     prealoc_buf_udp_queue: Vec<(u64, Rc<[u8]>)>,
     wait_queue: WSWaitQueue<(usize, Rc<[u8]>), f32>,
-    prealoc_buf_wait_queue: Vec<(u64, usize, Rc<[u8]>)>, //prealoc_buff
+    ///`Option<usize>` is a pointer indicating where in the vector to take the data from.
+    prealoc_buf_wait_queue: (Option<usize>, Vec<(u64, usize, Rc<[u8]>)>), //prealoc_buff
     fback_queue: WSFbackQueue<f32>,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
     non_alloc_buf: Vec<u8>,
@@ -285,7 +286,7 @@ impl<
                 connect_param.maximum_length_queue_unconfirmed_packages(),
             )?,
 
-            prealoc_buf_wait_queue: vec![],
+            prealoc_buf_wait_queue: (None, vec![]),
             fback_queue,
             ctrs,
             network_unstability: 0.0,

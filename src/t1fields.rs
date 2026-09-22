@@ -8,9 +8,97 @@
 #![deny(clippy::todo)]
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
+
 use crate::t0pology::PackTopology;
 use crate::w1types::*;
 use crate::{checked_cast, t0pology, w1utils};
+
+/// Copies the provided payload data into the designated payload section of a pre-allocated packet buffer.
+///
+/// # Arguments
+/// * `pack` - The mutable byte slice of the entire network packet, including headers and tags.
+/// * `payload` - The raw data slice to be written into the packet.
+/// * `topology` - The structural map of the packet used to locate boundaries.
+///
+/// # Errors
+/// Returns an error if:
+/// * The packet size is too small to fit the security tag.
+/// * The calculated payload boundaries are invalid or out of bounds.
+/// * The size of the provided `payload` does not exactly match the available space in the packet.
+pub fn set_payload(
+    pack: &mut [u8],
+    payload: &[u8],
+    topology: &PackTopology,
+) -> Result<(), WTypeErr> {
+    let end_pos = pack
+        .len()
+        .checked_sub(topology.tag_len())
+        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
+
+    let start_pos = topology.encrypt_start_pos();
+    if start_pos > end_pos {
+        return Err(WTypeErr::LenSizeErr(
+            "encrypt_start_pos exceeds end_pos".to_string(),
+        ));
+    }
+
+    let in_me = pack.get_mut(start_pos..end_pos).ok_or_else(|| {
+        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
+    })?;
+
+    if in_me.len() != payload.len() {
+        return Err(WTypeErr::CompileFieldsErr(format!(
+            "Payload length mismatch: expected {}, got {}",
+            in_me.len(),
+            payload.len()
+        )));
+    }
+
+    in_me.copy_from_slice(payload);
+    Ok(())
+}
+
+/// Extracts the payload data from a packet buffer and appends it to a reusable vector.
+///
+/// # Arguments
+/// * `pack` - The immutable byte slice of the network packet to read from.
+/// * `pre_created_vec` - A mutable vector where the extracted payload will be stored.
+///                       Its previous contents are cleared before copying.
+/// * `topology` - The structural map of the packet used to locate boundaries.
+///
+/// # Errors
+/// Returns an error if:
+/// * The packet size is too small to fit the security tag.
+/// * The calculated payload boundaries are invalid or out of bounds.
+pub fn get_payload(
+    pack: &[u8],
+    pre_created_vec: &mut Vec<u8>,
+    topology: &PackTopology,
+) -> Result<(), WTypeErr> {
+    pre_created_vec.clear();
+
+    let end_pos = pack
+        .len()
+        .checked_sub(topology.tag_len())
+        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
+
+    let start_pos = topology.encrypt_start_pos();
+    if start_pos > end_pos {
+        return Err(WTypeErr::LenSizeErr(
+            "encrypt_start_pos exceeds end_pos".to_string(),
+        ));
+    }
+
+    let in_me = pack.get(start_pos..end_pos).ok_or_else(|| {
+        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
+    })?;
+
+    pre_created_vec.reserve(in_me.len());
+    pre_created_vec.extend_from_slice(in_me);
+
+    Ok(())
+}
+
 ///get tricky byte
 pub fn get_tricky_byte(pack: &[u8], topology: &PackTopology) -> Result<u8, WTypeErr> {
     if let Some(star) = topology.tricky_byte() {
@@ -2207,19 +2295,7 @@ mod tests {
             pack[topology.content_start_pos()..pack.len() - topology.tag_len()],
             vec![0x71; pack.len() - (topology.content_start_pos() + topology.tag_len())]
         );
-        /*
-        IN FUTUTE
 
-
-        assert_eq!(
-            get_head_byte(&pack, &topology),
-            Ok((
-                WPascageMode::FastEPVQeuqe,
-                WKeyMode::Defauld,
-                WPackageType::Data
-            ))
-        );
-        */
         assert_eq!(
             get_id_conn(pack, &topology).unwrap(),
             (id_c, MyRole::bit_to_state(id_c_b as u8))
@@ -2739,5 +2815,442 @@ mod tests_ttl {
         let res = set_ttl(&mut pack, &topo, &ttl, false);
         assert_eq!(res, Ok(50));
         assert_eq!(read_ttl(&pack, &topo), 50);
+    }
+}
+
+#[cfg(test)]
+mod tests_get_set_data_copy {
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    use super::*;
+    use crate::t0pology::{self, PackTopology};
+    use crate::w1types::WTypeErr;
+
+    /// Returns a set of valid `PackTopology` instances covering different
+    /// `encrypt_start_pos` and `tag_len` combinations.
+    fn topologies() -> Vec<PackTopology> {
+        let mut v = Vec::new();
+
+        // 1. Full topology with encryption tag (Nonce, TTL, Len).
+        let fields1 = vec![
+            t0pology::PackFields::UserField(8),
+            t0pology::PackFields::Counter(4),
+            t0pology::PackFields::HeadCRC(2),
+            t0pology::PackFields::Nonce(4),
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::Len(2),
+        ];
+        v.push(PackTopology::new(64, &fields1, true, true).unwrap());
+
+        // 2. Topology without encryption tag.
+        let fields2 = vec![
+            t0pology::PackFields::UserField(16),
+            t0pology::PackFields::Counter(8),
+            t0pology::PackFields::HeadCRC(4),
+        ];
+        v.push(PackTopology::new(64, &fields2, true, false).unwrap());
+
+        // 3. Another full topology with different field sizes.
+        let fields3 = vec![
+            t0pology::PackFields::UserField(1),
+            t0pology::PackFields::Counter(1),
+            t0pology::PackFields::IdConnect(2),
+            t0pology::PackFields::HeadCRC(2),
+            t0pology::PackFields::Nonce(6),
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::Len(3),
+        ];
+        v.push(PackTopology::new(16, &fields3, true, false).unwrap());
+
+        // 4. Topology with `encrypt_start_pos == 0` (only encrypted fields).
+        let fields4 = vec![
+            t0pology::PackFields::Nonce(4),
+            t0pology::PackFields::TTL(2),
+            t0pology::PackFields::Len(2),
+            t0pology::PackFields::Counter(1),
+        ];
+        v.push(PackTopology::new(64, &fields4, true, false).unwrap());
+
+        v
+    }
+
+    #[test]
+    fn test_set_payload_and_get_payload() {
+        for topology in topologies() {
+            let start = topology.encrypt_start_pos();
+            let tag_len = topology.tag_len();
+
+            // ---------- Success cases with various payload lengths ----------
+            for payload_len in 0..=64 {
+                let pack_len = start + payload_len + tag_len;
+                let pack = vec![0xAA_u8; pack_len];
+                let payload: Vec<u8> = (0..payload_len)
+                    .map(|i| (i as u8).wrapping_mul(37).wrapping_add(11))
+                    .collect();
+
+                // set_payload success
+                let mut pack_copy = pack.clone();
+                assert_eq!(
+                    set_payload(&mut pack_copy, &payload, &topology),
+                    Ok(()),
+                    "set_payload failed for start={}, tag_len={}, payload_len={}",
+                    start,
+                    tag_len,
+                    payload_len
+                );
+                // Verify payload area
+                assert_eq!(
+                    &pack_copy[start..start + payload_len],
+                    &payload[..],
+                    "payload mismatch after set_payload"
+                );
+                // Verify bytes outside payload area are untouched
+                for i in 0..start {
+                    assert_eq!(
+                        pack_copy[i], 0xAA,
+                        "byte before payload changed at index {} (start={}, tag_len={}, payload_len={})",
+                        i, start, tag_len, payload_len
+                    );
+                }
+                for i in start + payload_len..pack_len {
+                    assert_eq!(
+                        pack_copy[i], 0xAA,
+                        "byte after payload changed at index {} (start={}, tag_len={}, payload_len={})",
+                        i, start, tag_len, payload_len
+                    );
+                }
+
+                // get_payload success
+                let mut out_vec = vec![0xBB; 7];
+                assert_eq!(
+                    get_payload(&pack_copy, &mut out_vec, &topology),
+                    Ok(()),
+                    "get_payload failed for start={}, tag_len={}, payload_len={}",
+                    start,
+                    tag_len,
+                    payload_len
+                );
+                assert_eq!(
+                    out_vec, payload,
+                    "get_payload returned wrong data for start={}, tag_len={}, payload_len={}",
+                    start, tag_len, payload_len
+                );
+
+                // get_payload from original pack (filled with 0xAA)
+                let mut out_vec2 = vec![0xCC; 3];
+                assert_eq!(get_payload(&pack, &mut out_vec2, &topology), Ok(()));
+                assert_eq!(out_vec2, vec![0xAA; payload_len]);
+            }
+
+            // ---------- set_payload payload length mismatch ----------
+            for pack_len in (start + tag_len)..=(start + tag_len + 20) {
+                let expected_payload_len = pack_len - start - tag_len;
+                let pack = vec![0xAA_u8; pack_len];
+                // Try different payload lengths that don't match
+                for delta in [-3i32, -1, 1, 3, 10].iter() {
+                    let payload_len = (expected_payload_len as i32 + delta).max(0) as usize;
+                    if payload_len == expected_payload_len {
+                        continue;
+                    }
+                    let payload = vec![0x55; payload_len];
+                    let mut pack_copy = pack.clone();
+                    let err = set_payload(&mut pack_copy, &payload, &topology).unwrap_err();
+                    let expected_msg = format!(
+                        "Payload length mismatch: expected {}, got {}",
+                        expected_payload_len, payload_len
+                    );
+                    assert_eq!(
+                        err,
+                        WTypeErr::CompileFieldsErr(expected_msg),
+                        "wrong error for pack_len={}, expected_payload_len={}, payload_len={}",
+                        pack_len,
+                        expected_payload_len,
+                        payload_len
+                    );
+                    // Ensure pack was not modified
+                    assert_eq!(
+                        pack_copy, pack,
+                        "set_payload modified pack on length mismatch"
+                    );
+                }
+            }
+
+            // ---------- pack too small for tag ----------
+            if tag_len > 0 {
+                for pack_len in 0..tag_len {
+                    let pack = vec![0xAA_u8; pack_len];
+                    let payload = vec![0x55; 0];
+                    let mut pack_copy = pack.clone();
+                    let err = set_payload(&mut pack_copy, &payload, &topology).unwrap_err();
+                    assert_eq!(
+                        err,
+                        WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()),
+                        "wrong error for pack_len < tag_len"
+                    );
+                    assert_eq!(pack_copy, pack);
+
+                    let mut out_vec = vec![0xBB; 5];
+                    let err = get_payload(&pack, &mut out_vec, &topology).unwrap_err();
+                    assert_eq!(
+                        err,
+                        WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()),
+                        "wrong get_payload error for pack_len < tag_len"
+                    );
+                    assert!(out_vec.is_empty(), "get_payload should clear vec on error");
+                }
+            }
+
+            // ---------- start > end (pack too small for encrypt_start_pos) ----------
+            if start > 0 {
+                let min_len = tag_len;
+                let max_len = tag_len + start - 1;
+                for pack_len in min_len..=max_len {
+                    let pack = vec![0xAA_u8; pack_len];
+                    let payload = vec![0x55; 0];
+                    let mut pack_copy = pack.clone();
+                    let err = set_payload(&mut pack_copy, &payload, &topology).unwrap_err();
+                    assert_eq!(
+                        err,
+                        WTypeErr::LenSizeErr("encrypt_start_pos exceeds end_pos".to_string()),
+                        "wrong error for start > end"
+                    );
+                    assert_eq!(pack_copy, pack);
+
+                    let mut out_vec = vec![0xBB; 5];
+                    let err = get_payload(&pack, &mut out_vec, &topology).unwrap_err();
+                    assert_eq!(
+                        err,
+                        WTypeErr::LenSizeErr("encrypt_start_pos exceeds end_pos".to_string()),
+                        "wrong get_payload error for start > end"
+                    );
+                    assert!(out_vec.is_empty(), "get_payload should clear vec on error");
+                }
+            }
+        }
+    }
+
+    //
+    //
+    //
+    #[test]
+    fn test_set_get_payload_boundary_and_oversized_inputs() {
+        // We explicitly assert "no panic" for pathological inputs.  If any of the
+        // calls below panics, `catch_unwind` will return `Err` and the outer
+        // `assert!` will report a single, clear failure instead of an obscure
+        // backtrace.  `AssertUnwindSafe` is required because `topologies()` uses
+        // interior mutability of the `PackTopology` builder only at construction
+        // time; once built, the value is only read.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            for topology in topologies() {
+                let start = topology.encrypt_start_pos();
+                let tag_len = topology.tag_len();
+                let min_pack_len = start + tag_len;
+
+                // -----------------------------------------------------------------
+                // 1. Minimum valid pack: exactly `start + tag_len`, empty payload.
+                // -----------------------------------------------------------------
+                {
+                    let mut pack = vec![0xAA_u8; min_pack_len];
+                    let empty: Vec<u8> = Vec::new();
+
+                    assert_eq!(
+                        set_payload(&mut pack, &empty, &topology),
+                        Ok(()),
+                        "minimum pack (len={}) must accept an empty payload \
+                     (start={}, tag_len={})",
+                        min_pack_len,
+                        start,
+                        tag_len
+                    );
+
+                    // Round-trip with a pre-filled destination vector that must be
+                    // cleared by `get_payload`.
+                    let mut out = vec![0xDE, 0xAD, 0xBE, 0xEF];
+                    assert_eq!(get_payload(&pack, &mut out, &topology), Ok(()));
+                    assert!(
+                        out.is_empty(),
+                        "empty payload expected after get_payload on minimum pack"
+                    );
+                }
+
+                // -----------------------------------------------------------------
+                // 2. Minimum invalid pack: one byte less than `start + tag_len`.
+                //    Must fail with the correct error variant and must not touch
+                //    the buffer.
+                // -----------------------------------------------------------------
+                if min_pack_len > 0 {
+                    let bad_len = min_pack_len - 1;
+                    let mut pack = vec![0xAA_u8; bad_len];
+                    let empty: Vec<u8> = Vec::new();
+
+                    // Two mutually exclusive error paths depending on which
+                    // boundary is hit first inside the implementation.
+                    let expected = if bad_len < tag_len {
+                        WTypeErr::LenSizeErr("pack len is less than tag_len".to_string())
+                    } else {
+                        WTypeErr::LenSizeErr("encrypt_start_pos exceeds end_pos".to_string())
+                    };
+
+                    let err = set_payload(&mut pack, &empty, &topology).unwrap_err();
+                    assert_eq!(
+                        err, expected,
+                        "one-byte-short pack must fail with the correct variant \
+                     (start={}, tag_len={}, pack_len={})",
+                        start, tag_len, bad_len
+                    );
+                    // Buffer must be untouched.
+                    assert!(
+                        pack.iter().all(|&b| b == 0xAA),
+                        "set_payload must not modify a pack that fails validation"
+                    );
+
+                    let mut out = vec![0x11, 0x22, 0x33, 0x44];
+                    let err = get_payload(&pack, &mut out, &topology).unwrap_err();
+                    assert_eq!(err, expected);
+                    assert!(
+                        out.is_empty(),
+                        "get_payload must clear the destination vector on error"
+                    );
+                }
+
+                // -----------------------------------------------------------------
+                // 3. Large pack with matching large payload (1 MiB).
+                // -----------------------------------------------------------------
+                {
+                    const BIG: usize = 1 << 20; // 1 MiB
+                    let pack_len = start + BIG + tag_len;
+                    let mut pack = vec![0u8; pack_len];
+                    let payload: Vec<u8> = (0..BIG).map(|i| (i as u8) ^ 0x5A).collect();
+
+                    assert_eq!(
+                        set_payload(&mut pack, &payload, &topology),
+                        Ok(()),
+                        "1 MiB pack (len={}) must accept a 1 MiB payload",
+                        pack_len
+                    );
+
+                    // Verify payload content and untouched boundaries.
+                    assert_eq!(&pack[start..start + BIG], &payload[..]);
+                    assert!(
+                        pack[..start].iter().all(|&b| b == 0),
+                        "prefix bytes must be untouched"
+                    );
+                    assert!(
+                        pack[start + BIG..].iter().all(|&b| b == 0),
+                        "trailing bytes (tag area) must be untouched"
+                    );
+
+                    let mut out = Vec::new();
+                    assert_eq!(get_payload(&pack, &mut out, &topology), Ok(()));
+                    assert_eq!(out.len(), BIG);
+                    assert_eq!(out, payload, "1 MiB round-trip must be byte-exact");
+                }
+
+                // -----------------------------------------------------------------
+                // 4. Oversized payload against a small pack.
+                //    The implementation must reject it and must not write anything.
+                // -----------------------------------------------------------------
+                {
+                    let small_pack_len = min_pack_len + 4; // room for exactly 4 payload bytes
+                    let mut pack = vec![0xAA_u8; small_pack_len];
+                    let oversized = vec![0x55_u8; 10_000];
+
+                    let expected_msg = format!(
+                        "Payload length mismatch: expected {}, got {}",
+                        4,
+                        oversized.len()
+                    );
+                    let err = set_payload(&mut pack, &oversized, &topology).unwrap_err();
+                    assert_eq!(
+                        err,
+                        WTypeErr::CompileFieldsErr(expected_msg),
+                        "oversized payload must be rejected with a clear message"
+                    );
+                    // No byte must have been written.
+                    assert!(
+                        pack.iter().all(|&b| b == 0xAA),
+                        "set_payload must not write anything on length mismatch"
+                    );
+                }
+
+                // -----------------------------------------------------------------
+                // 5. Payload length off by one in both directions.
+                // -----------------------------------------------------------------
+                {
+                    const MID: usize = 32;
+                    let pack_len = start + MID + tag_len;
+                    let mut pack = vec![0xAA_u8; pack_len];
+
+                    for &delta in &[-1i32, 1] {
+                        let plen = (MID as i32 + delta) as usize;
+                        let payload = vec![0x77u8; plen];
+                        let expected_msg =
+                            format!("Payload length mismatch: expected {}, got {}", MID, plen);
+                        let err = set_payload(&mut pack, &payload, &topology).unwrap_err();
+                        assert_eq!(
+                            err,
+                            WTypeErr::CompileFieldsErr(expected_msg),
+                            "off-by-{} payload must be rejected",
+                            delta
+                        );
+                        // Buffer unchanged after rejection.
+                        assert!(
+                            pack.iter().all(|&b| b == 0xAA),
+                            "off-by-{} must not modify the pack",
+                            delta
+                        );
+                    }
+                }
+
+                // -----------------------------------------------------------------
+                // 6. Very long pack with payload of exactly the same very long
+                //    length (4 MiB).  Stresses size arithmetic without overflow.
+                // -----------------------------------------------------------------
+                {
+                    const HUGE: usize = 4 * 1024 * 1024; // 4 MiB
+                    let pack_len = start + HUGE + tag_len;
+                    let mut pack = vec![0u8; pack_len];
+                    let payload = vec![0xABu8; HUGE];
+
+                    assert_eq!(
+                        set_payload(&mut pack, &payload, &topology),
+                        Ok(()),
+                        "4 MiB payload must be accepted without overflow"
+                    );
+
+                    let mut out = Vec::new();
+                    assert_eq!(get_payload(&pack, &mut out, &topology), Ok(()));
+                    assert_eq!(out.len(), HUGE);
+                    assert!(
+                        out.iter().all(|&b| b == 0xAB),
+                        "4 MiB round-trip must be byte-exact"
+                    );
+                }
+
+                // -----------------------------------------------------------------
+                // 7. Zero-length payload round-trip on every topology.
+                // -----------------------------------------------------------------
+                {
+                    let pack_len = start + tag_len;
+                    let mut pack = vec![0x00u8; pack_len];
+                    let payload: Vec<u8> = Vec::new();
+
+                    assert_eq!(set_payload(&mut pack, &payload, &topology), Ok(()));
+
+                    let mut out = vec![0xFF; 16];
+                    assert_eq!(get_payload(&pack, &mut out, &topology), Ok(()));
+                    assert!(
+                        out.is_empty(),
+                        "zero-length payload must yield an empty vector"
+                    );
+                }
+            }
+        }));
+
+        assert!(
+            outcome.is_ok(),
+            "set_payload/get_payload panicked on boundary or oversized input"
+        );
     }
 }
