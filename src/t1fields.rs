@@ -13,6 +13,64 @@ use crate::t0pology::PackTopology;
 use crate::w1types::*;
 use crate::{checked_cast, t0pology, w1utils};
 
+/// Mutable view of the payload region of a packet.
+///
+/// The payload spans `content_start_pos()..len() - tag_len()`.
+///
+/// # Errors
+/// * `LenSizeErr` if `pack.len() < topology.tag_len()`.
+/// * `LenSizeErr` if `content_start_pos() > end_pos` (pack too short).
+/// * `LenSizeErr` if the computed range is out of bounds.
+pub fn payload_sls_mut<'a>(
+    pack: &'a mut [u8],
+    topology: &PackTopology,
+) -> Result<&'a mut [u8], WTypeErr> {
+    let end_pos = pack
+        .len()
+        .checked_sub(topology.tag_len())
+        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
+
+    let start_pos = topology.content_start_pos();
+    if start_pos > end_pos {
+        return Err(WTypeErr::LenSizeErr(
+            "encrypt_start_pos exceeds end_pos".to_string(),
+        ));
+    }
+
+    let in_me = pack.get_mut(start_pos..end_pos).ok_or_else(|| {
+        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
+    })?;
+
+    Ok(in_me)
+}
+/// Immutable view of the payload region of a packet.
+///
+/// The payload spans `content_start_pos()..len() - tag_len()`.
+///
+/// # Errors
+/// * `LenSizeErr` if `pack.len() < topology.tag_len()`.
+/// * `LenSizeErr` if `content_start_pos() > end_pos` (pack too short).
+/// * `LenSizeErr` if the computed range is out of bounds.s
+pub fn payload_sls<'a>(pack: &'a [u8], topology: &PackTopology) -> Result<&'a [u8], WTypeErr> {
+    let end_pos = pack
+        .len()
+        .checked_sub(topology.tag_len())
+        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
+
+    let start_pos = topology.content_start_pos();
+    if start_pos > end_pos {
+        return Err(WTypeErr::LenSizeErr(
+            "encrypt_start_pos exceeds end_pos".to_string(),
+        ));
+    }
+
+    let in_me = pack.get(start_pos..end_pos).ok_or_else(|| {
+        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
+    })?;
+
+    Ok(in_me)
+}
+
 /// Copies the provided payload data into the designated payload section of a pre-allocated packet buffer.
 ///
 /// # Arguments
@@ -30,21 +88,7 @@ pub fn set_payload(
     payload: &[u8],
     topology: &PackTopology,
 ) -> Result<(), WTypeErr> {
-    let end_pos = pack
-        .len()
-        .checked_sub(topology.tag_len())
-        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
-
-    let start_pos = topology.encrypt_start_pos();
-    if start_pos > end_pos {
-        return Err(WTypeErr::LenSizeErr(
-            "encrypt_start_pos exceeds end_pos".to_string(),
-        ));
-    }
-
-    let in_me = pack.get_mut(start_pos..end_pos).ok_or_else(|| {
-        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
-    })?;
+    let in_me = payload_sls_mut(pack, topology)?;
 
     if in_me.len() != payload.len() {
         return Err(WTypeErr::CompileFieldsErr(format!(
@@ -77,21 +121,7 @@ pub fn get_payload(
 ) -> Result<(), WTypeErr> {
     pre_created_vec.clear();
 
-    let end_pos = pack
-        .len()
-        .checked_sub(topology.tag_len())
-        .ok_or_else(|| WTypeErr::LenSizeErr("pack len is less than tag_len".to_string()))?;
-
-    let start_pos = topology.encrypt_start_pos();
-    if start_pos > end_pos {
-        return Err(WTypeErr::LenSizeErr(
-            "encrypt_start_pos exceeds end_pos".to_string(),
-        ));
-    }
-
-    let in_me = pack.get(start_pos..end_pos).ok_or_else(|| {
-        WTypeErr::LenSizeErr("Calculated payload range is out of pack bounds".to_string())
-    })?;
+    let in_me = payload_sls(pack, topology)?;
 
     pre_created_vec.reserve(in_me.len());
     pre_created_vec.extend_from_slice(in_me);
@@ -2878,7 +2908,7 @@ mod tests_get_set_data_copy {
     #[test]
     fn test_set_payload_and_get_payload() {
         for topology in topologies() {
-            let start = topology.encrypt_start_pos();
+            let start = topology.content_start_pos();
             let tag_len = topology.tag_len();
 
             // ---------- Success cases with various payload lengths ----------
@@ -3043,7 +3073,7 @@ mod tests_get_set_data_copy {
         // time; once built, the value is only read.
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             for topology in topologies() {
-                let start = topology.encrypt_start_pos();
+                let start = topology.content_start_pos();
                 let tag_len = topology.tag_len();
                 let min_pack_len = start + tag_len;
 

@@ -281,10 +281,10 @@ pub fn pad_trim(arr: &[u8]) -> usize {
 }
 
 /// Appends `pad_pos` bytes to the end of the vector, using the inversion of the last byte.
-/// If `pad_pos == 0`, no alignment is required, the function returns `false`.
-pub fn pad_maker_vec(arr: &mut Vec<u8>, pad_pos: usize) -> bool {
+/// If `pad_add == 0`, no alignment is required, the function returns `false`.
+pub fn pad_maker_vec(arr: &mut Vec<u8>, pad_add: usize) -> bool {
     // If nothing needs to be added, return false as per condition
-    if pad_pos == 0 {
+    if pad_add == 0 {
         return false;
     }
 
@@ -295,12 +295,7 @@ pub fn pad_maker_vec(arr: &mut Vec<u8>, pad_pos: usize) -> bool {
         None => return false,
     };
 
-    // Run the loop and increase the vector by exactly pad_pos elements
-    /*    for _ in 0..pad_pos {
-            arr.push(last_byte);
-        }
-    */
-    arr.resize(arr.len().saturating_add(pad_pos), last_byte);
+    arr.resize(arr.len().saturating_add(pad_add), last_byte);
     true
 }
 

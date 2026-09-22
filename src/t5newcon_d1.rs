@@ -90,10 +90,11 @@ pub struct WsConnection<
     prealoc_buf_udp_queue: Vec<(u64, Rc<[u8]>)>,
     wait_queue: WSWaitQueue<(usize, Rc<[u8]>), f32>,
     ///`Option<usize>` is a pointer indicating where in the vector to take the data from.
-    prealoc_buf_wait_queue: (Option<usize>, Vec<(u64, usize, Rc<[u8]>)>), //prealoc_buff
+    prealoc_buf_wait_queue: (Option<usize>, Vec<(f32, usize, Rc<[u8]>)>), //prealoc_buff
     fback_queue: WSFbackQueue<f32>,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
-    non_alloc_buf: Vec<u8>,
+    ///`Option<usize>` is a pointer of ending data non_alloc_buf.
+    non_alloc_buf: (Option<usize>, Box<[u8]>),
     ctrs: Countrs,
     network_unstability: f32,
     network_latency: f32,
@@ -300,7 +301,7 @@ impl<
             my_role,
             measurement_window_latency: connect_param.start_ms_latency(),
             identified: identified.clone(),
-            non_alloc_buf: Vec::with_capacity(connect_param.mtu()),
+            non_alloc_buf: (None, vec![0; connect_param.mtu()].into_boxed_slice()),
             was_killed: false,
             fuck_mut_struct: RefCell::new(fuck_mut_struct),
         })
@@ -509,8 +510,8 @@ mod test_new {
 
         assert_eq!(te1.connect_param().mtu(), 9876);
 
-        assert_eq!(te1.non_alloc_buf.len(), 0);
-        assert_eq!(te1.non_alloc_buf.capacity(), te1.connect_param().mtu());
+        assert_eq!(te1.non_alloc_buf.1.len(), te1.connect_param().mtu());
+        assert_eq!(te1.non_alloc_buf.0, None);
 
         assert_eq!(te1.add_two(&mut a0), Ok(()));
         assert_eq!(te1.add_two(&mut a10000), Ok(()));
