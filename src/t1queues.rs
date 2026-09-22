@@ -1825,11 +1825,11 @@ mod test_wait {
                 waa.push(10, 10, true).unwrap();
                 waa.push(20, 1000, true).unwrap();
 
-                assert!(waa.push(30, 999, true).is_err());
-                assert!(waa.push(30, 1000, true).is_ok()); //is ok !!!!! order <= p
+                assert!(waa.push(30, 999, true).is_ok());
+                assert!(waa.push(30, 1000, true).is_err()); // id 30 == 30 
 
                 assert!(waa.push(30, 1000000, true).is_err());
-                assert!(waa.push(31, 1001, true).is_ok()); //is ok !!!!! order <= p\
+                assert!(waa.push(31, 1001, true).is_ok());
 
                 waa.remove(2).unwrap();
                 waa.remove(20).unwrap();
