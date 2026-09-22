@@ -1394,13 +1394,13 @@ mod test_api {
         assert_eq!(x1, x2);
 
         let mut tx = 0;
-        let _ = add_two(&mut tx).unwrap();
+        add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 2);
-        let _ = add_two(&mut tx).unwrap();
+        add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 4);
-        let _ = add_two(&mut tx).unwrap();
+        add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 6);
     }

@@ -744,9 +744,10 @@ impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
         }
         let mut p_order = p_order;
         if let Some(mp) = &mut self.of_max_p
-            && mp.1 > p_order {
-                p_order = mp.1.clone();
-            }
+            && mp.1 > p_order
+        {
+            p_order = mp.1.clone();
+        }
 
         match self.data_map.entry(id) {
             std::collections::hash_map::Entry::Occupied(_) => {
