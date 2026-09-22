@@ -18,7 +18,7 @@ use crate::t5pack_flds::init_all_pack_to_send;
 use crate::w1types::{
     HeadByteStruct, PackAddedStatus, PackType, PackTypeGroup, Ttl, WSQueueState, WTypeErr,
 };
-use crate::w1utils::{check_probability, fuck_coeff_of_rand_pack_trim, pad_maker};
+use crate::w1utils::{check_probability, fuck_coeff_of_rand_pack_trim};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum WhatSend {
@@ -114,7 +114,7 @@ impl<
     fn send_any_pack<F>(
         &mut self,
         _send_api: F,
-        _current_time: f32,
+        current_time: f32,
         what_should_send: WhatSend,
         force_no_edit_pack_type: Option<bool>,
     ) -> Result<(), WTypeErr>
@@ -178,6 +178,7 @@ impl<
 
         self.paste_and_send(
             is_fake,
+            current_time,
             &mtu,
             &ovh,
             &payload_len_final,
@@ -191,6 +192,7 @@ impl<
     fn paste_and_send(
         &mut self,
         is_fake: bool,
+        current_time: f32,
         mtu: &usize,
         ovh: &usize,
         payload_len_final: &usize,
@@ -206,6 +208,29 @@ impl<
             )))?;
 
         self.non_alloc_buf.0 = Some(all_pack_len);
+        /*
+        addd
+
+        */
+        let ctr_for_init = self.match_pack_send(
+            *mtu,
+            *payload_len_final,
+            is_fake,
+            what_should_send,
+            current_time,
+            all_pack_len,
+            antoher,
+        )?;
+
+        let mut_enc = self.encrypt.get_mut();
+
+        let mut_fms = self.fuck_mut_struct.get_mut();
+
+        let mut hb = HeadByteStruct::new();
+
+        hb.set_need_trim_is_pad(false);
+        hb.set_need_trim_is_pad(is_fake);
+        hb.set_is_kill(self.was_killed);
 
         let buffer_operating_range =
             self.non_alloc_buf
@@ -215,6 +240,47 @@ impl<
                     "self.non_alloc_buf.1[..0] all_pack_len err, {} mtu {}",
                     all_pack_len, *mtu
                 )))?;
+
+        init_all_pack_to_send(
+            buffer_operating_range,
+            antoher.3,
+            hb,
+            &ctr_for_init,
+            PackType::Fback,
+            antoher.1,
+            antoher.2,
+            antoher.0,
+            mtu,
+            mut_enc,
+            mut_fms,
+        )?;
+
+        debug_assert_eq!(self.non_alloc_buf.0, Some(all_pack_len));
+
+        Ok(())
+    }
+
+    fn match_pack_send(
+        &mut self,
+        mtu: usize,
+        payload_len_final: usize,
+        is_fake: bool,
+        what_should_send: WhatSend,
+        current_time: f32,
+        all_pack_len: usize,
+        antoher: (Option<(&Ttl, bool)>, &Identified, Option<u8>, &PackTopology),
+    ) -> Result<u64, WTypeErr> {
+        let mut my_ctr_of_pack = None;
+
+        let buffer_operating_range =
+            self.non_alloc_buf
+                .1
+                .get_mut(..all_pack_len)
+                .ok_or(WTypeErr::LenSizeErr(format!(
+                    "self.non_alloc_buf.1[..0] all_pack_len err, {} mtu {}",
+                    all_pack_len, mtu
+                )))?;
+
         //
         if !is_fake {
             let sls_payload = payload_sls_mut(buffer_operating_range, antoher.3)?;
@@ -224,11 +290,28 @@ impl<
                     if self.wait_queue.capacity() > self.wait_queue.elems_in_me() {
                         self.file_splitter.file_to_slices(sls_payload);
                     } else {
+                        return Err(WTypeErr::WorkTimeErr("q is full".to_string()));
                     }
 
-                    //self.wait_queue.push(id, p_order, force_to_max_p, elem);
+                    let mut tepm_ctr = self.ctrs.my_data;
+                    add_two(&mut tepm_ctr).map_err(WTypeErr::WorkTimeErr)?;
 
-                    //add_in_wait_p
+                    let err =
+                        self.wait_queue
+                            .push(tepm_ctr, current_time, (0, Rc::from(&*sls_payload)));
+
+                    debug_assert_eq!(err.clone(), Ok(()));
+                    err.map_err(|x| {
+                        WTypeErr::WorkTimeErr(format!(
+                            "An impossible state,
+     since the check confirming that the data could be stored had already been performed. {:?}",
+                            x
+                        ))
+                    })?;
+
+                    self.ctrs.my_data = tepm_ctr;
+
+                    my_ctr_of_pack = Some(tepm_ctr);
                 },
                 WhatSend::DataResending(len) => {
                     let index = self.prealoc_buf_wait_queue.0.ok_or_else(|| {
@@ -245,29 +328,24 @@ impl<
                         .ok_or(WTypeErr::CompileFieldsErr("An invalid condition:
                          in `Option prealoc_buf_wait_queue`,
                           the value is greater than the length of the `prealoc_buf_wait_queue` vector.".to_string()))?;
-                    let resend = &resend.2;
-                    debug_assert!(resend.len() <= *payload_len_final);
-                    debug_assert_eq!(resend.len(), *len);
-                    /*
-                    if *payload_len_final > *len {
-                        if !pad_maker(sls_payload, *len) {
-                            panic!(
-                                "an impossible state, since pad_maker must always return true if *payload_len_final > *len"
-                            );
-                        }
-                        true //was paddind
-                    } else {
-                        false //was paddind
-                    }
-                    */
+
+                    debug_assert!(resend.2.1.len() <= payload_len_final);
+                    debug_assert_eq!(resend.2.1.len(), *len);
+
+                    //verification that the packet was sent no more than a specified number of times
+                    debug_assert!(
+                        resend.2.0 > self.connect_param.max_num_attempts_resend_package()
+                    );
+
+                    my_ctr_of_pack = Some(resend.0);
                 },
 
                 WhatSend::Fback(_) => {
                     debug_assert!(
-                        self.fback_queue.payload_len_in_bytes() <= *payload_len_final,
+                        self.fback_queue.payload_len_in_bytes() <= payload_len_final,
                         ".payload_len_in_bytes() {}   payload_len_final {}",
                         self.fback_queue.payload_len_in_bytes(),
-                        *payload_len_final
+                        payload_len_final
                     );
 
                     //The value `false` is used here because `ctrs_pack`
@@ -281,37 +359,16 @@ impl<
                                 x
                             ))
                         })?;
+
+                    add_two(&mut self.ctrs.my_fback).map_err(WTypeErr::WorkTimeErr)?;
+                    my_ctr_of_pack = Some(self.ctrs.my_fback);
                 },
             };
         }
 
-        let mut_enc = self.encrypt.get_mut();
-
-        let mut_fms = self.fuck_mut_struct.get_mut();
-
-        let mut hb = HeadByteStruct::new();
-
-        hb.set_need_trim_is_pad(false);
-        hb.set_need_trim_is_pad(is_fake);
-        hb.set_is_kill(self.was_killed);
-
-        init_all_pack_to_send(
-            buffer_operating_range,
-            antoher.3,
-            hb,
-            &self.ctrs.my_fback,
-            PackType::Fback,
-            antoher.1,
-            antoher.2,
-            antoher.0,
-            mtu,
-            mut_enc,
-            mut_fms,
-        )?;
-
-        debug_assert_eq!(self.non_alloc_buf.0, Some(all_pack_len));
-
-        Ok(())
+        my_ctr_of_pack.ok_or(WTypeErr::WorkTimeErr(
+            "unreal State &my_ctr_of_pack is None".to_string(),
+        ))
     }
 
     fn get_tb(&mut self) -> Option<u8> {
@@ -756,3 +813,107 @@ mod test_get_queque_process {
         }
     }
 }
+
+#[cfg(test)]
+mod test_sender {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![deny(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
+    use super::*;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_get_queque_process() {}
+}
+
+/*
+        if !is_fake {
+            let sls_payload = payload_sls_mut(buffer_operating_range, antoher.3)?;
+
+            match &what_should_send {
+                WhatSend::Data(_len) => {
+                    if self.wait_queue.capacity() > self.wait_queue.elems_in_me() {
+                        self.file_splitter.file_to_slices(sls_payload);
+                    } else {
+                        return Err(WTypeErr::WorkTimeErr("q is full".to_string()));
+                    }
+
+                    let mut tepm_ctr = self.ctrs.my_data;
+                    add_two(&mut tepm_ctr).map_err(WTypeErr::WorkTimeErr)?;
+
+                    let err =
+                        self.wait_queue
+                            .push(tepm_ctr, current_time, (0, Rc::from(&*sls_payload)));
+
+                    debug_assert_eq!(err.clone(), Ok(()));
+                    err.map_err(|x| {
+                        WTypeErr::WorkTimeErr(format!(
+                            "An impossible state,
+     since the check confirming that the data could be stored had already been performed. {:?}",
+                            x
+                        ))
+                    })?;
+
+                    self.ctrs.my_data = tepm_ctr;
+
+                    my_ctr_of_pack = Some(tepm_ctr);
+                },
+                WhatSend::DataResending(len) => {
+                    let index = self.prealoc_buf_wait_queue.0.ok_or_else(|| {
+                        WTypeErr::CompileFieldsErr(
+        "This is an impossible condition, because whenever this branch is called,
+         the caller must verify that the prealoc_buf_wait_queue option has a value.".to_string()
+    )
+                    })?;
+
+                    let resend = self
+                        .prealoc_buf_wait_queue
+                        .1
+                        .get(index)
+                        .ok_or(WTypeErr::CompileFieldsErr("An invalid condition:
+                         in `Option prealoc_buf_wait_queue`,
+                          the value is greater than the length of the `prealoc_buf_wait_queue` vector.".to_string()))?;
+
+                    debug_assert!(resend.2.1.len() <= *payload_len_final);
+                    debug_assert_eq!(resend.2.1.len(), *len);
+
+                    //verification that the packet was sent no more than a specified number of times
+                    debug_assert!(
+                        resend.2.0 > self.connect_param.max_num_attempts_resend_package()
+                    );
+
+                    my_ctr_of_pack = Some(resend.0);
+                },
+
+                WhatSend::Fback(_) => {
+                    debug_assert!(
+                        self.fback_queue.payload_len_in_bytes() <= *payload_len_final,
+                        ".payload_len_in_bytes() {}   payload_len_final {}",
+                        self.fback_queue.payload_len_in_bytes(),
+                        *payload_len_final
+                    );
+
+                    //The value `false` is used here because `ctrs_pack`
+                    // is a specific sequence of bytes that contains information about the end of the payload.
+                    self.fback_queue
+                        .copy_ctrs_pack_to_slice(sls_payload, false)
+                        .map_err(|x| {
+                            WTypeErr::WorkTimeErr(format!(
+                                "ERR fback_queue
+                    .copy_ctrs_pack_to_slice err: {:?}",
+                                x
+                            ))
+                        })?;
+
+                    add_two(&mut self.ctrs.my_fback).map_err(WTypeErr::WorkTimeErr)?;
+                    my_ctr_of_pack = Some(self.ctrs.my_fback);
+                },
+            };
+        }
+*/

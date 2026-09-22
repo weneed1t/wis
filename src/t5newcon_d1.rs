@@ -88,9 +88,10 @@ pub struct WsConnection<
     file_splitter: WSFileSplitter,  //-
     udp_queue: WSUdpLike<Rc<[u8]>>, //-
     prealoc_buf_udp_queue: Vec<(u64, Rc<[u8]>)>,
+    ///(u64, P, T)
     wait_queue: WSWaitQueue<(usize, Rc<[u8]>), f32>,
     ///`Option<usize>` is a pointer indicating where in the vector to take the data from.
-    prealoc_buf_wait_queue: (Option<usize>, Vec<(f32, usize, Rc<[u8]>)>), //prealoc_buff
+    prealoc_buf_wait_queue: (Option<usize>, Vec<(u64, f32, (usize, Rc<[u8]>))>), //prealoc_buff
     fback_queue: WSFbackQueue<f32>,
     intermediate_questionable_packages_queue: Option<Box<[u8]>>,
     ///`Option<usize>` is a pointer of ending data non_alloc_buf.
@@ -306,14 +307,14 @@ impl<
             fuck_mut_struct: RefCell::new(fuck_mut_struct),
         })
     }
-
-    fn add_two(&self, num: &mut u64) -> Result<(), String> {
-        *num = num.checked_add(2).ok_or(
-            "The capacity limit of the main counter u64 has been reached, so it is no longer \
+}
+///add 2 to the number
+pub fn add_two(num: &mut u64) -> Result<(), String> {
+    *num = num.checked_add(2).ok_or(
+        "The capacity limit of the main counter u64 has been reached, so it is no longer \
              possible to send new messages over this connection. The connection must be closed!",
-        )?;
-        Ok(())
-    }
+    )?;
+    Ok(())
 }
 
 // getters for wsconnection - separate impl for clarity
@@ -513,10 +514,10 @@ mod test_new {
         assert_eq!(te1.non_alloc_buf.1.len(), te1.connect_param().mtu());
         assert_eq!(te1.non_alloc_buf.0, None);
 
-        assert_eq!(te1.add_two(&mut a0), Ok(()));
-        assert_eq!(te1.add_two(&mut a10000), Ok(()));
+        assert_eq!(add_two(&mut a0), Ok(()));
+        assert_eq!(add_two(&mut a10000), Ok(()));
         assert_eq!(
-            te1.add_two(&mut aerr),
+            add_two(&mut aerr),
             Err(
                 "The capacity limit of the main counter u64 has been reached, so it is no longer \
                  possible to send new messages over this connection. The connection must be \
@@ -1258,47 +1259,16 @@ mod test_new {
 
     #[test]
     fn add_to() {
-        let fields = vec![
-            //t2page::PackFields::HeadByte,
-            t0pology::PackFields::Counter(1),
-        ];
-
-        let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
-
-        let result = t4param::base_builder_pub(po).build().unwrap();
-
-        let seeds = Seeds {
-            nonce: None,      //Some(Box::new([2, 2, 2, 2])),
-            random: None,     //Some(Box::new([3, 3, 3, 3])),
-            user_field: None, //Some(Box::new([5, 5, 5, 5u8])),
-            crc: None,        //Some(Box::new([6, 4, 4, 4])),
-            handmaker: Box::new([9, 9, 9, 9u8]),
-            tricky: None, //Some(Box::new([7, 7, 7, 7u8])),
-        };
-
-        let te1: Dumdwcn = WsConnection::new(
-            &result,
-            &[1, 1, 1, 1],
-            MyRole::Initiator,
-            &seeds,
-            &Identified {
-                my_metall_id: 999,
-                my_s_r_id: None,
-                id_conn: None,
-            },
-        )
-        .unwrap();
-
         let mut h = 1;
-        assert!(te1.add_two(&mut h).is_ok());
+        assert!(add_two(&mut h).is_ok());
         assert_eq!(h, 3);
-        assert!(te1.add_two(&mut h).is_ok());
+        assert!(add_two(&mut h).is_ok());
         assert_eq!(h, 5);
 
         h = u64::MAX - 1;
 
         assert_eq!(
-            te1.add_two(&mut h),
+            add_two(&mut h),
             Err(
                 "The capacity limit of the main counter u64 has been reached, so it is no longer \
                  possible to send new messages over this connection. The connection must be \
@@ -1424,13 +1394,13 @@ mod test_api {
         assert_eq!(x1, x2);
 
         let mut tx = 0;
-        let _ = te1.add_two(&mut tx);
+        let _ = add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 2);
-        let _ = te1.add_two(&mut tx);
+        let _ = add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 4);
-        let _ = te1.add_two(&mut tx);
+        let _ = add_two(&mut tx).unwrap();
 
         assert_eq!(tx, 6);
     }
