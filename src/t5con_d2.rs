@@ -216,13 +216,20 @@ impl<
                     all_pack_len, *mtu
                 )))?;
         //
-        let was_padding = if !is_fake {
+        if !is_fake {
             let sls_payload = payload_sls_mut(buffer_operating_range, antoher.3)?;
 
-            
-
             match &what_should_send {
-                WhatSend::Data(_len) => false, //was paddind
+                WhatSend::Data(_len) => {
+                    if self.wait_queue.capacity() > self.wait_queue.elems_in_me() {
+                        self.file_splitter.file_to_slices(sls_payload);
+                    } else {
+                    }
+
+                    //self.wait_queue.push(id, p_order, force_to_max_p, elem);
+
+                    //add_in_wait_p
+                },
                 WhatSend::DataResending(len) => {
                     let index = self.prealoc_buf_wait_queue.0.ok_or_else(|| {
                         WTypeErr::CompileFieldsErr(
@@ -241,7 +248,7 @@ impl<
                     let resend = &resend.2;
                     debug_assert!(resend.len() <= *payload_len_final);
                     debug_assert_eq!(resend.len(), *len);
-
+                    /*
                     if *payload_len_final > *len {
                         if !pad_maker(sls_payload, *len) {
                             panic!(
@@ -252,6 +259,7 @@ impl<
                     } else {
                         false //was paddind
                     }
+                    */
                 },
 
                 WhatSend::Fback(_) => {
@@ -273,12 +281,9 @@ impl<
                                 x
                             ))
                         })?;
-                    false //was paddind
                 },
-            }
-        } else {
-            false
-        };
+            };
+        }
 
         let mut_enc = self.encrypt.get_mut();
 
@@ -286,7 +291,7 @@ impl<
 
         let mut hb = HeadByteStruct::new();
 
-        hb.set_need_trim_is_pad(was_padding);
+        hb.set_need_trim_is_pad(false);
         hb.set_need_trim_is_pad(is_fake);
         hb.set_is_kill(self.was_killed);
 

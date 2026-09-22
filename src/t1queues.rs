@@ -725,32 +725,27 @@ impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
             of_min_p: None,
         })
     }
-    /// Inserting an element, id is the unique id of the element in the hash table,
-    /// p_order is a check object, usually f32/f64 or u32/64.
-    /// If p_order is greater than all p_orders currently in the table,
-    /// the insertion occurs in O(1); if p_order is smaller,
-    /// force_to_max_p if  == true, then if the value of p_order is less than
-    /// max_elem_id_and_p, the element will be added, but its p_order will be
-    /// equal to max_elem_id_and_p;  if force_to_max_p if  == false, then if
-    /// the value of p_order for the element is  less than max_elem_id_and_p,
-    /// an error will be triggered.
-    pub fn push(
-        &mut self,
-        id: u64,
-        p_order: P,
-        force_to_max_p: bool,
-        elem: T,
-    ) -> Result<(), String> {
+    /// Inserts an element into the queue. The `id` must be a unique identifier within the hash table.
+    /// The `p_order` acts as a priority/ordering object (typically `f32`/`f64` or `u32`/`u64`).
+    ///
+    /// # Behavior
+    /// * If the provided `p_order` is greater than or equal to the current maximum priority (`of_max_p`),
+    ///   the insertion occurs in O(1) time complexity.
+    /// * If the provided `p_order` is smaller than the current maximum priority, it is automatically
+    ///   clamped (promoted) to equal the current maximum priority value to maintain queue consistency.
+    ///
+    /// # Errors
+    /// Returns an error if:
+    /// * The queue has reached its maximum capacity (`max_capacity_elems`).
+    /// * The element with the given `id` already exists in the table.
+    pub fn push(&mut self, id: u64, p_order: P, elem: T) -> Result<(), String> {
         if self.elems_in_me >= self.max_capacity_elems {
             return Err("queue is full".to_string());
         }
         let mut p_order = p_order;
         if let Some(mp) = &mut self.of_max_p {
-            if force_to_max_p {
-                p_order = mp.1.clone();
-            }
             if mp.1 > p_order {
-                return Err("self.max_elem_p < p_order".to_string().to_string());
+                p_order = mp.1.clone();
             }
         }
 
@@ -1673,7 +1668,7 @@ mod test_wait {
             assert_eq!(waa.min_elem_id_and_p(), None);
 
             for x in addrt..max_x + addrt {
-                let res = waa.push(x * 2, x as u32, false, true);
+                let res = waa.push(x * 2, x as u32, true);
                 assert_eq!(res, Ok(()));
 
                 assert_eq!(waa.max_elem_id_and_p(), Some((x * 2, x as u32)));
@@ -1724,7 +1719,7 @@ mod test_wait {
                 assert_eq!(waa.min_elem_id_and_p(), None);
 
                 for x in 0..max_x {
-                    let res = waa.push(x, x as u32, false, true);
+                    let res = waa.push(x, x as u32, true);
                     assert_eq!(res, Ok(()));
 
                     assert_eq!(waa.max_elem_id_and_p(), Some((x, x as u32)));
@@ -1827,23 +1822,23 @@ mod test_wait {
 
                 assert_eq!(waa.min_elem_id_and_p(), Some((2, 2)));
 
-                waa.push(10, 10, false, true).unwrap();
-                waa.push(20, 1000, false, true).unwrap();
+                waa.push(10, 10, true).unwrap();
+                waa.push(20, 1000, true).unwrap();
 
-                assert!(waa.push(30, 999, false, true).is_err());
-                assert!(waa.push(30, 1000, false, true).is_ok()); //is ok !!!!! order <= p
+                assert!(waa.push(30, 999, true).is_err());
+                assert!(waa.push(30, 1000, true).is_ok()); //is ok !!!!! order <= p
 
-                assert!(waa.push(30, 1000000, false, true).is_err());
-                assert!(waa.push(31, 1001, false, true).is_ok()); //is ok !!!!! order <= p\
+                assert!(waa.push(30, 1000000, true).is_err());
+                assert!(waa.push(31, 1001, true).is_ok()); //is ok !!!!! order <= p\
 
                 waa.remove(2).unwrap();
                 waa.remove(20).unwrap();
                 waa.remove(6).unwrap();
                 waa.remove(10).unwrap();
 
-                assert!(waa.push(50, 0, true, true).is_ok());
-                assert!(waa.push(51, 43, true, true).is_ok());
-                assert!(waa.push(52, 6, true, true).is_ok());
+                assert!(waa.push(50, 0, true).is_ok());
+                assert!(waa.push(51, 43, true).is_ok());
+                assert!(waa.push(52, 6, true).is_ok());
                 //====================================
 
                 let temp = waa.get_elements_to(
@@ -2718,7 +2713,7 @@ mod test_recv_queue_ctrs {
                     );
                     assert_eq!(test_me.elems_in_me(), x.0 + 1);
                     ws_wa
-                        .push(x.1, x.1 as f64 * 1.2, false, "data".to_string())
+                        .push(x.1, x.1 as f64 * 1.2, "data".to_string())
                         .unwrap();
                 }
                 assert_eq!(hm.len(), 256);
@@ -2822,7 +2817,7 @@ mod test_recv_queue_ctrs {
                 {
                     let x = iterata_ma + x.1;
                     test_me.push(x, 0.32132).unwrap();
-                    let _ = ws_wa.push(x, x as f64 * 1.2, true, "333".to_string());
+                    let _ = ws_wa.push(x, x as f64 * 1.2, "333".to_string());
                 }
 
                 assert_eq!(ws_wa.elems_in_me(), 19);
@@ -3110,7 +3105,6 @@ mod test_collab {
                             .push(
                                 non_prosf.0,
                                 (time_soon as f32 * 1.1) + 20.0,
-                                false,
                                 "str".to_string(),
                             )
                             .unwrap();
@@ -3122,7 +3116,6 @@ mod test_collab {
                             .push(
                                 pack_to_inp,
                                 (time_soon as f32 * 1.1) + 20.0,
-                                false,
                                 "str".to_string(),
                             )
                             .is_ok()
