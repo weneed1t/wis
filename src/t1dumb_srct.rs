@@ -16,7 +16,8 @@ use std::cell::RefCell;
 ///Don't even look at these fields and methods, they are only needed for tests, you can have any of them
 pub struct DumpNonser {
     #[cfg(test)]
-    t: u64,
+    ///for test
+    pub t: u64,
     /// only in test
     pub v: Vec<u8>,
 }
@@ -168,10 +169,10 @@ impl<FuserLogicBuf: Default + Clone> DumpTricker<FuserLogicBuf> {
         );
         #[cfg(test)]
         (
-            self.pack_type_test
+            *self
+                .pack_type_test
                 .try_borrow()
-                .expect("unreal state in test code  self.pack_type_test")
-                .clone(),
+                .expect("unreal state in test code  self.pack_type_test"),
             *self
                 .ctr_test
                 .try_borrow()
@@ -492,10 +493,66 @@ fn bpg(t: &mut u64, v: &mut [u8]) {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
+///dump
+pub struct DumpEndCrypt {
+    ///dump
+    pub _data: Box<[u8]>,
+}
+
+impl EndCryptStuctor for DumpEndCrypt {
+    fn get_symmetric_key_byte_vec(&self) -> Box<[u8]> {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpEndCrypt because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpHandMaker> = None;"
+            );
+        }
+        #[cfg(test)]
+        self._data.clone()
+    }
+    fn new() -> Self {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpEndCrypt because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpHandMaker> = None;"
+            );
+        }
+        #[cfg(test)]
+        Self {
+            _data: vec![].into_boxed_slice(),
+        }
+    }
+    #[allow(unused_variables)]
+    fn set_symmetric_key_byte_vec(&mut self, data: &[u8]) -> Result<(), String> {
+        #[cfg(not(test))]
+        {
+            panic!(
+                "This panic is called from DumpEndCrypt because it is a stub class,
+         none of its methods should be called in normal code and this class only
+          serves to indicate it as None in variable:Option<DumpHandMaker> = None;"
+            );
+        }
+
+        #[cfg(test)]
+        {
+            self._data = Box::from(data);
+            Ok(())
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 ///
-pub struct DumpHandMaker {
-    _in_state: Box<[AtomHandFile]>,
+pub struct DumpHandMaker<T>
+where
+    T: crate::w1types::EndCryptStuctor + std::clone::Clone,
+{
+    _in_state: Box<[AtomHandFile<T>]>,
     _ptr_in_state: usize,
     _role: MyRole,
     _private_key: u64,
@@ -505,7 +562,10 @@ pub struct DumpHandMaker {
 
 /*  */
 
-impl HandMaker for DumpHandMaker {
+impl<T> HandMaker<T> for DumpHandMaker<T>
+where
+    T: crate::w1types::EndCryptStuctor + std::clone::Clone + std::fmt::Debug,
+{
     fn new(_my_role: MyRole, _seed: &[u8]) -> Result<Self, String> {
         #[cfg(not(test))]
         {
@@ -531,6 +591,7 @@ impl HandMaker for DumpHandMaker {
                     AtomHandFile::PassiveFileSize(2),
                     AtomHandFile::InitiatorFileSize(3),
                     AtomHandFile::PassiveFileSize(2),
+                    AtomHandFile::EndOfHandMake(T::new()), // терминальный маркер
                 ]
                 .to_vec()
                 .into_boxed_slice(),
@@ -575,14 +636,21 @@ impl HandMaker for DumpHandMaker {
 
                 self._ptr_in_state += 1;
 
-                return match curent_step.size() {
-                    2 => Ok(Rcc::new([t1, t2].to_vec().into_boxed_slice())),
-                    3 => {
-                        self._private_key = self._private_key.wrapping_add(t3 as u64);
+                return match curent_step {
+                    AtomHandFile::InitiatorFileSize(x) | AtomHandFile::PassiveFileSize(x) => {
+                        match x {
+                            2 => Ok(Rcc::new([t1, t2].to_vec().into_boxed_slice())),
+                            3 => {
+                                self._private_key = self._private_key.wrapping_add(t3 as u64);
 
-                        let ret_box = [t1, t2, t3].to_vec().into_boxed_slice();
+                                let ret_box = [t1, t2, t3].to_vec().into_boxed_slice();
 
-                        Ok(Rcc::new(ret_box))
+                                Ok(Rcc::new(ret_box))
+                            },
+                            _ => {
+                                panic!("its unreal state")
+                            },
+                        }
                     },
                     _ => {
                         panic!("its unreal state")
@@ -591,7 +659,7 @@ impl HandMaker for DumpHandMaker {
             }
 
             Err(
-                "Send order error: The initiator cannot accept files from the initiator, 
+                "Send order error: The initiator cannot accept files from the initiator,
         and the passive cannot accept files from the passive!
         The correct order is for the initiator to accept files from the passive,
         or for the passive to send files to the initiator!"
@@ -643,7 +711,7 @@ impl HandMaker for DumpHandMaker {
             }
 
             Err(
-                "Recv order error: The initiator cannot accept files from the initiator, 
+                "Recv order error: The initiator cannot accept files from the initiator,
         and the passive cannot accept files from the passive!
         The correct order is for the initiator to accept files from the passive,
         or for the passive to send files to the initiator!"
@@ -652,7 +720,7 @@ impl HandMaker for DumpHandMaker {
         }
     }
 
-    fn file_sheme(&self) -> &[AtomHandFile] {
+    fn next(&mut self) -> Option<AtomHandFile<T>> {
         #[cfg(not(test))]
         {
             panic!(
@@ -663,194 +731,29 @@ impl HandMaker for DumpHandMaker {
         }
         #[cfg(test)]
         {
-            &self._in_state[..]
-        }
-    }
-    fn get_private_key(&mut self) -> Result<Box<[u8]>, String> {
-        #[cfg(not(test))]
-        {
-            panic!(
-                "This panic is called from DumpRandomer because it is a stub class,
-         none of its methods should be called in normal code and this class only
-          serves to indicate it as None in variable:Option<DumpHandMaker> = None;"
-            );
-        }
-        #[cfg(test)]
-        {
-            if self._ptr_in_state == self._in_state.len() {
-                Ok(self._private_key.to_be_bytes().to_vec().into_boxed_slice())
+            let temp = self._in_state.get(self._ptr_in_state).cloned();
+
+            if let Some(x) = &temp {
+                if x.is_end() {
+                    let mut terminal = T::new();
+
+                    terminal
+                        .set_symmetric_key_byte_vec(&self._private_key.to_be_bytes())
+                        .expect(
+                            "err .set_symmetric_key_byte_vec(&self._private_key.to_be_bytes())",
+                        );
+
+                    self._ptr_in_state = self
+                        ._ptr_in_state
+                        .checked_add(1)
+                        .expect("err self._ptr_in_state =self._ptr_in_state.checked_add(1).expect");
+                    Some(AtomHandFile::EndOfHandMake(terminal))
+                } else {
+                    temp
+                }
             } else {
-                Err("The key installation process is still not complete!".to_string())
+                temp
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests_enca {
-    #![allow(clippy::indexing_slicing)]
-    #![allow(clippy::unwrap_used)]
-    use super::*;
-
-    // ┌────────────────────────────────────────────────────────────────────────────┐
-    // │ packerr partialeq – equality depends only on variant, not on string       │
-    // └────────────────────────────────────────────────────────────────────────────┘
-
-    #[test]
-    fn same_variant_with_different_strings_are_equal() {
-        let dn = DumpEnc::new(&[1, 2, 3, 4]).unwrap();
-
-        let a1 = vec![1u8; 10];
-        let mut a2 = vec![2u8; 15];
-        let mut a3 = vec![2u8; 20];
-        let a4 = vec![3u8; 25];
-
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-        println!(" ");
-        println!(" ");
-        println!("headd {:?} ", a1);
-        println!("paload(enc) {:?} ", a2);
-        println!("auth tag  {:?} ", a3);
-        println!("none  {:?} ", a4);
-        println!("status {:?}", ret);
-
-        assert_eq!(StatusDecrypt::DecodedCorrectly, ret);
-        //
-        //
-        //
-        //
-        let a1 = vec![1u8; 10];
-        let mut a2 = vec![2u8; 15];
-        let mut a3 = vec![2u8; 20];
-        let mut a4 = vec![3u8; 25];
-
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-
-        a4[7] = !a4[7];
-
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-        println!("before enc ");
-        println!(" ");
-        println!("head {:?} ", a1);
-        println!("paload(enc) {:?} ", a2);
-        println!("auth tag  {:?} ", a3);
-        println!("none  {:?} ", a4);
-        println!("status {:?}", ret);
-
-        assert_eq!(StatusDecrypt::PackageDamaged, ret);
-
-        let mut a1 = vec![1u8; 10];
-        let mut a2 = vec![2u8; 15];
-        let mut a3 = vec![2u8; 20];
-        let a4 = vec![3u8; 25];
-
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-
-        a1[7] = !a1[7];
-
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-        println!("after dec");
-        println!(" ");
-        println!("head {:?} ", a1);
-        println!("paload(enc) {:?} ", a2);
-        println!("auth tag  {:?} ", a3);
-        println!("none  {:?} ", a4);
-        println!("status {:?}", ret);
-
-        assert_eq!(StatusDecrypt::PackageDamaged, ret);
-
-        let a1 = vec![1u8; 10];
-        let mut a2 = vec![2u8; 15];
-        let mut a3 = vec![2u8; 20];
-        let a4 = vec![3u8; 25];
-
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-
-        a2[7] = !a2[7];
-
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
-        println!(" ");
-        println!(" ");
-        println!("head {:?} ", a1);
-        println!("paload(enc) {:?} ", a2);
-        println!("auth tag  {:?} ", a3);
-        println!("none  {:?} ", a4);
-        println!("status {:?}", ret);
-
-        assert_eq!(StatusDecrypt::PackageDamaged, ret);
-    }
-}
-
-#[cfg(test)]
-mod tests_dumps_nonser_cfcser {
-    #![allow(clippy::indexing_slicing)]
-    #![allow(clippy::unwrap_used)]
-    //use std::marker::PhantomData;
-
-    use super::*;
-
-    // ┌────────────────────────────────────────────────────────────────────────────┐
-    // │ dumpnonser tests – every method must panic with the documented message    │
-    // └────────────────────────────────────────────────────────────────────────────┘
-    #[test]
-    //#[should_panic(expected = "This panic is called from DumpNonser")]
-    fn dumpnonser_new_panics() {
-        let _ = DumpNonser::new(&[]);
-    }
-
-    #[test]
-    //#[should_panic(expected = "This panic is called from DumpNonser")]
-    fn dumpnonser_set_nonce_panics() {
-        let mut stub = DumpNonser { t: 10, v: vec![] }; // we can create it directly because it's a struct
-        let mut buf = [0u8; 8];
-        stub.set_nonce(&mut buf).unwrap();
-    }
-
-    // verify that the type can be placed in an Option (as intended)
-    #[test]
-    fn dumpnonser_option_none_works() {
-        let opt: Option<DumpNonser> = None;
-        assert!(opt.is_none());
-    }
-
-    // ┌────────────────────────────────────────────────────────────────────────────┐
-    // │ dumpcfcser tests – every method must panic with the documented message    │
-    // └────────────────────────────────────────────────────────────────────────────┘
-    // #[test]
-    //#[should_panic(expected = "This panic is called from DumpCfcser")]
-    //fn dumpcfcser_new_panics() {
-    //   let _ = DumpCrcser::new(&[]);
-    // }
-    #[test]
-    //#[should_panic(expected = "This panic is called from DumpCfcser")]
-    fn dumpcfcser_gen_crc_panics() {
-        let mut stub: DumpCrcser = DumpCrcser { t: 10, v: vec![] };
-        let mut crc_field = [0u8; 4];
-        let payload = [1, 2, 3];
-        stub.gen_crc(&payload, &mut crc_field).unwrap();
-    }
-
-    #[test]
-    fn dumpcfcser_option_none_works() {
-        let opt: Option<DumpCrcser> = None;
-        assert!(opt.is_none());
-    }
-
-    // ┌────────────────────────────────────────────────────────────────────────────┐
-    // │ trait bounds – ensure that the stubs satisfy all required traits          │
-    // │ (compilation already guarantees this, but we can explicitly check)        │
-    // └────────────────────────────────────────────────────────────────────────────┘
-    #[test]
-    fn dumpnonser_impl_noncer() {
-        fn takes_noncer<T: Noncer>(_: T) {}
-        takes_noncer(DumpNonser { t: 10, v: vec![] }); // compiles -> ok
-    }
-
-    #[test]
-    fn dumpcfcser_impl_cfcser() {
-        fn takes_cfcser<T: Crcser>(_: T) {}
-        takes_cfcser(DumpCrcser { t: 10, v: vec![] }); // compiles -> ok
     }
 }

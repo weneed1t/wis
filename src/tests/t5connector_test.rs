@@ -1,399 +1,15 @@
-// /*
-use crate::t1queues::{WSFbackQueue, WSUdpLike, WSWaitQueue};
-use crate::t3files_m::WSFileSplitter;
-use crate::t4param::WsConnectParam;
-use crate::t5pack_flds::MutCockSuck;
+use crate::t5connector::*;
+
+use crate::t1queues::{WSFbackQueue, WSUdpLike};
+
 use crate::w1types::{
-    Crcser, EncWis, HandMaker, Identified, MyRole, Noncer, PackScheme, Randomer, Rcc, Thrasher,
-    TrickyBMaker, WisErr,
+    Crcser, EncWis, EndCryptStuctor, HandMaker, Identified, MyRole, Noncer, PackScheme, Randomer,
+    Thrasher, TrickyBMaker, WisErr,
 };
-
-use std::cell::RefCell;
+//EndCpt: EndCryptStuctor + Clone,
+//#[cfg(test)]
+use crate::w1types::PackAddedStatus;
 use std::rc::Rc;
-
-const FBACK_START_CTR: u64 = 1;
-const DATA_START_CTR: u64 = 0;
-
-#[derive(Debug, Clone, PartialEq)]
-struct Countrs {
-    pub my_data: u64,
-    pub my_fback: u64,
-    pub frend_data: u64,
-    pub frend_fback: u64,
-}
-#[derive(Debug, PartialEq, Clone)]
-struct NeedyParam {
-    idconn_slice_any: bool,
-    id_of_sender_slice_any: bool,
-    counter_slice_any: usize,
-    head_crc_slice_any: bool,
-    nonce_slice_any: bool,
-    any_trash_content_slice: bool,
-    need_tricky: bool,
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct Seeds {
-    pub nonce: Option<Box<[u8]>>,
-    pub random: Option<Box<[u8]>>,
-    pub user_field: Option<Box<[u8]>>,
-    pub crc: Option<Box<[u8]>>,
-    pub handmaker: Box<[u8]>,
-    pub tricky: Option<Box<[u8]>>,
-}
-
-fn get_needy_pack_param(connect_param: &PackScheme) -> Result<NeedyParam, String> {
-    Ok(match *connect_param {
-        PackScheme::OnePack(ref x) => NeedyParam {
-            idconn_slice_any: x.idconn_slice().is_some(),
-            id_of_sender_slice_any: x.id_of_sender_slice().is_some(),
-            counter_slice_any: x
-                .counter_slice()
-                .ok_or("impossible state, the counter must always be is some()")?
-                .2,
-            head_crc_slice_any: x.head_crc_slice().is_some(),
-            nonce_slice_any: x.nonce_slice().is_some(),
-            any_trash_content_slice: x.trash_content_slice().is_some(),
-            need_tricky: x.tricky_byte().is_some(),
-        },
-        PackScheme::GroupPack(ref x) => NeedyParam {
-            idconn_slice_any: x.all_have_idconn_field().is_some(),
-            id_of_sender_slice_any: x.all_have_id_sender_receiver_fields().is_some(),
-            counter_slice_any: x
-                .all_have_counter_field()
-                .ok_or("impossible state, the counter must always be is some()")?
-                .1,
-            head_crc_slice_any: x.all_have_crc_field().is_some(),
-            nonce_slice_any: x.all_have_nonce_field().is_some(),
-            any_trash_content_slice: x.any_have_trash_field(),
-            need_tricky: true, //If there is a group, then tricky is definitely needed in it.
-        },
-    })
-}
-
-/// see method new
-#[derive(Clone, Debug)]
-pub struct WsConnection<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tenc: EncWis,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
-> {
-    connect_param: Rcc<WsConnectParam>,
-    tricky_byter: Option<Ttricker>,
-    file_splitter: WSFileSplitter,  //-
-    udp_queue: WSUdpLike<Rc<[u8]>>, //-
-    prealoc_buf_udp_queue: Vec<(u64, Rc<[u8]>)>,
-    ///(u64, P, T)
-    wait_queue: WSWaitQueue<(usize, Rc<[u8]>), f32>,
-    ///`Option<usize>` is a pointer indicating where in the vector to take the data from.
-    prealoc_buf_wait_queue: (Option<usize>, Vec<(u64, f32, (usize, Rc<[u8]>))>), //prealoc_buff
-    fback_queue: WSFbackQueue<f32>,
-    intermediate_questionable_packages_queue: Option<Box<[u8]>>,
-    ///`Option<usize>` is a pointer of ending data non_alloc_buf.
-    non_alloc_buf: (Option<usize>, Box<[u8]>),
-    ctrs: Countrs,
-    network_unstability: f32,
-    network_latency: f32,
-    handshake_is_end: bool,
-    measurement_window_latency: f32,
-    my_role: MyRole,
-    identified: Identified,
-    was_killed: bool,
-    fuck_mut_struct: RefCell<MutCockSuck<Tnoncer, Tcrcser, Tthrasher, FuserLogicBuf>>,
-    encrypt: RefCell<Tenc>,
-    random_gener: Option<Trander>, //+
-    enrypaaa: Thmaker,
-}
-
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tenc: EncWis,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tenc,          // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-    >
-{
-    ///Create a new connection. `default_enc_key` is the key that will be used at the
-    /// start of the connection before the private key is initialized.
-    ///`my_role` refers to the role of the user who initiated the connection or the user
-    /// who accepted the connection. `handmaker/nonce/crc/random seed` are the initial
-    /// values for the corresponding classes (`random` is used to generate a random
-    /// packet length if this option is enabled). The `identified` field is not
-    /// strictly necessary and should not (at least not yet—perhaps this will change?)
-    /// be used to influence packet identification
-    ///when a packet arrives at the input; however, when a packet is generated within
-    /// this class (structure), the values from `identified` are automatically
-    /// included in the packet if the corresponding fields are specified.
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        connect_param: &WsConnectParam,
-        default_enc_key: &[u8],
-        my_role: MyRole,
-        seeds: &Seeds,
-        identified: &Identified,
-    ) -> Result<Self, WisErr<String, String>> {
-        let pack_sheme = get_needy_pack_param(connect_param.sheme()).map_err(WisErr::Critical)?;
-
-        if pack_sheme.idconn_slice_any == identified.id_conn.is_none() {
-            return Err(WisErr::Critical(
-                "connect_param.pack_topology().idconn_slice().is_some() == identified.id_conn.is_none()\
-                 you need to set a value".to_string(),
-            ));
-        }
-
-        if let Some(xids) = &identified.my_s_r_id
-            && xids.id_receiver == xids.id_sender
-        {
-            return Err(WisErr::Critical(
-                "identified.id_receiver == identified.id_sender The sender and recipient IDs must \
-                 be different!"
-                    .to_string(),
-            ));
-        }
-
-        if pack_sheme.id_of_sender_slice_any == identified.my_s_r_id.is_none() {
-            return Err(WisErr::Critical(
-                "connect_param.pack_topology().id_of_sender_slice().is_some()\
-                != identified.my_s_r_id.is_some() you need to set a value for \
-                 identified.my_s_r_id"
-                    .to_string(),
-            ));
-        }
-
-        let nonce_gener = if pack_sheme.nonce_slice_any {
-            Some(
-                Tnoncer::new(
-                    seeds.nonce.as_deref().ok_or(WisErr::Critical(
-                        "nonce_seed is none but \
-                         connect_param.pack_topology().nonce_slice().is_some() == true"
-                            .to_string(),
-                    ))?,
-                )
-                .map_err(WisErr::Critical)?,
-            )
-        } else {
-            None
-        };
-
-        let user_field_gener = if pack_sheme.any_trash_content_slice {
-            Some(
-                Tthrasher::new(
-                    seeds.user_field.as_deref().ok_or(WisErr::Critical(
-                        "user_field_seed is none but \
-                         connect_param.pack_topology().trash_content_slice().is_some() == true, \
-                         `trash_content_slice() is user_field` "
-                            .to_string(),
-                    ))?,
-                )
-                .map_err(WisErr::Critical)?,
-            )
-        } else {
-            None
-        };
-
-        let random_gener = if connect_param.need_init_random() {
-            Some(
-                Trander::new(seeds.random.as_deref().ok_or(WisErr::Critical(
-                    "random_seed is none but connect_param.need_init_random() == true".to_string(),
-                ))?)
-                .map_err(WisErr::Critical)?,
-            )
-        } else {
-            None
-        };
-
-        let crc_gener = if pack_sheme.head_crc_slice_any {
-            Some(
-                Tcrcser::new(
-                    seeds.crc.as_deref().ok_or(WisErr::Critical(
-                        "crc_seed is none but \
-                         connect_param.pack_topology().head_crc_slice().is_some() == true"
-                            .to_string(),
-                    ))?,
-                )
-                .map_err(WisErr::Critical)?,
-            )
-        } else {
-            None
-        };
-        //
-        let ctrs = Countrs {
-            my_data: DATA_START_CTR,
-            my_fback: FBACK_START_CTR,
-            frend_data: DATA_START_CTR,
-            frend_fback: FBACK_START_CTR,
-        };
-
-        let tricky_byter = if pack_sheme.need_tricky {
-            Some(
-                TrickyBMaker::new(
-                    seeds.tricky.as_deref().ok_or(WisErr::Critical(
-                        "tricky_seed is none but \
-                    connect_param contains the packet schema that requires tricky_byte"
-                            .to_string(),
-                    ))?,
-                    connect_param.sheme().clone(),
-                )
-                .map_err(WisErr::Critical)?,
-            )
-        } else {
-            None
-        };
-
-        let fuck_mut_struct = MutCockSuck {
-            nonce_gener,
-            user_field_gener,
-            user_buf: None,
-            crc_gener,
-        };
-
-        let fback_queue = WSFbackQueue::new(
-            pack_sheme.counter_slice_any,
-            connect_param.maximum_length_fback_queue_packages(),
-            connect_param.mtu(),
-        )
-        .map_err(WisErr::Critical)?;
-
-        let file_splitter =
-            WSFileSplitter::new(connect_param.max_len_file()).map_err(WisErr::Critical)?;
-
-        let intermediate_questionable_packages_queue = connect_param
-            .intermediate_questionable_packages_queue()
-            .map(|vec_q| vec![0; vec_q].into_boxed_slice());
-        Ok(Self {
-            tricky_byter,
-
-            file_splitter,
-            udp_queue: WSUdpLike::new(connect_param.maximum_length_udp_queue_packages())?,
-            prealoc_buf_udp_queue: vec![],
-            wait_queue: WSWaitQueue::new(
-                connect_param.maximum_length_queue_unconfirmed_packages(),
-            )?,
-
-            prealoc_buf_wait_queue: (None, vec![]),
-            fback_queue,
-            ctrs,
-            network_unstability: 0.0,
-            network_latency: 0.0,
-            encrypt: RefCell::new(Tenc::new(default_enc_key).map_err(WisErr::Critical)?),
-            connect_param: Rcc::new(connect_param.clone()),
-            enrypaaa: Thmaker::new(my_role.clone(), &seeds.handmaker).map_err(WisErr::Critical)?, /* in progress */
-            handshake_is_end: false,
-            intermediate_questionable_packages_queue,
-            random_gener,
-            my_role,
-            measurement_window_latency: connect_param.start_ms_latency(),
-            identified: identified.clone(),
-            non_alloc_buf: (None, vec![0; connect_param.mtu()].into_boxed_slice()),
-            was_killed: false,
-            fuck_mut_struct: RefCell::new(fuck_mut_struct),
-        })
-    }
-}
-///add 2 to the number
-pub fn add_two(num: &mut u64) -> Result<(), String> {
-    *num = num.checked_add(2).ok_or(
-        "The capacity limit of the main counter u64 has been reached, so it is no longer \
-             possible to send new messages over this connection. The connection must be closed!",
-    )?;
-    Ok(())
-}
-
-// getters for wsconnection - separate impl for clarity
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tenc: EncWis,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tenc,          // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-    >
-{
-    ///Check whether the connection is active or has received a close signal;
-    ///  if it is not active, no more data will be transmitted over this connection.
-    pub fn handshake_is_end(&self) -> bool {
-        self.handshake_is_end
-    }
-    ///the person who initiated the connection or the person who responded to the
-    /// connection
-    pub fn my_role(&self) -> MyRole {
-        self.my_role.clone()
-    }
-    ///get the corresponding value
-    pub fn network_latency(&self) -> f32 {
-        self.network_latency
-    }
-    ///get the corresponding value
-
-    pub fn network_unstability(&self) -> f32 {
-        self.network_unstability
-    }
-    ///get the corresponding value
-
-    pub fn my_ctr_data(&self) -> u64 {
-        self.ctrs.my_data
-    }
-    ///get the corresponding value
-
-    pub fn my_ctr_fback(&self) -> u64 {
-        self.ctrs.my_fback
-    }
-    ///get the corresponding value
-
-    pub fn frend_ctr_data(&self) -> u64 {
-        self.ctrs.frend_data
-    }
-    ///get the corresponding value
-
-    pub fn frend_ctr_fback(&self) -> u64 {
-        self.ctrs.frend_fback
-    }
-
-    ///get the corresponding value
-    pub fn connect_param(&self) -> Rcc<WsConnectParam> {
-        self.connect_param.clone()
-    }
-    ///get the corresponding value
-
-    pub fn identified(&self) -> &Identified {
-        &self.identified
-    }
-    ///get the corresponding value
-
-    pub fn measurement_window_latency(&self) -> f32 {
-        self.measurement_window_latency
-    }
-}
 
 #[cfg(test)]
 type Dumdwcn = WsConnection<
@@ -402,9 +18,10 @@ type Dumdwcn = WsConnection<
     DumpEnc,
     DumpRandomer,
     DumpCrcser,
-    DumpHandMaker,
+    DumpHandMaker<DumpEndCrypt>,
     DumpTricker<String>, // Заменили трейт TrickyBMaker на конкретный тип-заглушку
     String,
+    DumpEndCrypt,
 >;
 
 #[allow(clippy::items_after_test_module)]
@@ -492,7 +109,7 @@ mod test_new {
             tricky: Some(Box::new([7, 7, 7, 7u8])),
         };
 
-        let te1: Dumdwcn = WsConnection::new(
+        let te1: Dumdwcn = <Dumdwcn>::new(
             &result,
             &[1, 1, 1, 1],
             MyRole::Initiator,
@@ -511,8 +128,8 @@ mod test_new {
 
         assert_eq!(te1.connect_param().mtu(), 9876);
 
-        assert_eq!(te1.non_alloc_buf.1.len(), te1.connect_param().mtu());
-        assert_eq!(te1.non_alloc_buf.0, None);
+        assert_eq!(te1.non_alloc_buf.len(), te1.connect_param().mtu());
+        //   assert_eq!(te1.non_alloc_buf.0, None);
 
         assert_eq!(add_two(&mut a0), Ok(()));
         assert_eq!(add_two(&mut a10000), Ok(()));
@@ -1317,7 +934,7 @@ mod test_api {
             tricky: Some(Box::new([7, 7, 7, 7u8])),
         };
 
-        let mut te1: Dumdwcn = WsConnection::new(
+        let mut te1: Dumdwcn = <Dumdwcn>::new(
             &result,
             &[1, 1, 1, 1],
             MyRole::Initiator,
@@ -1386,7 +1003,7 @@ mod test_api {
         assert_eq!(te1.identified().clone(), te1.identified.clone());
         te1.identified.my_metall_id = 999_111_222;
 
-        assert_eq!(te1.identified().clone().my_metall_id, 999_111_222);
+        assert_eq!((te1.identified()).my_metall_id, 999_111_222);
 
         //===========
         let x1 = te1.connect_param().clone();
@@ -1629,7 +1246,7 @@ pub fn fast_wconn_maker() -> Dumdwcn {
         tricky: Some(Box::new([7, 7, 7, 7u8])),
     };
 
-    let ret = WsConnection::new(
+    let ret = <Dumdwcn>::new(
         &result,
         &[1, 1, 1, 1],
         MyRole::Initiator,
@@ -1643,4 +1260,199 @@ pub fn fast_wconn_maker() -> Dumdwcn {
     .unwrap();
     ret.clone()
 }
-// */
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+impl<
+    Tnoncer: Noncer,
+    Tthrasher: Thrasher<FuserLogicBuf>,
+    Tencrer: EncWis,
+    Trander: Randomer,
+    Tcrcser: Crcser,
+    Thmaker: HandMaker<EndCpt>,
+    Ttricker: TrickyBMaker<FuserLogicBuf>,
+    FuserLogicBuf: Clone,
+    EndCpt: EndCryptStuctor + Clone,
+>
+    WsConnection<
+        Tnoncer,       // 1
+        Tthrasher,     // 2.
+        Tencrer,       // 3
+        Trander,       // 4
+        Tcrcser,       // 5
+        Thmaker,       // 6
+        Ttricker,      // 7.
+        FuserLogicBuf, // 8.
+        EndCpt,
+    >
+{
+    #[cfg(test)]
+    ///get_udp f
+    pub fn test_get_fback(&mut self) -> &mut WSFbackQueue<f32> {
+        &mut self.fback_queue
+    }
+    #[cfg(test)]
+    ///get_udp
+    pub fn test_get_udp(&mut self) -> &mut WSUdpLike<Rc<[u8]>> {
+        &mut self.udp_queue
+    }
+    #[cfg(test)]
+    ///swap_udp fb
+    pub fn test_swap_fback(&mut self, fb: WSFbackQueue<f32>) {
+        self.fback_queue = fb;
+    }
+    #[cfg(test)]
+    ///swap_udp q
+    pub fn test_swap_udp(&mut self, udp: WSUdpLike<Rc<[u8]>>) {
+        self.udp_queue = udp;
+    }
+}
+
+#[cfg(test)]
+mod test_get_queque_process {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![deny(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
+    use super::*;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_get_queque_process() {
+        let mut tw = fast_wconn_maker();
+
+        let mut vv: Vec<(usize, f32, Rc<[u8]>)> = Vec::with_capacity(90);
+
+        for x in 0..vv.capacity() {
+            vv.push((x, x as f32 * 1.234, Rc::from(vec![1; 10])));
+        }
+        for len_f in [7, 17, 30] {
+            for len_u in [7, 17, 30] {
+                let fb = WSFbackQueue::<f32>::new(3, len_f, 1000).unwrap();
+                let ud = WSUdpLike::new(len_u).unwrap();
+
+                tw.test_swap_udp(ud);
+                tw.test_swap_fback(fb);
+
+                for (i, d) in vv.iter().enumerate() {
+                    let mut need_clean = true;
+
+                    let test = tw.get_queque_process(d.0 as u64, d.1, d.2.clone()).unwrap();
+
+                    // println!("{:?}, i {}  lf {}   lu {}", test.clone(), i, len_f, len_u);
+                    let min = std::cmp::min(len_f, len_u);
+                    if test == PackAddedStatus::WasAdded {
+                        need_clean = false;
+
+                        //println!("{}", i % (min + 1));
+                        assert_ne!(i % (min + 1), min)
+                    } else {
+                        assert_ne!(i % std::cmp::min(len_f, len_u), min);
+                        assert_eq!(i % (min + 1), min);
+                        // println!(" =========== qq {}", min);
+                        if len_f <= len_u {
+                            assert_eq!(test, PackAddedStatus::FbackQueueIsfull);
+                        } else if len_f > len_u {
+                            assert_eq!(test, PackAddedStatus::UdpQueueCtrIsBig);
+                        } else {
+                            panic!("inreal test state!");
+                        }
+                    }
+
+                    if need_clean {
+                        {
+                            let ffb = tw.test_get_fback();
+                            let _ = ffb.get_ctrs_as_byte_pack_vec();
+                        }
+
+                        let uud = tw.test_get_udp();
+
+                        let _ = uud.insert(d.0 as u64, &d.2.clone());
+                        let _ = uud.get_queue(None);
+                        let _ = uud.insert(d.0 as u64, &d.2.clone()); //double add double dell
+                        let _ = uud.get_queue(None); // double dell
+                    }
+                    // println!("{:?}", test);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_one_shuf() {
+        let mut x1 = vec![];
+        for i in 0..10000 {
+            x1.push(i);
+        }
+        let x = x1.clone();
+
+        for m in [3isize, 10, 14, 20].iter() {
+            let mut etalon = x.clone();
+
+            let mut ct = 0;
+            shuffle_with_limited_displacement(&mut etalon, *m as usize);
+
+            for yy in etalon.iter().zip(x.iter()) {
+                let mut r = *yy.0 - *yy.1;
+
+                if r < 0 {
+                    r *= -1;
+                }
+
+                assert!(r <= *m, "{m}");
+
+                ct += (*yy.0 == *yy.1) as i32;
+            }
+            assert!(0.38 > (ct as f32 / x.len() as f32)); //first m = 3, 1/3 =0.33333, 0.38 > 0.33 +-0.05
+            println!("{}", ct as f32 / x.len() as f32);
+        }
+    }
+
+    fn shuffle_with_limited_displacement<T>(vec: &mut [T], mm: usize) {
+        let n = vec.len();
+        if n == 0 || mm == 0 {
+            return;
+        }
+
+        let block_size = mm + 1;
+        let mut seed = 123456789u64; //seed
+
+        let mut start = 0;
+        while start < n {
+            let end = (start + block_size).min(n);
+            let _len = end - start;
+
+            // Перемешивание блока [start, end) алгоритмом Фишера-Йетса
+            for i in (start..end).rev() {
+                // Генерация псевдослучайного числа в диапазоне [start, i]
+                seed = seed.wrapping_mul(1103515245).wrapping_add(12345);
+                let offset = (seed >> 16) as usize % (i - start + 1);
+                let j = start + offset;
+                vec.swap(i, j);
+            }
+
+            start = end;
+        }
+    }
+}
+
+#[cfg(test)]
+mod test_sender {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![deny(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
+
+    #[test]
+    fn test_get_queque_process() {}
+}

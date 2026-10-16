@@ -61,17 +61,19 @@ pub mod t1fields; //(crypt,ttl,len,chc,ctr,head,nonce,id,idc)utils
 //pub mod __t2proc_fields;
 pub mod wacross;
 
-mod t1queues;
+pub mod t0grouper;
+pub mod t0parsel;
+pub mod t1queues;
 pub mod t3files_m;
 pub mod t4param;
-pub mod t5con_d2;
-pub mod t5newcon_d1;
 pub mod t5pack_flds;
 pub mod w1types;
 pub mod w1utils; //utils //topology
 
-pub mod t0grouper;
-pub mod t0parsel;
+pub mod t5connector;
+
+#[cfg(test)]
+mod tests;
 
 pub use crate::t1queues::{
     WSFbackQueue, WSTcpLike as TcpPackageSplitter, WSUdpLike,
@@ -79,59 +81,26 @@ pub use crate::t1queues::{
 };
 
 pub mod murmur3;
+pub mod t5coon_d3_rand;
 pub mod private_core {
     pub use crate::{t0pology as PackageFields, t1fields as PacketsProcessingFields};
 }
 /*
 delete this in prod dapgp
 
-
-Wisth  install
-rustup component add clippy &&
- rustup toolchain install nightly &&
-  cargo clippy --fix --allow-dirty &&
-   cargo fix --allow-dirty &&
-    cargo clippy --fix --allow-dirty --broken-code &&
-     cargo clippy --fix --all --allow-dirty &&
-      rustup run nightly cargo fmt &&
-       cargo fmt && cargo test &&
-        git add . && git commit -S -m "dev" && git push origin main && git rm -r --cached t.txt
+cargo clippy --workspace --all-targets --fix --allow-dirty --allow-staged &&
+cargo fix --workspace --all-targets --allow-dirty --allow-staged &&
+cargo fmt --all &&
+cargo test --workspace
 
 
-
-cargo test &&
-
-rustup component add clippy
-cargo clippy --fix
-cargo fix --allow-dirty
-cargo clippy --fix --allow-dirty --broken-code
-
-git add . &&
+git rm -r --cached --ignore-unmatch t.txt &&
+git add -A &&
 git commit -S -m "dev" &&
 git push origin main
 
-cargo fix --allow-dirty
-cargo clippy --fix --all --allow-dirty
-git rm -r --cached t.txt
-
-
-cargo +nightly fmt
-rustup toolchain install nightly
-rustup run nightly cargo fmt
-
-
-cargo clippy --fix  --allow-dirty &&
-cargo fix --allow-dirty &&
-cargo clippy --fix --allow-dirty --broken-code &&
-cargo clippy --fix --all --allow-dirty &&
-rustup run nightly cargo fmt &&
-cargo fmt
-
-
 if a have crush
 rustup component add rust-analyzer
-
-?
 
 [![Rust](https://img.shields.io/badge/rust-1.70%2B-blue.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-Apache--2.0%2FMIT-blue.svg)](LICENSE)
