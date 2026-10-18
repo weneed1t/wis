@@ -1,3 +1,4 @@
+use crate::impl_ws_connection;
 use crate::t1queues::{WSFbackQueue, WSUdpLike, WSWaitQueue};
 use crate::t3files_m::WSFileSplitter;
 use crate::t4param::WsConnectParam;
@@ -7,7 +8,6 @@ use crate::w1types::{
     Rcc, Thrasher, TrickyBMaker, WisErr,
 };
 use std::marker::PhantomData;
-
 //#[cfg(test)]
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -116,29 +116,7 @@ pub struct WsConnection<
     pub(crate) _end_cpt: PhantomData<EndCpt>,
 }
 
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tenc: EncWis<EndCpt>,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker<EndCpt>,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
-    EndCpt: EndCryptStuctor + Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tenc,          // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-        EndCpt,
-    >
-{
+impl_ws_connection! {
     ///Create a new connection. `default_enc_key` is the key that will be used at the
     /// start of the connection before the private key is initialized.
     ///`my_role` refers to the role of the user who initiated the connection or the user
@@ -302,7 +280,7 @@ impl<
             ctrs,
             network_unstability: 0.0,
             network_latency: 0.0,
-            encrypt: RefCell::new(Tenc::new(default_enc_key, None).map_err(WisErr::Critical)?),
+            encrypt: RefCell::new(Tencrer::new(default_enc_key, None).map_err(WisErr::Critical)?),
             connect_param: Rcc::new(connect_param.clone()),
             enrypaaa: Thmaker::new(my_role, &seeds.handmaker).map_err(WisErr::Critical)?, /* in progress */
             handshake_is_end: false,
@@ -328,29 +306,7 @@ pub fn add_two(num: &mut u64) -> Result<(), String> {
 }
 
 // getters for wsconnection - separate impl for clarity
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tenc: EncWis<EndCpt>,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker<EndCpt>,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
-    EndCpt: EndCryptStuctor + Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tenc,          // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-        EndCpt,
-    >
-{
+impl_ws_connection! {
     ///Check whether the connection is active or has received a close signal;
     ///  if it is not active, no more data will be transmitted over this connection.
     pub fn handshake_is_end(&self) -> bool {

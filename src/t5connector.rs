@@ -16,6 +16,30 @@ use crate::w1types::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
+#[macro_export]
+macro_rules! impl_ws_connection {
+    ( $( $item:item )* ) => {
+        impl<
+            Tnoncer: Noncer,
+            Tthrasher: Thrasher<FuserLogicBuf>,
+            Tencrer: EncWis<EndCpt>,
+            Trander: Randomer,
+            Tcrcser: Crcser,
+            Thmaker: HandMaker<EndCpt>,
+            Ttricker: TrickyBMaker<FuserLogicBuf>,
+            FuserLogicBuf: Clone,
+            EndCpt: EndCryptStuctor + Clone,
+        >
+            WsConnection<
+                Tnoncer, Tthrasher, Tencrer, Trander, Tcrcser,
+                Thmaker, Ttricker, FuserLogicBuf, EndCpt,
+            >
+        {
+            $( $item )*
+        }
+    };
+}
+
 #[cfg(debug_assertions)]
 #[derive(Clone, Debug)]
 struct DebugPackSnapshot {
@@ -119,29 +143,7 @@ enum WhatSend {
     DataResending,
 }
 
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tencrer: EncWis<EndCpt>,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker<EndCpt>,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
-    EndCpt: EndCryptStuctor + Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tencrer,       // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-        EndCpt,
-    >
-{
+impl_ws_connection! {
     pub fn send_data<F>(
         &mut self,
         _force_no_edit_pack_type: Option<bool>,
@@ -194,7 +196,7 @@ impl<
     }
 
     ///Check if a file can be inserted
-    pub fn сheck_paste_file(&self) -> bool {
+    pub fn check_paste_file(&self) -> bool {
         if self.was_killed {
             return false;
         }

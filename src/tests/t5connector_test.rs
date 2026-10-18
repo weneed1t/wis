@@ -1,6 +1,7 @@
 use crate::t1queues::{WSFbackQueue, WSUdpLike};
 use crate::t5conn_new::*;
 
+use crate::impl_ws_connection;
 use crate::w1types::{
     Crcser, EncWis, EndCryptStuctor, HandMaker, Identified, MyRole, Noncer, PackScheme, Randomer,
     Thrasher, TrickyBMaker, WisErr,
@@ -1261,30 +1262,8 @@ mod tests_get_needy_pack_param {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
-impl<
-    Tnoncer: Noncer,
-    Tthrasher: Thrasher<FuserLogicBuf>,
-    Tencrer: EncWis<EndCpt>,
-    Trander: Randomer,
-    Tcrcser: Crcser,
-    Thmaker: HandMaker<EndCpt>,
-    Ttricker: TrickyBMaker<FuserLogicBuf>,
-    FuserLogicBuf: Clone,
-    EndCpt: EndCryptStuctor + Clone,
->
-    WsConnection<
-        Tnoncer,       // 1
-        Tthrasher,     // 2.
-        Tencrer,       // 3
-        Trander,       // 4
-        Tcrcser,       // 5
-        Thmaker,       // 6
-        Ttricker,      // 7.
-        FuserLogicBuf, // 8.
-        EndCpt,
-    >
-{
+
+impl_ws_connection! {
     #[cfg(test)]
     ///get_udp f
     pub fn test_get_fback(&mut self) -> &mut WSFbackQueue<f32> {
@@ -1555,7 +1534,7 @@ mod tests {
         conn.handshake_is_end = true;
         conn.was_killed = true;
 
-        assert!(!conn.сheck_paste_file());
+        assert!(!conn.check_paste_file());
     }
 
     #[test]
@@ -1564,7 +1543,7 @@ mod tests {
         conn.handshake_is_end = false;
         conn.was_killed = false;
 
-        assert!(!conn.сheck_paste_file());
+        assert!(!conn.check_paste_file());
     }
 
     #[test]
@@ -1577,7 +1556,7 @@ mod tests {
         conn.handshake_is_end = true;
         conn.was_killed = true;
 
-        assert!(!conn.сheck_paste_file());
+        assert!(!conn.check_paste_file());
     }
 
     #[test]
@@ -1590,7 +1569,7 @@ mod tests {
         conn.handshake_is_end = false;
         conn.was_killed = false;
 
-        assert!(!conn.сheck_paste_file());
+        assert!(!conn.check_paste_file());
     }
 
     #[test]
@@ -1600,10 +1579,10 @@ mod tests {
         conn.handshake_is_end = true;
         conn.was_killed = false;
 
-        assert!(conn.сheck_paste_file());
+        assert!(conn.check_paste_file());
 
         conn.paste_file(rc_bytes(b"abc")).unwrap();
 
-        assert!(!conn.сheck_paste_file());
+        assert!(!conn.check_paste_file());
     }
 }
