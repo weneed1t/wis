@@ -12,8 +12,8 @@
 use crate::t0pology::*;
 use crate::t1fields::*;
 use crate::w1types::{
-    Crcser, Cryptlag, EncWis, HeadByteStruct, Identified, Ids, Noncer, PackType, Thrasher, Ttl,
-    WTypeErr,
+    Crcser, Cryptlag, EncWis, EndCryptStuctor, HeadByteStruct, Identified, Ids, Noncer, PackType,
+    Thrasher, Ttl, WTypeErr,
 };
 
 ///check crc + get idc/ids/idr + get len + get TrickyByte
@@ -121,8 +121,13 @@ where
 ///  If you want, go ahead and submit a commit to fix it
 ///  I don't give a shit, I'm killing people.
 #[derive(Debug, Clone)]
-pub struct MutCockSuck<Tnoncer: Noncer, Tcrc: Crcser, Trshr: Thrasher<FuserLogicBuf>, FuserLogicBuf>
-{
+pub struct MutCockSuck<
+    Tnoncer: Noncer,
+    Tcrc: Crcser,
+    Trshr: Thrasher<FuserLogicBuf>,
+    FuserLogicBuf,
+    Endcpt: EndCryptStuctor,
+> {
     ///nonce_gener
     pub nonce_gener: Option<Tnoncer>,
     ///user_field_gener
@@ -131,16 +136,18 @@ pub struct MutCockSuck<Tnoncer: Noncer, Tcrc: Crcser, Trshr: Thrasher<FuserLogic
     pub crc_gener: Option<Tcrc>,
     /// user_buf
     pub user_buf: Option<FuserLogicBuf>,
+    pub end_key: Option<Endcpt>,
 }
 
 ///general
 #[allow(clippy::too_many_arguments)]
 pub fn init_all_pack_to_send<
-    Tenc: EncWis,
+    Tenc: EncWis<Endcpt>,
     Tnoncer: Noncer,
     Tcrc: Crcser,
     Trshr: Thrasher<FuserLogicBuf>,
     FuserLogicBuf,
+    Endcpt: EndCryptStuctor + Clone,
 >(
     pack: &mut [u8],
     topology: &PackTopology,
@@ -152,7 +159,7 @@ pub fn init_all_pack_to_send<
     ttl: Option<(Ttl, bool)>,
     mtu: &usize,
     encrypt: &mut Tenc,
-    fuck_mut: &mut MutCockSuck<Tnoncer, Tcrc, Trshr, FuserLogicBuf>,
+    fuck_mut: &mut MutCockSuck<Tnoncer, Tcrc, Trshr, FuserLogicBuf, Endcpt>,
 ) -> Result<(), WTypeErr>
 where
 {

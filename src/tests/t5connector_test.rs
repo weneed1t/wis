@@ -1,6 +1,5 @@
-use crate::t5connector::*;
-
 use crate::t1queues::{WSFbackQueue, WSUdpLike};
+use crate::t5conn_new::*;
 
 use crate::w1types::{
     Crcser, EncWis, EndCryptStuctor, HandMaker, Identified, MyRole, Noncer, PackScheme, Randomer,
@@ -23,6 +22,62 @@ type Dumdwcn = WsConnection<
     String,
     DumpEndCrypt,
 >;
+
+#[cfg(test)]
+use crate::t1dumb_srct::*;
+#[cfg(test)]
+use crate::{t0pology, t4param};
+#[cfg(test)]
+///for test only
+///
+#[allow(clippy::items_after_test_module)]
+#[allow(clippy::indexing_slicing)]
+#[allow(clippy::unwrap_used)]
+#[allow(clippy::float_cmp)]
+pub fn fast_wconn_maker() -> Dumdwcn {
+    use crate::w1types::Ttl;
+
+    let fields = vec![
+        //t2page::PackFields::HeadByte,
+        t0pology::PackFields::Counter(7),
+        t0pology::PackFields::IdConnect(6),
+        t0pology::PackFields::UserField(10),
+        t0pology::PackFields::HeadCRC(4),
+        t0pology::PackFields::TTL(4),
+    ];
+
+    let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
+
+    let ttl = Ttl::new(100, -1, 20, false).unwrap();
+
+    let result = t4param::base_builder_pub(po)
+        .ttl_max_start_cost(ttl)
+        .build()
+        .unwrap();
+
+    let seeds = Seeds {
+        nonce: Some(Box::new([2, 2, 2, 2])),
+        random: Some(Box::new([3, 3, 3, 3])),
+        user_field: Some(Box::new([5, 5, 5, 5u8])),
+        crc: Some(Box::new([6, 4, 4, 4])),
+        handmaker: Box::new([9, 9, 9, 9u8]),
+        tricky: Some(Box::new([7, 7, 7, 7u8])),
+    };
+
+    let ret = <Dumdwcn>::new(
+        &result,
+        &[1, 1, 1, 1],
+        MyRole::Initiator,
+        &seeds,
+        &Identified {
+            my_metall_id: 999,
+            my_s_r_id: None,
+            id_conn: Some((999, MyRole::Initiator)),
+        },
+    )
+    .unwrap();
+    ret.clone()
+}
 
 #[allow(clippy::items_after_test_module)]
 #[allow(clippy::indexing_slicing)]
@@ -1206,67 +1261,11 @@ mod tests_get_needy_pack_param {
 }
 
 #[cfg(test)]
-use crate::t1dumb_srct::*;
-#[cfg(test)]
-use crate::{t0pology, t4param};
-#[cfg(test)]
-///for test only
-///
-#[allow(clippy::items_after_test_module)]
-#[allow(clippy::indexing_slicing)]
-#[allow(clippy::unwrap_used)]
-#[allow(clippy::float_cmp)]
-pub fn fast_wconn_maker() -> Dumdwcn {
-    use crate::w1types::Ttl;
-
-    let fields = vec![
-        //t2page::PackFields::HeadByte,
-        t0pology::PackFields::Counter(7),
-        t0pology::PackFields::IdConnect(6),
-        t0pology::PackFields::UserField(10),
-        t0pology::PackFields::HeadCRC(4),
-        t0pology::PackFields::TTL(4),
-    ];
-
-    let po = t0pology::PackTopology::new(5, &fields, true, false).unwrap();
-
-    let ttl = Ttl::new(100, -1, 20, false).unwrap();
-
-    let result = t4param::base_builder_pub(po)
-        .ttl_max_start_cost(ttl)
-        .build()
-        .unwrap();
-
-    let seeds = Seeds {
-        nonce: Some(Box::new([2, 2, 2, 2])),
-        random: Some(Box::new([3, 3, 3, 3])),
-        user_field: Some(Box::new([5, 5, 5, 5u8])),
-        crc: Some(Box::new([6, 4, 4, 4])),
-        handmaker: Box::new([9, 9, 9, 9u8]),
-        tricky: Some(Box::new([7, 7, 7, 7u8])),
-    };
-
-    let ret = <Dumdwcn>::new(
-        &result,
-        &[1, 1, 1, 1],
-        MyRole::Initiator,
-        &seeds,
-        &Identified {
-            my_metall_id: 999,
-            my_s_r_id: None,
-            id_conn: Some((999, MyRole::Initiator)),
-        },
-    )
-    .unwrap();
-    ret.clone()
-}
-
-#[cfg(test)]
 #[allow(clippy::unwrap_used)]
 impl<
     Tnoncer: Noncer,
     Tthrasher: Thrasher<FuserLogicBuf>,
-    Tencrer: EncWis,
+    Tencrer: EncWis<EndCpt>,
     Trander: Randomer,
     Tcrcser: Crcser,
     Thmaker: HandMaker<EndCpt>,
@@ -1455,4 +1454,156 @@ mod test_sender {
 
     #[test]
     fn test_get_queque_process() {}
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::indexing_slicing)]
+    #![allow(clippy::unwrap_used)]
+    #![allow(clippy::as_conversions)]
+    #![allow(clippy::arithmetic_side_effects)]
+    #![allow(clippy::integer_division)]
+    //#![deny(clippy::expect_used)]
+    #![allow(clippy::unreachable)]
+    #![allow(clippy::todo)]
+    #![allow(clippy::float_cmp)]
+
+    use super::*;
+
+    use crate::w1types::*;
+
+    type TestConn = Dumdwcn;
+
+    fn make_test_conn() -> TestConn {
+        fast_wconn_maker()
+    }
+
+    fn rc_bytes(bytes: &[u8]) -> Rcc<Box<[u8]>> {
+        Rcc::new(bytes.to_vec().into_boxed_slice())
+    }
+
+    #[test]
+    fn paste_file_errors_if_connection_killed() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = true;
+        conn.was_killed = true;
+
+        let err = conn.paste_file(rc_bytes(b"abc")).unwrap_err();
+
+        assert!(matches!(
+            err,
+            WTypeErr::WorkTimeErr(ref s) if s == "connect_is kill"
+        ));
+    }
+
+    #[test]
+    fn paste_file_errors_before_handshake() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = false;
+        conn.was_killed = false;
+
+        let err = conn.paste_file(rc_bytes(b"abc")).unwrap_err();
+
+        assert!(matches!(
+            err,
+            WTypeErr::WorkTimeErr(ref s)
+                if s == "connection during the key installation process"
+        ));
+    }
+
+    #[test]
+    fn paste_file_maps_file_splitter_error() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = true;
+        conn.was_killed = false;
+
+        let err = conn.paste_file(rc_bytes(b"")).unwrap_err();
+
+        assert!(matches!(
+            err,
+            WTypeErr::WorkTimeErr(ref s) if s.contains("greater than zero")
+        ));
+    }
+
+    #[test]
+    fn paste_file_ok_after_handshake() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = true;
+        conn.was_killed = false;
+
+        conn.paste_file(rc_bytes(b"abc")).unwrap();
+
+        assert!(conn.file_splitter.i_have_some_send());
+    }
+
+    #[test]
+    fn paste_file_errors_if_file_already_exists() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = true;
+        conn.was_killed = false;
+
+        conn.paste_file(rc_bytes(b"abc")).unwrap();
+
+        let err = conn.paste_file(rc_bytes(b"def")).unwrap_err();
+
+        assert!(matches!(err, WTypeErr::WorkTimeErr(_)));
+    }
+
+    #[test]
+    fn check_paste_file_false_if_killed() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = true;
+        conn.was_killed = true;
+
+        assert!(!conn.сheck_paste_file());
+    }
+
+    #[test]
+    fn check_paste_file_false_before_handshake() {
+        let mut conn = make_test_conn();
+        conn.handshake_is_end = false;
+        conn.was_killed = false;
+
+        assert!(!conn.сheck_paste_file());
+    }
+
+    #[test]
+    fn check_paste_file_false_if_killed_even_when_file_exists() {
+        let mut conn = make_test_conn();
+        conn.file_splitter
+            .write_new_rc_file(rc_bytes(b"abc"))
+            .unwrap();
+
+        conn.handshake_is_end = true;
+        conn.was_killed = true;
+
+        assert!(!conn.сheck_paste_file());
+    }
+
+    #[test]
+    fn check_paste_file_false_before_handshake_even_when_file_exists() {
+        let mut conn = make_test_conn();
+        conn.file_splitter
+            .write_new_rc_file(rc_bytes(b"abc"))
+            .unwrap();
+
+        conn.handshake_is_end = false;
+        conn.was_killed = false;
+
+        assert!(!conn.сheck_paste_file());
+    }
+
+    #[test]
+    fn check_paste_file_current_behavior_is_true_when_file_exists() {
+        let mut conn = make_test_conn();
+
+        conn.handshake_is_end = true;
+        conn.was_killed = false;
+
+        assert!(conn.сheck_paste_file());
+
+        conn.paste_file(rc_bytes(b"abc")).unwrap();
+
+        assert!(!conn.сheck_paste_file());
+    }
 }

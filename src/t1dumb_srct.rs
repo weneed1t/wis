@@ -390,8 +390,8 @@ impl Randomer for DumpRandomer {
     }
 }
 
-impl EncWis for DumpEnc {
-    fn new(_key: &[u8]) -> Result<Self, String> {
+impl<T: EndCryptStuctor> EncWis<T> for DumpEnc {
+    fn new(_key: &[u8], _handshake: Option<&T>) -> Result<Self, String> {
         #[cfg(not(test))]
         {
             panic!(

@@ -13,7 +13,7 @@ mod test_get_all_pub_info_of_package {
     #![allow(clippy::arithmetic_side_effects)]
     #![allow(clippy::integer_division)]
     use super::*;
-    use crate::t1dumb_srct::{DumpCrcser, DumpEnc, DumpNonser, DumpThrasher};
+    use crate::t1dumb_srct::{DumpCrcser, DumpEnc, DumpEndCrypt, DumpNonser, DumpThrasher};
     use crate::t1fields::{set_id_conn, set_id_sender_and_recv, set_len, set_tricky_byte, set_ttl};
     use crate::w1types::MyRole;
     #[test]
@@ -236,7 +236,7 @@ mod test_get_all_pub_info_of_package {
         ) = get_options1();
 
         let mut crcer = DumpCrcser::new(&[0]).unwrap();
-        let mut encer = DumpEnc::new(&[0]).unwrap();
+        let mut encer = <DumpEnc as EncWis<DumpEndCrypt>>::new(&[0], None).unwrap();
         let mut user_fieldser = DumpThrasher::new(&[0]).unwrap();
         let mut user_fieldser_last = user_fieldser.clone();
 
@@ -354,6 +354,7 @@ mod test_get_all_pub_info_of_package {
                 None
             },
             user_buf: Some(user_logic_buff),
+            end_key: Option::<DumpEndCrypt>::None,
         };
 
         let resultat = init_all_pack_to_send(
@@ -400,7 +401,7 @@ mod test_get_all_pub_info_of_package {
                 None
             };
 
-            crypt(
+            crypt::<DumpEnc, DumpNonser, DumpEndCrypt>(
                 &mut pack_for_decrypt,
                 &topology,
                 Cryptlag::Decrypt,
@@ -608,7 +609,7 @@ mod test_get_all_pub_info_of_package {
             }
         }
         let crcer = DumpCrcser::new(&[0]).unwrap();
-        let mut encer = DumpEnc::new(&[0]).unwrap();
+        let mut encer = <DumpEnc as EncWis<DumpEndCrypt>>::new(&[0], None).unwrap();
         let user_fieldser = DumpThrasher::new(&[0]).unwrap();
 
         let nanoser = DumpNonser::new(&[0]).unwrap();
@@ -650,6 +651,7 @@ mod test_get_all_pub_info_of_package {
                 crc_gener: Some(crcer.clone()),
                 user_field_gener: Some(user_fieldser.clone()),
                 user_buf: Some(user_buf),
+                end_key: Option::<DumpEndCrypt>::None,
             };
 
             init_all_pack_to_send(

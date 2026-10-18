@@ -70,6 +70,7 @@ pub mod t5pack_flds;
 pub mod w1types;
 pub mod w1utils; //utils //topology
 
+pub mod t5conn_new;
 pub mod t5connector;
 
 #[cfg(test)]

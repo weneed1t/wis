@@ -1,7 +1,25 @@
 use crate::t0pology;
 use crate::t0pology::PackTopology;
+use crate::t1dumb_srct::*;
 use crate::t1fields::*;
 use crate::w1types::*;
+fn crypt_dump(
+    pack: &mut [u8],
+    topology: &PackTopology,
+    enc_mode: Cryptlag,
+    enc_struct: &mut DumpEnc,
+    countr: Option<&u64>,
+    nonce_gener: Option<&mut DumpNonser>,
+) -> Result<(), WTypeErr> {
+    crypt::<DumpEnc, DumpNonser, DumpEndCrypt>(
+        pack,
+        topology,
+        enc_mode,
+        enc_struct,
+        countr,
+        nonce_gener,
+    )
+}
 
 mod tests_prealocc {
     #![allow(clippy::as_conversions)]
@@ -86,7 +104,6 @@ mod tests {
     #![allow(clippy::indexing_slicing)]
     #![allow(clippy::unwrap_used)]
     use super::*;
-    use crate::t1dumb_srct::*;
 
     #[test]
     fn test_tricky_byte() {
@@ -299,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn test_crypt() {
+    fn test_crypt_dump() {
         let fields = vec![
             //t2page::PackFields::HeadByte,
             t0pology::PackFields::UserField(1),
@@ -328,11 +345,11 @@ mod tests {
 
         let ctr_n = Some(&1000);
 
-        let mut cs = DumpEnc::new(&[1, 2, 3, 4, 5, 6]).unwrap();
+        let mut cs = <DumpEnc as EncWis<DumpEndCrypt>>::new(&[1, 2, 3, 4, 5, 6], None).unwrap();
 
         let validation = bb[result.encrypt_start_pos()..bb.len() - result.tag_len()].to_vec();
         assert_eq!(
-            crypt(
+            crypt_dump(
                 &mut bb,
                 &result,
                 Cryptlag::Encrypt,
@@ -354,7 +371,7 @@ mod tests {
 
         let mut bbb2 = bb.clone();
         assert_eq!(
-            crypt(
+            crypt_dump(
                 &mut bbb,
                 &result,
                 Cryptlag::Decrypt,
@@ -367,7 +384,7 @@ mod tests {
         let ttl1 = Ttl::new(200, 21, 21, false).unwrap();
         let _ = set_ttl(&mut bbb1, &result, &ttl1, true).unwrap();
         assert_eq!(
-            crypt(
+            crypt_dump(
                 &mut bbb1,
                 &result,
                 Cryptlag::Decrypt,
@@ -380,7 +397,7 @@ mod tests {
 
         set_get_head_crc(true, &mut bbb2, &result, dummy_crc_gen).unwrap();
         assert_eq!(
-            crypt(
+            crypt_dump(
                 &mut bbb2,
                 &result,
                 Cryptlag::Decrypt,
@@ -410,7 +427,7 @@ mod tests {
                 && i < x.1
             {
                 assert_eq!(
-                    crypt(
+                    crypt_dump(
                         &mut bbb,
                         &result,
                         Cryptlag::Decrypt,
@@ -427,7 +444,7 @@ mod tests {
                 && i < x.1
             {
                 assert_eq!(
-                    crypt(
+                    crypt_dump(
                         &mut bbb,
                         &result,
                         Cryptlag::Decrypt,
@@ -440,7 +457,7 @@ mod tests {
                 continue;
             }
             assert_eq!(
-                crypt(
+                crypt_dump(
                     &mut bbb,
                     &result,
                     Cryptlag::Decrypt,
@@ -1074,7 +1091,7 @@ mod tests {
         //us reash
         assert!(set_user_field(pack, &topology, ctr_m, &len, dummy_usf).is_ok());
 
-        let mut cs = DumpEnc::new(&[1, 2, 3, 4, 45]).unwrap();
+        let mut cs = <DumpEnc as EncWis<DumpEndCrypt>>::new(&[1, 2, 3, 4, 45], None).unwrap();
         if 1 == 1 {
             let mut ttt = vec![0; pack.len()];
             pack.clone_into(&mut ttt);
@@ -1086,7 +1103,7 @@ mod tests {
 
             let none_nonse: Option<&mut DumpNonser> = None;
             assert_ne!(
-                crypt(
+                crypt_dump(
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
@@ -1097,7 +1114,7 @@ mod tests {
                 Ok(())
             );
             assert_ne!(
-                crypt(
+                crypt_dump(
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
@@ -1109,7 +1126,7 @@ mod tests {
             );
             let none_nonse: Option<&mut DumpNonser> = None;
             assert_ne!(
-                crypt(
+                crypt_dump(
                     &mut ttt[..],
                     &topology,
                     Cryptlag::Encrypt,
@@ -1126,7 +1143,7 @@ mod tests {
             println!();
 
             assert_eq!(
-                crypt(
+                crypt_dump(
                     pack,
                     &topology,
                     Cryptlag::Encrypt,
@@ -1156,7 +1173,7 @@ mod tests {
 
             if (x >= tttttlls.0 && x < tttttlls.1) || (x >= crsrsr.0 && x < crsrsr.1) {
                 assert_eq!(
-                    crypt(
+                    crypt_dump(
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
@@ -1170,7 +1187,7 @@ mod tests {
                 );
             } else {
                 assert_ne!(
-                    crypt(
+                    crypt_dump(
                         &mut t,
                         &topology,
                         Cryptlag::Decrypt,
@@ -1194,7 +1211,7 @@ mod tests {
             }
             t[iter] = !t[iter];
             assert_ne!(
-                crypt(
+                crypt_dump(
                     &mut t,
                     &topology,
                     Cryptlag::Decrypt,
@@ -1244,7 +1261,7 @@ mod tests {
 
         //testt
         assert_eq!(
-            crypt(
+            crypt_dump(
                 pack,
                 &topology,
                 Cryptlag::Decrypt,

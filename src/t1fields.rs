@@ -840,7 +840,7 @@ pub fn get_headbyte(pack: &mut [u8], topology: &PackTopology) -> Result<HeadByte
 /// semantics designed for use with AEAD ciphers (e.g., ChaCha20-Poly1305, AES-GCM) where
 /// tag covers both header and payload enables censorship-resistant protocols by allowing
 /// flexible, pluggable crypto backends
-pub fn crypt<Tencrer, Tnoncer>(
+pub fn crypt<Tencrer, Tnoncer, Tend>(
     pack: &mut [u8],
     topology: &PackTopology,
     enc_mode: Cryptlag,
@@ -849,8 +849,9 @@ pub fn crypt<Tencrer, Tnoncer>(
     nonce_gener: Option<&mut Tnoncer>,
 ) -> Result<(), WTypeErr>
 where
-    Tencrer: EncWis,
+    Tencrer: EncWis<Tend>,
     Tnoncer: Noncer,
+    Tend: EndCryptStuctor,
 {
     let p_len = pack.len();
 
@@ -930,7 +931,7 @@ where
     Ok(())
 }
 
-fn crypt_procress<Tencrer: EncWis>(
+fn crypt_procress<Tencrer: EncWis<Tend>, Tend: EndCryptStuctor>(
     is_encrypt: bool,
     topology: &PackTopology,
     p_len: usize,

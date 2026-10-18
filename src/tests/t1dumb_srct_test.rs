@@ -12,16 +12,37 @@ mod tests_enca {
 
     #[test]
     fn same_variant_with_different_strings_are_equal() {
-        let dn = DumpEnc::new(&[1, 2, 3, 4]).unwrap();
+        let dn = <DumpEnc as EncWis<DumpEndCrypt>>::new(&[1, 2, 3, 4], None).unwrap();
 
         let a1 = vec![1u8; 10];
         let mut a2 = vec![2u8; 15];
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        //dn.encrypt::(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        <DumpEnc as EncWis<DumpEndCrypt>>::encrypt(
+            &dn,
+            &a1,       // &[u8]
+            &mut a2,   // &mut [u8]
+            &mut a3,   // &mut [u8]
+            &0u64,     // &u64
+            Some(&a4), // Option<&[u8]>
+        )
+        .unwrap();
+
+        //  let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+
+        let ret = <DumpEnc as EncWis<DumpEndCrypt>>::decrypt(
+            &dn,
+            &a1,       // &[u8]      — non_enc_head
+            &mut a2,   // &mut [u8]  — enc_payload
+            &mut a3,   // &mut [u8]  — auth_tag
+            &0u64,     // &u64       — nonce_countr
+            Some(&a4), // Option<&[u8]> — nonce
+        )
+        .unwrap();
+
         println!(" ");
         println!(" ");
         println!("headd {:?} ", a1);
@@ -40,11 +61,32 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let mut a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        // dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+
+        <DumpEnc as EncWis<DumpEndCrypt>>::encrypt(
+            &dn,
+            &a1,       // &[u8]
+            &mut a2,   // &mut [u8]
+            &mut a3,   // &mut [u8]
+            &0u64,     // &u64
+            Some(&a4), // Option<&[u8]>
+        )
+        .unwrap();
 
         a4[7] = !a4[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        //let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+
+        let ret = <DumpEnc as EncWis<DumpEndCrypt>>::decrypt(
+            &dn,
+            &a1,       // &[u8]      — non_enc_head
+            &mut a2,   // &mut [u8]  — enc_payload
+            &mut a3,   // &mut [u8]  — auth_tag
+            &0u64,     // &u64       — nonce_countr
+            Some(&a4), // Option<&[u8]> — nonce
+        )
+        .unwrap();
+
         println!("before enc ");
         println!(" ");
         println!("head {:?} ", a1);
@@ -60,11 +102,30 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        //dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+
+        <DumpEnc as EncWis<DumpEndCrypt>>::encrypt(
+            &dn,
+            &a1,       // &[u8]
+            &mut a2,   // &mut [u8]
+            &mut a3,   // &mut [u8]
+            &0u64,     // &u64
+            Some(&a4), // Option<&[u8]>
+        )
+        .unwrap();
 
         a1[7] = !a1[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        // let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        let ret = <DumpEnc as EncWis<DumpEndCrypt>>::decrypt(
+            &dn,
+            &a1,       // &[u8]      — non_enc_head
+            &mut a2,   // &mut [u8]  — enc_payload
+            &mut a3,   // &mut [u8]  — auth_tag
+            &0u64,     // &u64       — nonce_countr
+            Some(&a4), // Option<&[u8]> — nonce
+        )
+        .unwrap();
         println!("after dec");
         println!(" ");
         println!("head {:?} ", a1);
@@ -80,11 +141,30 @@ mod tests_enca {
         let mut a3 = vec![2u8; 20];
         let a4 = vec![3u8; 25];
 
-        dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        // dn.encrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+
+        <DumpEnc as EncWis<DumpEndCrypt>>::encrypt(
+            &dn,
+            &a1,       // &[u8]
+            &mut a2,   // &mut [u8]
+            &mut a3,   // &mut [u8]
+            &0u64,     // &u64
+            Some(&a4), // Option<&[u8]>
+        )
+        .unwrap();
 
         a2[7] = !a2[7];
 
-        let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        //  let ret = dn.decrypt(&a1, &mut a2, &mut a3, &0, Some(&a4)).unwrap();
+        let ret = <DumpEnc as EncWis<DumpEndCrypt>>::decrypt(
+            &dn,
+            &a1,       // &[u8]      — non_enc_head
+            &mut a2,   // &mut [u8]  — enc_payload
+            &mut a3,   // &mut [u8]  — auth_tag
+            &0u64,     // &u64       — nonce_countr
+            Some(&a4), // Option<&[u8]> — nonce
+        )
+        .unwrap();
         println!(" ");
         println!(" ");
         println!("head {:?} ", a1);

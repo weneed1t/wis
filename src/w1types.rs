@@ -639,9 +639,9 @@ impl StatusDecrypt {
 //#############################################################3
 ///
 
-pub trait EncWis: Sized {
+pub trait EncWis<T: EndCryptStuctor>: Sized {
     ///
-    fn new(key: &[u8]) -> Result<Self, String>;
+    fn new(key: &[u8], handshake: Option<&T>) -> Result<Self, String>;
 
     /// (HEAD non enc), (PAYLOAD enc), (TAG) (countr(nonce)), (NONCE)
     fn encrypt(
