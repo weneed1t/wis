@@ -965,7 +965,6 @@ mod test_recv_queue_ctrs {
             WSFbackQueue::<f64>::new(pack_topology.counter_slice().unwrap().2, 39, 100).is_ok()
         );
     }
-
     #[test]
     fn test_wait() {
         println!("test_wait");
@@ -979,19 +978,19 @@ mod test_recv_queue_ctrs {
                 WSFbackQueue::<f32>::new(pack_topology.counter_slice().unwrap().2, 500, 1000)
                     .unwrap();
 
-            let (ret_ve, opt_p) = zero_test.get_ctrs_as_byte_pack_vec();
+            let (ret_ve, opt_p) = zero_test.get_ctrs_as_byte_pack_vec(1999999.0).unwrap();
 
-            assert_eq!(ret_ve.len(), 0);
-            assert_eq!(opt_p, None);
+            assert_eq!(ret_ve.len(), 0, "assert №1");
+            assert_eq!(opt_p, None, "assert №2");
             let mut t_t = vec![0; 100];
 
             for fff_ttt in [true, false] {
                 let (ret, opt_p) = zero_test
-                    .copy_ctrs_pack_to_slice(&mut t_t, fff_ttt)
+                    .copy_ctrs_pack_to_slice(9999.0, &mut t_t, fff_ttt)
                     .unwrap();
 
-                assert_eq!(opt_p, None);
-                assert_eq!(ret, 0);
+                assert_eq!(opt_p, None, "assert №3");
+                assert_eq!(ret, 0, "assert №4");
             }
         }
 
@@ -1026,21 +1025,24 @@ mod test_recv_queue_ctrs {
 
             assert_eq!(
                 test_me_fall1.err().unwrap(),
-                "pack_topology.counter_slice() == 0 or len_ctr_field > 8"
+                "pack_topology.counter_slice() == 0 or len_ctr_field > 8",
+                "assert №5"
             );
             assert_eq!(
                 test_me_fall2.err().unwrap(),
-                "pack_topology.counter_slice() == 0 or len_ctr_field > 8"
+                "pack_topology.counter_slice() == 0 or len_ctr_field > 8",
+                "assert №6"
             );
             assert_eq!(
                 test_me_fall3.err().unwrap(),
-                "The byte representation of the maximum length must be less than or equal to mtu."
+                "The byte representation of the maximum length must be less than or equal to mtu.",
+                "assert №6"
             );
 
             assert!(test_me_ok.is_ok(), "{:?}", test_me_ok.err().unwrap());
 
             let mut ws_wa: WSWaitQueue<String, f64> = WSWaitQueue::new(500).unwrap();
-            assert_eq!(ws_wa.capacity(), 500);
+            assert_eq!(ws_wa.capacity(), 500, "assert №8");
             for iterata_ma in [
                 10_000_000,
                 10_000,
@@ -1050,7 +1052,7 @@ mod test_recv_queue_ctrs {
                 123456789,
                 0,
                 12,
-                0xFF_FF_FF_FF_FF_FF_FE_11,
+                0x1F_FF_FF_FF_FF_FF_FE_11,
                 87667,
             ] {
                 let mut hm: HashMap<u64, u64> = HashMap::new();
@@ -1059,45 +1061,58 @@ mod test_recv_queue_ctrs {
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
                     hm.insert(x.1, x.1);
                     test_me.push(x.1, 0.2 * x.1 as f64).unwrap();
-                    assert_eq!(test_me.free_space(), 500 - 1 - x.0);
+                    assert_eq!(test_me.free_space(), 500 - 1 - x.0, "assert №9");
                     assert_eq!(
                         test_me.get_min_max_and_max_p(),
-                        (iterata_ma, x.1, Some(0.2 * x.1 as f64))
+                        (iterata_ma, x.1, Some(0.2 * x.1 as f64)),
+                        "assert №10"
                     );
-                    assert_eq!(test_me.elems_in_me(), x.0 + 1);
-                    ws_wa
-                        .push(x.1, x.1 as f64 * 1.2, "data".to_string())
-                        .unwrap();
-                }
-                assert_eq!(hm.len(), 256);
+                    assert_eq!(test_me.elems_in_me(), x.0 + 1, "assert №11");
 
-                assert_eq!(
-                    test_me.push(iterata_ma + 256, 1110.21),
-                    Err(
-                        "The difference between the maximum and minimum counters is greater than \
-                         the counter_slice field can hold."
-                            .to_string()
-                    )
-                );
+                    let last_p = x.1 as f64 * 1.2;
+                    ws_wa.push(x.1, last_p, "data".to_string()).unwrap();
+                }
+                assert_eq!(hm.len(), 256, "assert №12");
 
                 let test_me_old = test_me.clone();
 
-                assert_eq!(test_me.elems_in_me(), 256);
+                assert_eq!(test_me.elems_in_me(), 256, "assert №13");
 
                 let p_in_test_me = test_me.get_min_max_and_max_p().2.unwrap();
-                assert!(!test_me.is_empty());
-                let (ret_ve, opt_p) = test_me.get_ctrs_as_byte_pack_vec();
-                assert_eq!(opt_p, Some(1110.21));
+                assert!(!test_me.is_empty(), "assert № 01 17");
 
-                assert_eq!(test_me.elems_in_me(), 0);
-                assert!(test_me.is_empty());
-                assert_eq!(test_me.get_min_max_and_max_p(), (0, 0, None));
+                let my_cur_p = test_me.get_min_max_and_max_p().2.unwrap();
+                {
+                    let test_is = test_me.clone();
+                    let eps = my_cur_p.abs() * 0.01; // 1 %
+                    let is_ok1 = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p);
+                    let is_ok2 = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p - eps);
+                    let is_err = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p + eps);
+
+                    assert!(is_ok1.is_ok(), "assert № 02 17");
+                    assert!(is_ok2.is_err(), "assert № 03 17");
+                    assert!(is_err.is_ok(), "assert № 04 17");
+                }
+
+                let (ret_ve, opt_p) = test_me
+                    .get_ctrs_as_byte_pack_vec((0xFF_FF_FF_FF_FF_FF_FE_11u64 + 1) as f64)
+                    .unwrap();
+                assert_eq!(
+                    opt_p,
+                    Some((0xFF_FF_FF_FF_FF_FF_FE_11u64 + 1) as f64 - p_in_test_me),
+                    "assert №14"
+                );
+
+                assert_eq!(test_me.elems_in_me(), 0, "assert № 05 17");
+                assert!(test_me.is_empty(), "assert № 06 17");
+                assert_eq!(test_me.get_min_max_and_max_p(), (0, 0, None), "assert №15");
 
                 assert_eq!(
                     test_me_old.payload_len_in_bytes(),
-                    8 + U64_LEN_IN_BYTES + test_me_old.elems_in_me() //f64 as bytes is 8 bytes
+                    8 + U64_LEN_IN_BYTES + test_me_old.elems_in_me(), //f64 as bytes is 8 bytes
+                    "assert №16"
                 );
-                assert_eq!(ws_wa.elems_in_me(), 256);
+                assert_eq!(ws_wa.elems_in_me(), 256, "assert №17");
 
                 let re_recv = WSFbackQueue::delete_ctrs_in_byte_pack_from_ws_wait_queue(
                     &ret_ve, ctr_len, &mut ws_wa,
@@ -1110,12 +1125,12 @@ mod test_recv_queue_ctrs {
                         256,
                         Some(iterata_ma as f64 * 1.2),
                         Some((iterata_ma + 255) as f64 * 1.2),
-                        p_in_test_me
-                    )
+                        (0xFF_FF_FF_FF_FF_FF_FE_11u64 + 1) as f64 - p_in_test_me
+                    ),
+                    "assert №18"
                 );
-                //assert_eq!(re_recv, 0);
 
-                assert_eq!(ws_wa.elems_in_me(), 0);
+                assert_eq!(ws_wa.elems_in_me(), 0, "assert №19");
 
                 let (my_p, remap_ve) = WSFbackQueue::<f64>::split_byte_ctrs_pack_to_slice(
                     &ret_ve[..],
@@ -1124,7 +1139,11 @@ mod test_recv_queue_ctrs {
                 )
                 .unwrap();
 
-                assert_eq!(my_p, p_in_test_me);
+                assert_eq!(
+                    my_p,
+                    (0xFF_FF_FF_FF_FF_FF_FE_11u64 + 1) as f64 - p_in_test_me,
+                    "assert №20"
+                );
                 if *pre_aloo {
                     assert!(remap_ve.is_none())
                 }
@@ -1135,12 +1154,10 @@ mod test_recv_queue_ctrs {
                     vee_pre.clone()
                 };
 
-                //let remap_ve =
-
                 for x in (iterata_ma..iterata_ma + 256).enumerate() {
                     hm.remove(&remap_ve[x.0]);
                 }
-                assert_eq!(hm.len(), 0)
+                assert_eq!(hm.len(), 0, "assert №21")
             }
         }
     }
@@ -1187,18 +1204,34 @@ mod test_recv_queue_ctrs {
 
                 let p_len_before_get = tc3.payload_len_in_bytes();
 
-                let (size_payload, opt_p) =
-                    tc2.copy_ctrs_pack_to_slice(&mut temp_vec_sl, true).unwrap();
+                let my_cur_p = tc2.get_min_max_and_max_p().2.unwrap();
 
-                assert_eq!(opt_p, Some(0.32132));
+                {
+                    let test_is = tc2.clone();
+                    let is_ok1 = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p);
+
+                    let is_ok2 = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p - 0.001);
+
+                    let is_err = test_is.clone().get_ctrs_as_byte_pack_vec(my_cur_p + 0.001);
+
+                    assert!(is_ok1.is_ok());
+                    assert!(is_ok2.is_err());
+                    assert!(is_err.is_ok());
+                }
+
+                let (size_payload, opt_p) = tc2
+                    .copy_ctrs_pack_to_slice(my_cur_p, &mut temp_vec_sl, true)
+                    .unwrap();
+
+                assert_eq!(opt_p, Some(0.0));
 
                 let mut temp_vec_sl_c_sp = vec![42u8/*42 is trash */; size_payload];
-                tc4.copy_ctrs_pack_to_slice(&mut temp_vec_sl_c_sp, true)
+                tc4.copy_ctrs_pack_to_slice(my_cur_p, &mut temp_vec_sl_c_sp, true)
                     .unwrap();
 
                 assert_eq!(p_len_before_get, size_payload);
 
-                tc3.copy_ctrs_pack_to_slice(&mut temp_vec_sl_c, false)
+                tc3.copy_ctrs_pack_to_slice(my_cur_p, &mut temp_vec_sl_c, false)
                     .unwrap();
 
                 assert!(tc2.is_empty());
@@ -1229,10 +1262,11 @@ mod test_recv_queue_ctrs {
                     temp_vec_sl[size_payload..],
                     vec![0; temp_vec_sl.len() - size_payload]
                 );
+                let my_cur_p = test_me.get_min_max_and_max_p().2.unwrap();
 
-                let (vec_sl, opt_p) = test_me.get_ctrs_as_byte_pack_vec();
+                let (vec_sl, opt_p) = test_me.get_ctrs_as_byte_pack_vec(my_cur_p).unwrap();
 
-                assert_eq!(opt_p, Some(0.32132));
+                assert_eq!(opt_p, Some(0.0));
 
                 let h1 = WSFbackQueue::<f64>::split_byte_ctrs_pack_to_slice(
                     &temp_vec_sl,
@@ -1257,8 +1291,6 @@ mod test_recv_queue_ctrs {
                 )
                 .unwrap();
 
-                //println!("WS_WA_CTRS {:#?}", ws_wa.data_map.keys());
-
                 assert_eq!(ws_wa.elems_in_me(), 0);
                 assert_eq!(h1, h2);
                 assert_eq!(vee_pre_clone, vee_pre);
@@ -1268,16 +1300,21 @@ mod test_recv_queue_ctrs {
             test_me.push(1022, 0.12).unwrap(); //2
             test_me.push(1022, 0.13).unwrap(); //3
             test_me.push(10322, 0.14).unwrap(); //4
+            let my_cur_p = test_me.get_min_max_and_max_p().2.unwrap();
+            assert_eq!(my_cur_p, 0.14);
             test_me.push(10322, 0.15).unwrap(); //5
             test_me.push(10322, 0.16).unwrap(); //6
+            let my_cur_p = test_me.get_min_max_and_max_p().2.unwrap();
+            assert_eq!(my_cur_p, 0.14);
             test_me.push(1430, 0.17).unwrap(); //7
-            test_me.push(18876, 0.18).unwrap(); //8 // is bigest 18876
+            test_me.push(18876, 0.18).unwrap(); //8 
             test_me.push(652, 0.9).unwrap(); //9
             test_me.push(11, 1.1).unwrap(); //10
+            let my_cur_p = test_me.get_min_max_and_max_p().2.unwrap();
+            assert_eq!(my_cur_p, 1.1);
+            let (vet, opt_p) = test_me.get_ctrs_as_byte_pack_vec(20.0).unwrap();
 
-            let (vet, opt_p) = test_me.get_ctrs_as_byte_pack_vec();
-
-            assert_eq!(opt_p, Some(0.18));
+            assert_eq!(opt_p, Some(20.0 - 1.1));
             assert_eq!(22 + 8, vet.len());
 
             let (my_p, temp1) = WSFbackQueue::<f64>::split_byte_ctrs_pack_to_slice(
@@ -1287,7 +1324,7 @@ mod test_recv_queue_ctrs {
             )
             .unwrap();
 
-            assert_eq!(my_p, 0.18);
+            assert_eq!(my_p, 20.0 - 1.1);
 
             let temp1 = if let Some(xxx) = temp1 {
                 xxx.clone()
@@ -1296,7 +1333,6 @@ mod test_recv_queue_ctrs {
             };
 
             assert_eq!(temp1, vec![11, 1022, 10322, 1430, 18876, 652, 10]);
-
             let (my_p, temp1) = WSFbackQueue::<f64>::split_byte_ctrs_pack_to_slice(
                 &vet[..vet.len() - 3],
                 ctr_len,
@@ -1304,7 +1340,7 @@ mod test_recv_queue_ctrs {
             )
             .unwrap();
 
-            assert_eq!(my_p, 0.18f64);
+            assert_eq!(my_p, 20.0 - 1.1);
             let temp1 = if let Some(xxx) = temp1 {
                 xxx.clone()
             } else {
@@ -1530,7 +1566,12 @@ mod test_collab {
 
                 if ctrs_que.elems_in_me() > 6 + randr(time_soon.rotate_left(8)) as usize % 10 {
                     let mut ret = vec![0; ctrs_que.payload_len_in_bytes()];
-                    ctrs_que.copy_ctrs_pack_to_slice(&mut ret, false).unwrap();
+
+                    let my_cur_p = ctrs_que.get_min_max_and_max_p().2.unwrap();
+
+                    ctrs_que
+                        .copy_ctrs_pack_to_slice(my_cur_p, &mut ret, false)
+                        .unwrap();
                     net_steak_recv.push(ret);
                 }
             }
@@ -1548,6 +1589,6 @@ mod test_collab {
             net_steak = Vec::new();
         }
 
-        println!("{:?}", wait_que.get_elements_to(999999999999999.0, None));
+        println!("{:?}", wait_que.get_elements_to(999999999999999999.0, None));
     }
 }

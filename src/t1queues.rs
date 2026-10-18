@@ -24,82 +24,89 @@ use crate::{EXPCP, checked_cast, t1fields, w1utils};
 //##############################################################################################################################
 //----------------------------------------TRATE TO INTERPT TYPE 'P' IN WSFbackQueue AS BYTE MESSAGE!----------------------------
 pub(crate) trait NumericBytes: Sized {
-    // Returns the exact size of the type in bytes
     #[allow(unused)]
     fn bytes_len(&self) -> usize;
-
-    // Writes Big Endian bytes directly into a pre-allocated buffer without allocations
     fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str>;
-
-    // Safely restores the value from a dynamic byte slice
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
+    fn zero() -> Self;
+    fn sub(&self, inpp: Self) -> Result<Self, String>; // Метод должен возвращать Result согласно трейту
 }
 
 macro_rules! impl_numeric_bytes {
-    ($($t:ty),*) => {
+    // 1. Внутреннее правило для целых чисел (использует saturating_sub)
+    (@int $($t:ty),*) => {
         $(
             impl NumericBytes for $t {
-                #[inline(always)]
-                fn bytes_len(&self) -> usize {
-                    std::mem::size_of::<Self>()
-                }
+                impl_numeric_bytes!(@common_methods $t);
 
                 #[inline(always)]
-                fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-                    let size = std::mem::size_of::<Self>();
-                    if buffer.len() < size {
-                        return Err("Buffer is too small");
-                    }
-                    // Safe buffer copy without unsafe or memory allocations
-                    buffer.get_mut(..size).ok_or(" buffer.get_mut(..size) out of range")?.copy_from_slice(&self.to_be_bytes());
-                    Ok(size)
-                }
-
-                #[inline(always)]
-                fn from_bytes(bytes: &[u8]) -> Option<Self> {
-                    let array: [u8; std::mem::size_of::<$t>()] = bytes.try_into().ok()?;
-                    Some(Self::from_be_bytes(array))
+                fn sub(&self, inpp: Self) -> Result<Self, String> {
+                    // Используем правильное вычитание аргумента из self
+                    Ok(self.saturating_sub(inpp))
                 }
             }
         )*
     };
-}
 
-// Generate code for all your target types
-impl_numeric_bytes!(u64, i64, f64, f32, u32, i32, i16, u16, u8, i8);
+    // 2. Внутреннее правило для чисел с плавающей точкой (имитирует saturating_sub)
+    (@float $($t:ty),*) => {
+        $(
+            impl NumericBytes for $t {
+                impl_numeric_bytes!(@common_methods $t);
 
-// Clean separate implementation for bool
-impl NumericBytes for bool {
-    #[inline(always)]
-    fn bytes_len(&self) -> usize {
-        1
-    }
+                #[inline(always)]
+                fn sub(&self, inpp: Self) -> Result<Self, String> {
+                    let res = self - inpp;
+                    if res.is_nan() {
+                        #[allow(clippy::as_conversions)]
+                        Ok(0 as Self)
+                    } else if res == <$t>::INFINITY {
+                        Ok(<$t>::MAX)
+                    } else if res == <$t>::NEG_INFINITY {
+                        Ok(<$t>::MIN)
+                    } else {
+                        Ok(res)
+                    }
+                }
+            }
+        )*
+    };
 
-    #[inline(always)]
-    fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-        if buffer.is_empty() {
-            return Err("Buffer is too small");
+    // 3. Вспомогательное правило, чтобы не дублировать общие методы
+    (@common_methods $t:ty) => {
+        #[inline(always)]
+        fn bytes_len(&self) -> usize {
+            std::mem::size_of::<Self>()
         }
-        {
+
+        #[inline(always)]
+        fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+            let size = std::mem::size_of::<Self>();
+            if buffer.len() < size {
+                return Err("Buffer is too small");
+            }
+            buffer.get_mut(..size)
+                .ok_or("buffer.get_mut(..size) out of range")?
+                .copy_from_slice(&self.to_be_bytes());
+            Ok(size)
+        }
+
+        #[inline(always)]
+        fn from_bytes(bytes: &[u8]) -> Option<Self> {
+            let array: [u8; std::mem::size_of::<$t>()] = bytes.try_into().ok()?;
+            Some(Self::from_be_bytes(array))
+        }
+
+        #[inline(always)]
+        fn zero() -> Self {
             #![allow(clippy::as_conversions)]
-            debug_assert!(*self as usize <= u8::MAX as usize);
-
-            (*buffer
-                .first_mut()
-                .ok_or(" buffer.first_mut() out of range")?) = *self as u8;
+            0 as Self
         }
-        Ok(1)
-    }
-
-    #[inline(always)]
-    fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        match bytes {
-            [0] => Some(false),
-            [1] => Some(true),
-            _ => None,
-        }
-    }
+    };
 }
+
+impl_numeric_bytes!(@int u64, i64, u32, i32, i16, u16, u8, i8);
+impl_numeric_bytes!(@float f64, f32);
 
 //##############################################################################################################################
 
@@ -1093,7 +1100,7 @@ pub struct WSFbackQueue<P> {
     max: u64,
     min: u64,
     ptr_of_min: usize,
-    max_p_in_queue: Option<P>,
+    last_p_in_queue: Option<P>,
 }
 #[allow(private_bounds)]
 impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFbackQueue<P> {
@@ -1159,7 +1166,7 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
             max: 0,
             min: 0,
             ptr_of_min: 0,
-            max_p_in_queue: None,
+            last_p_in_queue: None,
         })
     }
 
@@ -1171,11 +1178,12 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
     /// to save space,  which means that some counters in the queue may be
     /// duplicated.
     ///
-    /// max_p_in_queue is the time (most likely a double) when the packet was received;
-    ///  since the packet is stored for a certain amount of time before being sent,
-    ///  the send time must be calculated at the end. RecvQueueCtrs is the time when
+    ///  max_p_in_queue — the point in time (most likely of type double)
+    ///  at which the last packet was received;
+    /// since the packet is stored for a certain amount of time before being sent,
+    /// the send time must be calculated at the end. RecvQueueCtrs is the time when
     /// the Ctr was received,  RecvQueueCtrs stores only one <P> that belongs
-    /// to the packet with the largest ctr_elem;  if ctr_elem turns out to be
+    /// to the last added packet. ; if ctr_elem turns out to be
     /// larger than the current one,  then when writing, the old value of <P>
     /// will be replaced with the <P> belonging to the new ctr_elem
     pub fn push(&mut self, ctr_elem: u64, max_p_in_queue: P) -> Result<(), String> {
@@ -1192,7 +1200,6 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
         self.max = if self.max > ctr_elem && 0 < self.ptr {
             self.max
         } else {
-            self.max_p_in_queue = Some(max_p_in_queue);
             ctr_elem
         };
 
@@ -1223,6 +1230,7 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
 
         self.ptr = self.ptr.checked_add(1).ok_or("counter overflow")?;
 
+        self.last_p_in_queue = Some(max_p_in_queue);
         Ok(())
     }
     ///calculates how many more times counters can be push()
@@ -1236,9 +1244,9 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
 
     ///returns the length of the entire queue in bytes
     ///queue structure
-    /// |-------------|--------------------|-----|-----|-----|----|-----|
-    /// |p of max u64 |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
-    /// |-------------|--------------------|-----|-----|-----|----|-----|
+    /// |--------------|--------------------|-----|-----|-----|----|-----|
+    /// |p of last u64 |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
+    /// |--------------|--------------------|-----|-----|-----|----|-----|
     ///
     /// ctr len = len_ctr_field
     pub fn payload_len_in_bytes(&self) -> usize {
@@ -1277,18 +1285,38 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
         self.data.clone()
     }
 
-    ///get_ctrs_as_byte_pack_vec is a wrapper for  copy_ctrs_pack_to_slice
-    /// Option<P> in the return value from the function is the P of the largest counter by u64 value
-    /// If the structure contains no counters, it will return an array of zero length! Ok([], None)
-    pub fn get_ctrs_as_byte_pack_vec(&mut self) -> (Box<[u8]>, Option<P>) {
+    ///get_ctrs_as_byte_pack_vec is a wrapper for  copy_ctrs_pack_to_slice.<br><br>
+    ///
+    ///`current_time` is the minuend: the stored P is subtracted from it before the
+    ///result is serialized into the byte array (`current_time - last_p_in_queue`).
+    ///This makes the serialized time mark represent the elapsed time since P was
+    ///set, so a receiver can reconstruct the absolute P by subtracting the decoded
+    ///value from its own clock (assuming synchronized `current_time`).
+    ///
+    ///Returns `Err` if the stored P is greater than `current_time` (the difference
+    ///would be negative). For an empty queue no subtraction is performed and the
+    ///serialized P field is just `P::zero()`.
+    ///
+    ///`Option<P>` in the return value from the function is the raw stored P of the
+    ///last push (i.e. `self.last_p_in_queue`, *before* the
+    ///`current_time - last_p_in_queue` subtraction). If the structure contains no
+    ///counters, it returns an array of zero length and `None`: `([], None)`.
+    ///
+    ///The queue is completely cleared of internal objects on return.
+    pub fn get_ctrs_as_byte_pack_vec(
+        &mut self,
+        current_time: P,
+    ) -> Result<(Box<[u8]>, Option<P>), String> {
         if 0 == self.ptr {
-            return (vec![].into_boxed_slice(), None);
+            return Ok((vec![].into_boxed_slice(), None));
         }
 
         let mut ret_vec = vec![0; self.payload_len_in_bytes()].into_boxed_slice();
 
-        let err = self.copy_ctrs_pack_to_slice(&mut ret_vec, false);
+        let err =
+            self.copy_ctrs_pack_to_slice_priv(self.get_my_p(current_time)?, &mut ret_vec, false);
 
+        //This part remains as is, since errors in `copy_ctrs_pack_to_slice_priv` should not occur.
         let ret = EXPCP!(
             err,
             &format!(
@@ -1306,55 +1334,93 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
         debug_assert!(self.ptr == 0);
         debug_assert!(self.min == 0);
         debug_assert!(self.max == 0);
-        debug_assert!(self.max_p_in_queue.is_none());
+        debug_assert!(self.last_p_in_queue.is_none());
 
-        (ret_vec, ret.1)
+        Ok((ret_vec, ret.1))
     }
-    /// get the full set of reverse counters, but copy them to a byte array to avoid
-    /// additional memory allocation To find out what the length of
-    /// pack_payload_slice should be, call self.payload_len_in_bytes().
-    /// get_ctrs_as_byte_pack_vec and copy_ctrs_pack_to_slice return all contents of
-    /// the queue, and the WSFbackQueue structure is completely cleared of
-    /// internal objects.
-    ///
-    ///  UPDATE !! blurred_boundaries always equals TRUE !!!
-    ///
-    /// If the structure contains no counters, it will return an usize of zero length! Ok(0, None)
-    ///
-    /// if blurred_boundaries == true
-    ///then pack_payload_slice: &mut [u8] can be GREATER THAN OR EQUAL TO
-    /// self.payload_len_in_bytes() usize,
-    ///
-    ///queue structure
-    /// |-------------|--------------------|-----|-----|-----|----|-----|
-    /// |p of max u64 |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
-    /// |-------------|--------------------|-----|-----|-----|----|-----|
-    ///
-    /// ctr len = len_ctr_field
-    ///The counter under the number ctr_N, i.e. the last counter, is always equal to
-    /// 0.
-    /// Option<P> in the return value from the function is the P of the largest counter by u64 value
-    /// P in return is a time mark or largest ctr u64
-    pub fn copy_ctrs_pack_to_slice(
-        &mut self,
-        pack_payload_slice: &mut [u8],
-        fill_tail_zeros: bool,
-    ) -> Result<(usize, Option<P>), String> {
-        let payload_len_in_bytes = self.payload_len_in_bytes();
 
-        let p_my = if let Some(x) = self.max_p_in_queue.as_ref() {
+    fn get_my_p(&self, current_time: P) -> Result<P, String> {
+        let p_my = if let Some(x) = self.last_p_in_queue.as_ref() {
             debug_assert!(
                 self.ptr != 0,
                 "an impossible state, since if there are no objects in the queue (ptr == 0, then no objects were added, which means p should be None)"
             );
-            x.clone()
+
+            if x.clone() > current_time {
+                return Err(format!(
+                    "err last P > current_time ; current_time: {:?}  last_p {:?}",
+                    current_time, x,
+                ));
+            }
+            current_time.sub(x.clone())?
         } else {
             debug_assert!(
                 self.ptr == 0,
                 "an impossible state, since if there are objects in the queue, (ptr !=0 then objects were not added, which means p must be Some)"
             );
-            P::default()
+            P::zero()
         };
+
+        Ok(p_my)
+    }
+
+    /// Get the full set of reverse counters, copied into a byte array to avoid extra
+    /// allocation. Required slice length: `self.payload_len_in_bytes()`; longer
+    /// slices are allowed and their tail is zeroed iff `fill_tail_zeros == true`.
+    /// The queue is fully cleared on return.
+    ///
+    /// If the queue is empty, no subtraction is performed and the serialized P field
+    /// is just `P::zero()`; the function returns `Ok((0, None))`.
+    ///
+    /// # `current_time`
+    ///
+    /// Only applies when the queue is non-empty: `last_p_in_queue` is subtracted
+    /// **from** `current_time` before the result is serialized
+    /// (`current_time - last_p_in_queue`), so the receiver can reconstruct the
+    /// absolute P by subtracting the decoded value from its own clock. If
+    /// `last_p_in_queue > current_time`, returns `Err` before mutating anything.
+    /// For an empty queue nothing is subtracted.
+    ///
+    /// # Layout written to `pack_payload_slice`
+    ///
+    /// ```text
+    /// |--------------|--------------------|-----|-----|-----|----|-----|
+    /// |p of last u64 |8 bytes u64 main ctr|ctr_1|ctr_2|ctr_3|....|ctr_N|
+    /// |--------------|--------------------|-----|-----|-----|----|-----|
+    /// ```
+    ///
+    /// * `p of last u64` — `Self::P_SIZE` bytes, `(current_time - last_p_in_queue)`
+    ///   big-endian when non-empty, or `P::zero()` when the queue is empty.
+    /// * `8 bytes u64 main ctr` — `self.min` via `u64_to_1_8bytes`.
+    /// * `ctr_1..ctr_N` — `(ctr - self.min)` in `self.ctr_slice_len` bytes each;
+    ///   `ctr_N` is always `0` (min is swapped into the last slot first).
+    ///
+    /// # Return
+    ///
+    /// * `.0` — bytes used (`payload_len_in_bytes()` or `0` for empty queue).
+    /// * `.1` — raw `last_p_in_queue` (before the
+    ///   `current_time - last_p_in_queue` subtraction), or `None` for empty queue.
+
+    pub fn copy_ctrs_pack_to_slice(
+        &mut self,
+        current_time: P,
+        pack_payload_slice: &mut [u8],
+        fill_tail_zeros: bool,
+    ) -> Result<(usize, Option<P>), String> {
+        self.copy_ctrs_pack_to_slice_priv(
+            self.get_my_p(current_time)?,
+            pack_payload_slice,
+            fill_tail_zeros,
+        )
+    }
+
+    fn copy_ctrs_pack_to_slice_priv(
+        &mut self,
+        p_my: P,
+        pack_payload_slice: &mut [u8],
+        fill_tail_zeros: bool,
+    ) -> Result<(usize, Option<P>), String> {
+        let payload_len_in_bytes = self.payload_len_in_bytes();
 
         {
             //add P as bytes
@@ -1438,15 +1504,8 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
         self.ptr = 0;
         self.max = 0;
         self.min = 0;
-        /*
-        Here, the Some(Some(...).expect()) construct is chosen to check at the compilation stage that the values ​​correspond to the program logic.*/
-        Ok((
-            payload_len_in_bytes,
-            Some(self.max_p_in_queue.take().expect(
-                "impossible state! The value can be none only if the queue is empty, \
-         but if the queue is empty, then return should be at the beginning of the function.",
-            )),
-        ))
+        self.last_p_in_queue = None;
+        Ok((payload_len_in_bytes, Some(p_my)))
     }
 
     fn len_check<'a>(
@@ -1470,7 +1529,7 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
             return Err("its unreal state 0 == len_ctr_field".to_string());
         }
 
-        let my_p = P::from_bytes(
+        let my_p: P = P::from_bytes(
             payload
                 .get(..Self::P_SIZE)
                 .ok_or("invalid p counter slice")?,
@@ -1565,7 +1624,7 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
         );
 
         if ret.is_empty() {
-            Ok((P::default(), None))
+            Ok((P::zero(), None))
         } else {
             Ok((pre_pross.0, local_vec))
         }
@@ -1644,6 +1703,6 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
     }
     ///get the maximum and minimum counters currently in the queue
     pub fn get_min_max_and_max_p(&self) -> (u64, u64, Option<P>) {
-        (self.min, self.max, self.max_p_in_queue.clone())
+        (self.min, self.max, self.last_p_in_queue.clone())
     }
 }
