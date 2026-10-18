@@ -179,57 +179,7 @@ impl_ws_connection! {
     {
         Ok(())
     }
-    ///Create a new file to send; if a file already exists or the transfer is incomplete,
-    /// an error will occur
-    pub fn paste_file(&mut self, file: Rcc<Box<[u8]>>) -> Result<(), WTypeErr> {
-        if self.was_killed {
-            return Err(WTypeErr::WorkTimeErr("connect_is kill".to_string()));
-        }
-        if !self.handshake_is_end {
-            return Err(WTypeErr::WorkTimeErr(
-                "connection during the key installation process".to_string(),
-            ));
-        }
-        self.file_splitter
-            .write_new_rc_file(file)
-            .map_err(WTypeErr::WorkTimeErr)
-    }
 
-    ///Check if a file can be inserted
-    pub fn check_paste_file(&self) -> bool {
-        if self.was_killed {
-            return false;
-        }
-        if !self.handshake_is_end {
-            return false;
-        }
-        !self.file_splitter.i_have_some_send()
-    }
-
-    fn get_send_plan(
-        &mut self,
-        cp: &Rcc<WsConnectParam>,
-        pack_ctr: u64,
-        what_should_send: WhatSend,
-    ) -> SendPlan {
-        SendPlan {
-            mtu: cp.mtu(),
-            // ttl start -> true
-            ttl: cp.ttl_max_start_cost().map(|x| (x, true)),
-            id: *self.identified(),
-            tb: self.get_tb(),
-            ptype: match &what_should_send {
-                WhatSend::Fback => PackTypeGroup::Fback,
-                _ => PackTypeGroup::Data,
-            },
-            can_trim: matches!(&what_should_send, WhatSend::Data),
-            what_should_send,
-            pack_ctr,
-            payload_len_final: usize::MAX,
-            owerhead: usize::MAX,
-            is_fake: false,
-        }
-    }
 
     ///get_pack to send<br>
     ///send_api<br>
@@ -348,6 +298,11 @@ impl_ws_connection! {
         Ok(())
     }
 
+
+}
+
+//micro tools!
+impl_ws_connection! {
     fn get_tb(&mut self) -> Option<u8> {
         if let Some(x) = &self.tricky_byter {
             let m_ub = self.fuck_mut_struct.get_mut().user_buf.as_mut();
@@ -380,4 +335,57 @@ impl_ws_connection! {
         }
         Ok(PackAddedStatus::FbackQueueIsfull)
     }
+
+    ///Create a new file to send; if a file already exists or the transfer is incomplete,
+    /// an error will occur
+    pub fn paste_file(&mut self, file: Rcc<Box<[u8]>>) -> Result<(), WTypeErr> {
+        if self.was_killed {
+            return Err(WTypeErr::WorkTimeErr("connect_is kill".to_string()));
+        }
+        if !self.handshake_is_end {
+            return Err(WTypeErr::WorkTimeErr(
+                "connection during the key installation process".to_string(),
+            ));
+        }
+        self.file_splitter
+            .write_new_rc_file(file)
+            .map_err(WTypeErr::WorkTimeErr)
+    }
+
+    ///Check if a file can be inserted
+    pub fn check_paste_file(&self) -> bool {
+        if self.was_killed {
+            return false;
+        }
+        if !self.handshake_is_end {
+            return false;
+        }
+        !self.file_splitter.i_have_some_send()
+    }
+
+    fn get_send_plan(
+        &mut self,
+        cp: &Rcc<WsConnectParam>,
+        pack_ctr: u64,
+        what_should_send: WhatSend,
+    ) -> SendPlan {
+        SendPlan {
+            mtu: cp.mtu(),
+            // ttl start -> true
+            ttl: cp.ttl_max_start_cost().map(|x| (x, true)),
+            id: *self.identified(),
+            tb: self.get_tb(),
+            ptype: match &what_should_send {
+                WhatSend::Fback => PackTypeGroup::Fback,
+                _ => PackTypeGroup::Data,
+            },
+            can_trim: matches!(&what_should_send, WhatSend::Data),
+            what_should_send,
+            pack_ctr,
+            payload_len_final: usize::MAX,
+            owerhead: usize::MAX,
+            is_fake: false,
+        }
+    }
+
 }
