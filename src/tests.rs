@@ -10,4 +10,5 @@ mod w1utils_test;
 
 mod t4param_test;
 mod t5connector_test;
+mod t5coon_d3_rand_test;
 mod t5pack_flds_test;

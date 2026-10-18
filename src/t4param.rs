@@ -104,7 +104,7 @@ pub struct WsConnectParam {
     ctr_max_capacity_real: u64,
     max_len_file: Option<usize>,
     intermediate_questionable_packages_queue: Option<usize>,
-    need_use_random: RandConfig,
+    pub(super) need_use_random: RandConfig,
 }
 
 impl WsConnectParam {

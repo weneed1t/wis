@@ -9,7 +9,7 @@
 #![deny(clippy::todo)]
 #![deny(clippy::float_cmp)]
 #![forbid(unsafe_code)]
-pub const U64_LEN_IN_BYTES: usize = 8;
+pub(crate) const U64_LEN_IN_BYTES: usize = 8;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -23,8 +23,9 @@ use crate::{EXPCP, checked_cast, t1fields, w1utils};
 
 //##############################################################################################################################
 //----------------------------------------TRATE TO INTERPT TYPE 'P' IN WSFbackQueue AS BYTE MESSAGE!----------------------------
-pub trait NumericBytes: Sized {
+pub(crate) trait NumericBytes: Sized {
     // Returns the exact size of the type in bytes
+    #[allow(unused)]
     fn bytes_len(&self) -> usize;
 
     // Writes Big Endian bytes directly into a pre-allocated buffer without allocations
@@ -1094,7 +1095,7 @@ pub struct WSFbackQueue<P> {
     ptr_of_min: usize,
     max_p_in_queue: Option<P>,
 }
-
+#[allow(private_bounds)]
 impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFbackQueue<P> {
     ///size in bytes of type P
     pub const P_SIZE: usize = std::mem::size_of::<P>();
