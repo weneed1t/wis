@@ -29,11 +29,11 @@ pub(crate) trait NumericBytes: Sized {
     fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str>;
     fn from_bytes(bytes: &[u8]) -> Option<Self>;
     fn zero() -> Self;
-    fn sub(&self, inpp: Self) -> Result<Self, String>; // Метод должен возвращать Result согласно трейту
+    fn sub(&self, inpp: Self) -> Result<Self, String>;
 }
 
 macro_rules! impl_numeric_bytes {
-    // 1. Внутреннее правило для целых чисел (использует saturating_sub)
+
     (@int $($t:ty),*) => {
         $(
             impl NumericBytes for $t {
@@ -48,7 +48,7 @@ macro_rules! impl_numeric_bytes {
         )*
     };
 
-    // 2. Внутреннее правило для чисел с плавающей точкой (имитирует saturating_sub)
+
     (@float $($t:ty),*) => {
         $(
             impl NumericBytes for $t {
@@ -72,7 +72,7 @@ macro_rules! impl_numeric_bytes {
         )*
     };
 
-    // 3. Вспомогательное правило, чтобы не дублировать общие методы
+
     (@common_methods $t:ty) => {
         #[inline(always)]
         fn bytes_len(&self) -> usize {
