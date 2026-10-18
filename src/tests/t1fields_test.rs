@@ -1477,7 +1477,7 @@ mod tests_ttl {
         for case in cases {
             let ttl = Ttl::new(case.max, 1, 1, case.pruning).unwrap();
             let mut val = case.input;
-            let res = for_test_ttl_corr(&ttl, &mut val);
+            let res = ttl_corr(&ttl, &mut val);
             match case.expected {
                 Ok(expected_val) => {
                     assert!(res.is_ok(), "Expected Ok, got {:?}", res);
@@ -1503,7 +1503,7 @@ mod tests_ttl {
             }
             for val in values {
                 let mut v = val;
-                assert!(for_test_ttl_corr(&ttl, &mut v).is_ok());
+                assert!(ttl_corr(&ttl, &mut v).is_ok());
                 assert_eq!(v, val);
             }
         }

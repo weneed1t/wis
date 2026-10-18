@@ -179,7 +179,10 @@ impl_ws_connection! {
     {
         Ok(())
     }
+}
 
+///general logic
+impl_ws_connection! {
 
     ///get_pack to send<br>
     ///send_api<br>

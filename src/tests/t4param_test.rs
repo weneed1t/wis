@@ -1710,7 +1710,7 @@ mod all_test {
             }
 
             let ttl = Ttl::new(100, 1, 1, false).unwrap();
-            false_val.for_test_ttl_max_start_cost(Some(ttl));
+            false_val.ttl_max_start_cost = Some(ttl);
 
             let false_val = false_val.build().unwrap();
 

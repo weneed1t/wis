@@ -37,29 +37,9 @@ pub struct DataDrain {
 ///  The maximum file size is (2^64) - 9 bytes.
 #[derive(Debug, PartialEq, Clone)]
 pub struct WSFileSplitter {
-    max_len_of_file: Option<usize>,
-    send_file: Option<(DataDrain, Rcc<Box<[u8]>>)>,
-    recv_data: Option<(DataDrain, Option<Vec<u8>>)>,
-}
-
-impl WSFileSplitter {
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_max_len_of_file(&self) -> Option<usize> {
-        self.max_len_of_file
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_send_file(&self) -> Option<&(DataDrain, Rcc<Box<[u8]>>)> {
-        self.send_file.as_ref()
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_recv_data(&self) -> Option<&(DataDrain, Option<Vec<u8>>)> {
-        self.recv_data.as_ref()
-    }
+    pub(crate) max_len_of_file: Option<usize>,
+    pub(crate) send_file: Option<(DataDrain, Rcc<Box<[u8]>>)>,
+    pub(crate) recv_data: Option<(DataDrain, Option<Vec<u8>>)>,
 }
 
 impl WSFileSplitter {

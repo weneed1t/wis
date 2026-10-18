@@ -346,7 +346,7 @@ mod tests {
     #[test]
     fn very_long_string_and_bytes() {
         let long_str = "x".repeat(1000);
-        let hex_long = Codec::for_test_hex_encode(long_str.as_bytes());
+        let hex_long = Codec::hex_encode(long_str.as_bytes());
         let input = format!("wis:data@ss_{}", hex_long);
         let fields = Codec::parse(&input).unwrap();
         assert_eq!(fields[0].value, Value::String(long_str));
@@ -355,7 +355,7 @@ mod tests {
     #[test]
     fn very_long_bytes() {
         let long_bytes = vec![0xab; 500];
-        let hex_long = Codec::for_test_hex_encode(&long_bytes);
+        let hex_long = Codec::hex_encode(&long_bytes);
         let input = format!("wis:data@bb_{}", hex_long);
         let fields = Codec::parse(&input).unwrap();
         assert_eq!(fields[0].value, Value::Bytes(long_bytes.into_boxed_slice()));

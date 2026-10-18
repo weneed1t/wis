@@ -260,7 +260,7 @@ where
     ))
 }
 
-fn ttl_corr(ttl: &Ttl, ttl_t: &mut u64) -> Result<(), WTypeErr> {
+pub(crate) fn ttl_corr(ttl: &Ttl, ttl_t: &mut u64) -> Result<(), WTypeErr> {
     if *ttl_t > ttl.max() {
         if ttl.forced_pruning() {
             *ttl_t = ttl.max();
@@ -275,12 +275,6 @@ fn ttl_corr(ttl: &Ttl, ttl_t: &mut u64) -> Result<(), WTypeErr> {
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-/// for test
-pub fn for_test_ttl_corr(ttl: &Ttl, ttl_t: &mut u64) -> Result<(), WTypeErr> {
-    ttl_corr(ttl, ttl_t)
 }
 
 /// Updates the TTL field in the packet header using the provided Ttl policy.

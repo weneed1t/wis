@@ -278,12 +278,7 @@ impl Codec {
         be_bytes.get(leading..).unwrap_or(&[]).to_vec()
     }
 
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_hex_encode(bytes: &[u8]) -> String {
-        Self::hex_encode(bytes)
-    }
-    fn hex_encode(bytes: &[u8]) -> String {
+    pub(crate) fn hex_encode(bytes: &[u8]) -> String {
         const HEX: &[u8; 16] = b"0123456789abcdef";
         let mut out = String::with_capacity(
             bytes

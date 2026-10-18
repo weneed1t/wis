@@ -31,13 +31,8 @@ mod test_wait {
                 assert_eq!(waa.elems_in_me(), (1 + x - addrt) as usize);
             }
 
-            for x in waa.for_test_data_map().iter() {
-                println!(
-                    " id: {} cb:{:?} cl {:?}",
-                    x.0,
-                    x.1.for_test_cb(),
-                    x.1.for_test_cl()
-                );
+            for x in waa.data_map.iter() {
+                println!(" id: {} cb:{:?} cl {:?}", x.0, x.1.cb, x.1.cl);
             }
 
             let temp = waa.get_elements_to(
@@ -631,16 +626,16 @@ mod tests_wudp {
     fn test_kmod() {
         let mut xx: WSUdpLike<u32> = WSUdpLike::new(123).unwrap();
 
-        xx.for_test_k_mod_set(100);
+        xx.k_mod = 100;
 
         xx.k_add(70);
-        assert_eq!(xx.for_test_k_mod(), (100 + 70) % 123);
+        assert_eq!(xx.k_mod, (100 + 70) % 123);
 
         xx.k_add(1000);
-        assert_eq!(xx.for_test_k_mod(), (100 + 70 + 1000) % 123);
+        assert_eq!(xx.k_mod, (100 + 70 + 1000) % 123);
 
         xx.k_add(3);
-        assert_eq!(xx.for_test_k_mod(), (100 + 70 + 1000 + 3) % 123);
+        assert_eq!(xx.k_mod, (100 + 70 + 1000 + 3) % 123);
     }
 
     fn test_api<T: Clone>(
@@ -709,7 +704,7 @@ mod tests_wudp {
                 assert_eq!(xx.insert(3, &eleme), WSQueueState::ElemIsAlreadyIn); //9
                 assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //10
                 assert!(!xx.gap_in_queue());
-                assert_eq!(xx.for_test_in_queue(), 8);
+                assert_eq!(xx.in_queue, 8);
                 assert_eq!(xx.free_space(), xx.capacity() - 8);
                 //
                 assert_eq!(xx.last_ctr_get(), None);
@@ -814,7 +809,7 @@ mod tests_wudp {
             assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //5
             assert_eq!(xx.insert(5, &eleme), WSQueueState::SuccessfulInsertion); //6
             assert_eq!(xx.insert(6, &eleme), WSQueueState::SuccessfulInsertion); //7
-            assert_eq!(xx.for_test_in_queue(), 7);
+            assert_eq!(xx.in_queue, 7);
             assert_eq!(
                 test_api(&mut xx, *is_pre, &mut vv),
                 (vec![
@@ -831,25 +826,25 @@ mod tests_wudp {
             let mut xx: WSUdpLike<f32> = WSUdpLike::new(7).unwrap();
 
             assert_eq!(xx.insert(0, &eleme), WSQueueState::SuccessfulInsertion); //1
-            assert_eq!(xx.for_test_in_queue(), 1);
+            assert_eq!(xx.in_queue, 1);
             assert_eq!(test_api(&mut xx, *is_pre, &mut vv), (vec![(0, 0.0)]));
 
             assert_eq!(xx.insert(1, &eleme), WSQueueState::SuccessfulInsertion); //2
-            assert_eq!(xx.for_test_in_queue(), 1);
+            assert_eq!(xx.in_queue, 1);
             assert_eq!(
                 test_api(&mut xx, *is_pre, &mut vv),
                 (vec![(1, 0.0)]),
                 "{:?}",
-                xx.for_test_data()
+                xx.data
             );
 
             assert_eq!(xx.insert(2, &eleme), WSQueueState::SuccessfulInsertion); //3
 
-            assert_eq!(xx.for_test_in_queue(), 1);
+            assert_eq!(xx.in_queue, 1);
             assert_eq!(test_api(&mut xx, *is_pre, &mut vv), (vec![(2, 0.0)]));
 
             assert_eq!(xx.insert(3, &eleme), WSQueueState::SuccessfulInsertion); //4
-            assert_eq!(xx.for_test_in_queue(), 1);
+            assert_eq!(xx.in_queue, 1);
             assert_eq!(test_api(&mut xx, *is_pre, &mut vv), (vec![(3, 0.0)]));
 
             assert_eq!(xx.insert(4, &eleme), WSQueueState::SuccessfulInsertion); //5
@@ -860,7 +855,7 @@ mod tests_wudp {
             assert_eq!(xx.insert(9, &eleme), WSQueueState::SuccessfulInsertion); //7
             assert_eq!(xx.insert(10, &eleme), WSQueueState::SuccessfulInsertion); //5
             assert_eq!(xx.insert(11, &eleme), WSQueueState::ElemIdIsBig); //6
-            assert_eq!(xx.for_test_in_queue(), 7);
+            assert_eq!(xx.in_queue, 7);
             assert_eq!(
                 test_api(&mut xx, *is_pre, &mut vv),
                 (vec![

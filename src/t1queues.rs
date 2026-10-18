@@ -21,6 +21,87 @@ use crate::t0pology::PackTopology;
 use crate::w1types::{Crcser, PackScheme, PackTypeGroup as PTG, WSQueueState, WisErr};
 use crate::{EXPCP, checked_cast, t1fields, w1utils};
 
+//##############################################################################################################################
+//----------------------------------------TRATE TO INTERPT TYPE 'P' IN WSFbackQueue AS BYTE MESSAGE!----------------------------
+pub trait NumericBytes: Sized {
+    // Returns the exact size of the type in bytes
+    fn bytes_len(&self) -> usize;
+
+    // Writes Big Endian bytes directly into a pre-allocated buffer without allocations
+    fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str>;
+
+    // Safely restores the value from a dynamic byte slice
+    fn from_bytes(bytes: &[u8]) -> Option<Self>;
+}
+
+macro_rules! impl_numeric_bytes {
+    ($($t:ty),*) => {
+        $(
+            impl NumericBytes for $t {
+                #[inline(always)]
+                fn bytes_len(&self) -> usize {
+                    std::mem::size_of::<Self>()
+                }
+
+                #[inline(always)]
+                fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+                    let size = std::mem::size_of::<Self>();
+                    if buffer.len() < size {
+                        return Err("Buffer is too small");
+                    }
+                    // Safe buffer copy without unsafe or memory allocations
+                    buffer.get_mut(..size).ok_or(" buffer.get_mut(..size) out of range")?.copy_from_slice(&self.to_be_bytes());
+                    Ok(size)
+                }
+
+                #[inline(always)]
+                fn from_bytes(bytes: &[u8]) -> Option<Self> {
+                    let array: [u8; std::mem::size_of::<$t>()] = bytes.try_into().ok()?;
+                    Some(Self::from_be_bytes(array))
+                }
+            }
+        )*
+    };
+}
+
+// Generate code for all your target types
+impl_numeric_bytes!(u64, i64, f64, f32, u32, i32, i16, u16, u8, i8);
+
+// Clean separate implementation for bool
+impl NumericBytes for bool {
+    #[inline(always)]
+    fn bytes_len(&self) -> usize {
+        1
+    }
+
+    #[inline(always)]
+    fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
+        if buffer.is_empty() {
+            return Err("Buffer is too small");
+        }
+        {
+            #![allow(clippy::as_conversions)]
+            debug_assert!(*self as usize <= u8::MAX as usize);
+
+            (*buffer
+                .first_mut()
+                .ok_or(" buffer.first_mut() out of range")?) = *self as u8;
+        }
+        Ok(1)
+    }
+
+    #[inline(always)]
+    fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        match bytes {
+            [0] => Some(false),
+            [1] => Some(true),
+            _ => None,
+        }
+    }
+}
+
+//##############################################################################################################################
+
 #[derive(Clone, Debug)]
 ///See the description of the `new` method
 pub struct WSTcpLike<Tcrcser: Crcser> {
@@ -419,36 +500,11 @@ impl<Tcrcser: Crcser> WSTcpLike<Tcrcser> {
 #[derive(Clone, Debug)]
 ///See the description of the `new` method
 pub struct WSUdpLike<T> {
-    in_queue: usize,
-    k_mod: usize,
-    last_give_ctr: Option<u64>,
-    largest_ctr: Option<u64>,
-    data: Box<[Option<(u64, T)>]>,
-}
-
-impl<T: Clone> WSUdpLike<T> {
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_in_queue(&self) -> usize {
-        self.in_queue
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_k_mod(&self) -> usize {
-        self.k_mod
-    }
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_data(&self) -> Box<[Option<(u64, T)>]> {
-        self.data.clone()
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_k_mod_set(&mut self, mood: usize) {
-        self.k_mod = mood
-    }
+    pub(crate) in_queue: usize,
+    pub(crate) k_mod: usize,
+    pub(crate) last_give_ctr: Option<u64>,
+    pub(crate) largest_ctr: Option<u64>,
+    pub(crate) data: Box<[Option<(u64, T)>]>,
 }
 
 impl<T: Clone> WSUdpLike<T> {
@@ -686,7 +742,7 @@ impl<T: Clone> WSUdpLike<T> {
 }
 
 #[derive(Default)]
-pub struct IdentityHasher {
+pub(crate) struct IdentityHasher {
     hash: u64,
 }
 //This hash table does not require a reliable hash function, as each packet has its own
@@ -707,7 +763,7 @@ impl Hasher for IdentityHasher {
 #[derive(Default, Clone)]
 
 ///mis cm
-pub struct IdentityBuildHasher;
+pub(crate) struct IdentityBuildHasher;
 
 impl BuildHasher for IdentityBuildHasher {
     type Hasher = IdentityHasher;
@@ -719,19 +775,19 @@ impl BuildHasher for IdentityBuildHasher {
 #[derive(Clone, Debug)]
 ///no cm
 pub struct ElemMy<T, P> {
-    cl: Option<u64>,
-    cb: Option<u64>,
-    data: T,
-    p_order: P,
+    pub(crate) cl: Option<u64>,
+    pub(crate) cb: Option<u64>,
+    pub(crate) data: T,
+    pub(crate) p_order: P,
 }
 ///See the description of the `new` method
 #[derive(Clone, Debug)]
 pub struct WSWaitQueue<T, P> {
-    data_map: HashMap<u64, ElemMy<T, P>, IdentityBuildHasher>,
-    max_capacity_elems: usize,
-    elems_in_me: usize,
-    of_min_p: Option<(u64, P)>,
-    of_max_p: Option<(u64, P)>,
+    pub(crate) data_map: HashMap<u64, ElemMy<T, P>, IdentityBuildHasher>,
+    pub(crate) max_capacity_elems: usize,
+    pub(crate) elems_in_me: usize,
+    pub(crate) of_min_p: Option<(u64, P)>,
+    pub(crate) of_max_p: Option<(u64, P)>,
 }
 
 impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
@@ -1024,87 +1080,6 @@ impl<T: Clone, P: PartialEq + PartialOrd + Clone> WSWaitQueue<T, P> {
     }
 }
 
-//##############################################################################################################################
-//----------------------------------------TRATE TO INTERPT TYPE 'P' IN WSFbackQueue AS BYTE MESSAGE!----------------------------
-pub trait NumericBytes: Sized {
-    // Returns the exact size of the type in bytes
-    fn bytes_len(&self) -> usize;
-
-    // Writes Big Endian bytes directly into a pre-allocated buffer without allocations
-    fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str>;
-
-    // Safely restores the value from a dynamic byte slice
-    fn from_bytes(bytes: &[u8]) -> Option<Self>;
-}
-
-macro_rules! impl_numeric_bytes {
-    ($($t:ty),*) => {
-        $(
-            impl NumericBytes for $t {
-                #[inline(always)]
-                fn bytes_len(&self) -> usize {
-                    std::mem::size_of::<Self>()
-                }
-
-                #[inline(always)]
-                fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-                    let size = std::mem::size_of::<Self>();
-                    if buffer.len() < size {
-                        return Err("Buffer is too small");
-                    }
-                    // Safe buffer copy without unsafe or memory allocations
-                    buffer.get_mut(..size).ok_or(" buffer.get_mut(..size) out of range")?.copy_from_slice(&self.to_be_bytes());
-                    Ok(size)
-                }
-
-                #[inline(always)]
-                fn from_bytes(bytes: &[u8]) -> Option<Self> {
-                    let array: [u8; std::mem::size_of::<$t>()] = bytes.try_into().ok()?;
-                    Some(Self::from_be_bytes(array))
-                }
-            }
-        )*
-    };
-}
-
-// Generate code for all your target types
-impl_numeric_bytes!(u64, i64, f64, f32, u32, i32, i16, u16, u8, i8);
-
-// Clean separate implementation for bool
-impl NumericBytes for bool {
-    #[inline(always)]
-    fn bytes_len(&self) -> usize {
-        1
-    }
-
-    #[inline(always)]
-    fn write_be_bytes(&self, buffer: &mut [u8]) -> Result<usize, &'static str> {
-        if buffer.is_empty() {
-            return Err("Buffer is too small");
-        }
-        {
-            #![allow(clippy::as_conversions)]
-            debug_assert!(*self as usize <= u8::MAX as usize);
-
-            (*buffer
-                .first_mut()
-                .ok_or(" buffer.first_mut() out of range")?) = *self as u8;
-        }
-        Ok(1)
-    }
-
-    #[inline(always)]
-    fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        match bytes {
-            [0] => Some(false),
-            [1] => Some(true),
-            _ => None,
-        }
-    }
-}
-
-//##############################################################################################################################
-//
 //
 ///WSFbackQueue structure for creating and receiving accepted counters from the
 /// protocol packet field
@@ -1669,62 +1644,5 @@ impl<P: PartialEq + PartialOrd + Clone + Default + Debug + NumericBytes> WSFback
     ///get the maximum and minimum counters currently in the queue
     pub fn get_min_max_and_max_p(&self) -> (u64, u64, Option<P>) {
         (self.min, self.max, self.max_p_in_queue.clone())
-    }
-}
-
-impl<T, P> WSWaitQueue<T, P> {
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_data_map(&self) -> &HashMap<u64, ElemMy<T, P>, IdentityBuildHasher> {
-        &self.data_map
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_max_capacity_elems(&self) -> usize {
-        self.max_capacity_elems
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_elems_in_me(&self) -> usize {
-        self.elems_in_me
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_of_min_p(&self) -> Option<&(u64, P)> {
-        self.of_min_p.as_ref()
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_of_max_p(&self) -> Option<&(u64, P)> {
-        self.of_max_p.as_ref()
-    }
-}
-impl<T, P> ElemMy<T, P> {
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_cl(&self) -> Option<u64> {
-        self.cl
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_cb(&self) -> Option<u64> {
-        self.cb
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_data(&self) -> &T {
-        &self.data
-    }
-
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_p_order(&self) -> &P {
-        &self.p_order
     }
 }

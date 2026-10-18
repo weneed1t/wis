@@ -546,8 +546,8 @@ pub struct WsConnectParamBuilder {
     max_num_attempts_resend_package: Option<usize>,
 
     // Optional fields (default = None)
-    ttl_max_start_cost: Option<Ttl>, /* double Option trick to distinguish
-                                      * unset vs None */
+    pub(crate) ttl_max_start_cost: Option<Ttl>, /* double Option trick to distinguish
+                                                 * unset vs None */
 
     percent_fake_any_packets: Option<f32>,
     length_trimming_range: Option<usize>,
@@ -555,13 +555,6 @@ pub struct WsConnectParamBuilder {
     max_len_file: Option<Option<usize>>, // default is Some(10*1024*1024)
 }
 
-impl WsConnectParamBuilder {
-    #[cfg(test)]
-    ///for test only
-    pub fn for_test_ttl_max_start_cost(&mut self, tttl: Option<Ttl>) {
-        self.ttl_max_start_cost = tttl
-    }
-}
 impl WsConnectParamBuilder {
     /// Creates a new builder with the mandatory `pack_topology` and all defaults applied.
     pub fn new(scheme: PackScheme) -> Self {

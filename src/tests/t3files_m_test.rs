@@ -224,7 +224,7 @@ mod tests_file {
 
         assert_eq!(tw_s.file_to_slices(&mut reta1).unwrap(), 50 + 1 + 1 - 20);
         assert_eq!(
-            tw_s.clone().for_test_send_file().unwrap().0,
+            tw_s.clone().send_file.unwrap().0,
             DataDrain {
                 ptr_in_head: 2,
                 ptr_in_body: 18,
@@ -235,7 +235,7 @@ mod tests_file {
 
         assert_eq!(tw_s.file_to_slices(&mut reta2).unwrap(), (50 + 1 + 1 - 20));
         assert_eq!(
-            tw_s.clone().for_test_send_file().unwrap().0,
+            tw_s.clone().send_file.unwrap().0,
             DataDrain {
                 ptr_in_head: 2,
                 ptr_in_body: 18,
@@ -249,7 +249,7 @@ mod tests_file {
             (50 + 1 + 1 - 20) - 7
         );
         assert_eq!(
-            tw_s.clone().for_test_send_file().unwrap().0,
+            tw_s.clone().send_file.unwrap().0,
             DataDrain {
                 ptr_in_head: 2,
                 ptr_in_body: 25,
@@ -263,7 +263,7 @@ mod tests_file {
             (50 + 1 + 1 - 20) - 7 - 11
         );
         assert_eq!(
-            tw_s.clone().for_test_send_file().unwrap().0,
+            tw_s.clone().send_file.unwrap().0,
             DataDrain {
                 ptr_in_head: 2,
                 ptr_in_body: 36,
@@ -273,7 +273,7 @@ mod tests_file {
         );
 
         assert_eq!(tw_s.file_to_slices(&mut reta5), None);
-        assert!(tw_s.clone().for_test_send_file().is_none());
+        assert!(tw_s.clone().send_file.is_none());
 
         assert_eq!(
             reta1,
